@@ -27,4 +27,4 @@ This behavior may change in the future so that valid UTF-8 byte sequences will b
 
 ## Numeric values
 
-Numbers in the Linux audit logs may have been formatted as decimal (e.g. user id), hexadecimal (e.g. syscall arguments) or octal numbers (e.g. file modes). Decimal numbers are serialized as regular JSON numbers, i.e. without string quotes. Since JSON number literls do not support octal or decimal encoding, those numbers are serialized as JSON strings with a prefix, e.g. `"0o1337"` or `"0xcafe"`.
+Numbers in the Linux audit logs may have been formatted as decimal (e.g. user id), hexadecimal (e.g. syscall arguments) or octal numbers (e.g. file modes). Decimal numbers are serialized as regular JSON numbers, i.e. without string quotes. Since JSON number literals do not support octal or decimal encoding, those numbers are serialized as JSON strings with a prefix, e.g. `"0o1337"` or `"0xcafe"`.
