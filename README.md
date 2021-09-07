@@ -69,4 +69,4 @@ GNU General Public License, version 3
 ## Authors
 
 - Hilko Bengen <<bengen@hilluzination.de>>
-- Sergej Schmidt
+- Sergej Schmidt <<sergej@msgpeek.net>>

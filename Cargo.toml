@@ -2,7 +2,7 @@
 name = "laurel"
 version = "0.1.0"
 authors = ["Hilko Bengen <bengen@hilluzination.de>",
-           "Sergej Schmidt"]
+           "Sergej Schmidt <sergej@msgpeek.net>"]
 edition = "2018"
 description = "Transform Linux Audit logs for SIEM usage"
 homepage = "https://github.com/threathunters-io/laurel"
