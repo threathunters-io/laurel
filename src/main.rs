@@ -33,7 +33,12 @@ use config::*;
 
 mod syslog {
     use std::ffi::CString;
-    use libc::{syslog,LOG_DAEMON,LOG_CRIT};
+    use libc::{openlog,syslog,LOG_DAEMON,LOG_CRIT,LOG_PERROR};
+
+    pub fn init(progname: &String) {
+        let s = CString::new(progname.as_str()).unwrap();
+        unsafe { openlog(s.as_ptr(), LOG_PERROR, LOG_DAEMON) };
+    }
 
     pub fn log_crit(message: &str) {
         let s = CString::new(message).unwrap();
@@ -197,7 +202,8 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn main() {
-    let progname = Arc::new(env::args().next().unwrap_or_else(||"(unknown)".to_string()));
+    let progname = Arc::new(env::args().next().unwrap_or_else(||"laurel".to_string()));
+    syslog::init(&progname);
     {
         let progname = progname.clone();
         std::panic::set_hook(Box::new(move |panic_info| {
