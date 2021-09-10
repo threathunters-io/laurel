@@ -10,6 +10,9 @@ license = "GPL-3.0-or-later"
 keywords = ["linux", "audit", "log", "json", "security"]
 categories = ["encoding"]
 
+[features]
+static = [] # static build, causes libacl and libc to be linked statically into the binary.
+
 [badges]
 maintencance = { status = "actively-developed" }
 
