@@ -69,5 +69,10 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed={}", msg_file);
     println!("cargo:rerun-if-changed={}", fields_file);
 
+    if let Some(_) = env::var_os("CARGO_FEATURE_STATIC") {
+        println!("cargo:rustc-link-lib=static=acl");
+        println!("cargo:rustc-link-lib=static=c");
+    }
+
     Ok(())
 }
