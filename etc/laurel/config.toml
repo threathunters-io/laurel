@@ -1,0 +1,15 @@
+# Write log files relative to this directory
+directory = "/var/log/laurel"
+# Drop privileges from root to this user
+user = "_laurel"
+
+[auditlog]
+# Base file name for the JSONL-based log file
+file = "audit.log"
+# Rotate when log file reaches this size (in bytes)
+size = 1000000
+# When rotating, keep this number of generations around
+generations = 10
+# Grant read permissions on the log files to these users, using
+# POSIX ACLs
+read-users = [ "splunk" ]
