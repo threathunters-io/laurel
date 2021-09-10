@@ -38,7 +38,7 @@ Static Linux/x86_64 binaries are built for tagged releases.
 
 - Create a dedicated user, e.g.:
     ``` console
-    $ sudo useradd --system --home-dir /var/lib/laurel --create-home _laurel
+    $ sudo useradd --system --home-dir /var/log/laurel --create-home _laurel
     ```
 - Configure _LAUREL_: Copy the provided annotated [example](etc/laurel/config.toml) to `/etc/laurel/config.toml` and customize it.
 - Register _LAUREL_ as an _audisp_ plugin: Copy the provided [example](etc/audit/plugins.d/laurel.conf) to `/etc/audisp/plugins.d/laurel.conf` or `/etc/audit/plugins.d/laurel.conf` (depending on your _auditd_ version).
