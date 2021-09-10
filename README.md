@@ -20,7 +20,7 @@ Refer to [JSON-based log format](json-format.md) for a description of the log fo
 
 We developed this tool because we were not content with feature sets and performance characteristics of existing projects and products. Please refer to [Performance](performance.md) for details.
 
-## Build from source
+## Build from source…
 
 _LAUREL_ is written in Rust. To build it, a reasonably recent Rust compiler (we currently use 1.48), `cargo`, and the 
 `libacl` library and its header files (Debian: `libacl1-dev`, RedHat: `libacl-devel`) are required.
@@ -30,33 +30,18 @@ $ cargo build --release
 $ sudo install -m755 target/release/laurel /usr/local/sbin/laurel
 ```
 
+## …or use the provided binary
+
+Static Linux/x86_64 binaries are built for tagged releases.
+
 ## Configure, use
 
 - Create a dedicated user, e.g.:
     ``` console
-	$ sudo useradd --system --home-dir /var/lib/laurel --create-home _laurel
-	```
-- Configure _LAUREL_, write to `/etc/laurel/config.toml`:
-    ``` toml
-    directory = "/var/log/laurel"
-    user = "_laurel"
-    
-    [auditlog]
-    file = "audit.log"
-    size = 1000000
-    generations = 10
-    read-users = [ "splunk" ]
-	```
-- Register _LAUREL_ as an _audisp_ plugin, write to (depending on your _auditd_ version) `/etc/audisp/plugins.d/laurel.conf` or `/etc/audit/plugins.d/laurel.conf`:
-    ``` ini
-    active = yes
-    direction = out
-    type = always
-    format = string
-    path = /usr/local/sbin/laurel
-    args = --config /etc/laurel/config.toml
-	```
-  
+    $ sudo useradd --system --home-dir /var/lib/laurel --create-home _laurel
+    ```
+- Configure _LAUREL_: Copy the provided annotated [example](etc/laurel/config.toml) to `/etc/laurel/config.toml` and customize it.
+- Register _LAUREL_ as an _audisp_ plugin: Copy the provided [example](etc/audit/plugins.d/laurel.conf) to `/etc/audisp/plugins.d/laurel.conf` or `/etc/audit/plugins.d/laurel.conf` (depending on your _auditd_ version).
 - Tell _auditd(8)_ to re-evaluate its configuration
     ``` console
     $ sudo pkill -HUP auditd
