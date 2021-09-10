@@ -10,7 +10,9 @@ jobs:
     steps:
       - name: Prepare
         run: |
-          apk add git rust cargo acl-dev acl-static musl-dev git ca-certificates
+          apk add git ca-certificates \
+                  rust cargo \
+                  acl-static musl-dev
       - name: Get Version
         id: version
         run: |
