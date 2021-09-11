@@ -56,13 +56,15 @@ impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
     #[allow(dead_code)]
     pub fn parse_proc(pid: u64) -> Result<Process, Box<dyn Error>> {
-        let argv = read(format!("/proc/{}/cmdline", pid))?
+        let argv = read(format!("/proc/{}/cmdline", pid))
+            .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?
             .split(|c| *c == 0)
             .filter(|s|!s.is_empty())
             .map(|s|OsStr::from_bytes(s).to_os_string())
             .collect::<Vec<_>>();
 
-        let buf = read(format!("/proc/{}/stat", pid))?;
+        let buf = read(format!("/proc/{}/stat", pid))
+            .map_err(|e| format!("read /proc/{}/stat: {}", pid, e))?;
         // comm may contain whitespace and ")", skip over it.
         let comm_end = buf.iter().enumerate()
             .rfind(|(_,c)| **c == b')')
@@ -82,9 +84,11 @@ impl Process {
             tv_sec: (starttime / *CLK_TCK) as i64,
             tv_nsec: ((starttime % *CLK_TCK) * (1_000_000_000 / *CLK_TCK)) as i64,
         });
-        let proc_age = clock_gettime(ClockId::CLOCK_BOOTTIME)? - proc_boottime;
+        let proc_age = clock_gettime(ClockId::CLOCK_BOOTTIME)
+            .map_err(|e| format!("clock_gettime: {}", e))? - proc_boottime;
         let launch_time = {
-            let lt = clock_gettime(ClockId::CLOCK_REALTIME)? - proc_age;
+            let lt = clock_gettime(ClockId::CLOCK_REALTIME)
+                .map_err(|e| format!("clock_gettime: {}", e))? - proc_age;
             (lt.tv_sec() * 1000 + lt.tv_nsec() / 1_000_000) as u64
         };
 
@@ -138,7 +142,9 @@ impl ProcTable {
     /// Constructs process table from /proc entries
     pub fn from_proc() -> Result<ProcTable,Box<dyn Error>> {
         let mut pt = ProcTable { processes: BTreeMap::new() };
-        for entry in read_dir("/proc")? {
+        for entry in read_dir("/proc")
+            .map_err(|e| format!("read_dir: /proc: {}", e))?
+        {
             if let Ok(entry) = entry {
                 if let Ok(pid) = u64::from_str(entry.file_name()
                                                .to_string_lossy()
