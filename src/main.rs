@@ -118,9 +118,12 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     };
 
     let dir = config.directory.clone().unwrap_or(Path::new(".").to_path_buf());
-    fs::create_dir_all(&dir)?;
-    chown(&dir, Some(runas_user.uid), Some(runas_user.gid))?;
-    fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))?;
+    fs::create_dir_all(&dir)
+        .map_err(|e| format!("create_dir: {}: {}", dir.to_string_lossy(), e))?;
+    chown(&dir, Some(runas_user.uid), Some(runas_user.gid))
+        .map_err(|e| format!("chown: {}: {}", dir.to_string_lossy(), e))?;
+    fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
+        .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
 
     let mut logger = match &config.auditlog.file {
         p if p.as_os_str() == "-" => Logger { output: BufWriter::new(Box::new(io::stdout())) },
@@ -168,7 +171,8 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         }}));
 
     let mut coalesce = Coalesce::default();
-    coalesce.populate_proc_table()?;
+    coalesce.populate_proc_table()
+        .map_err(|e| format!("populate proc table: {}", e))?;
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();
 
