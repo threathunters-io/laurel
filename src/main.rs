@@ -167,6 +167,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             "program": &args[0],
             "action": "start",
             "euid": Uid::effective().as_raw(),
+            "version": env!("CARGO_PKG_VERSION"),
             "config": &config
         }}));
 
