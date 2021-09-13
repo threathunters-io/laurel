@@ -5,13 +5,12 @@ use getopts::Options;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::error::Error;
 use std::path::Path;
 use std::sync::Arc;
 
-use nix::unistd::{chown,setresuid,setresgid,User,Uid};
+use nix::unistd::{setresuid,setresgid,User,Uid};
 
 use caps::{Capability, CapSet};
 use caps::securebits::set_keepcaps;
@@ -26,6 +25,7 @@ pub mod proc;
 pub mod rotate;
 pub mod config;
 pub mod constants;
+pub mod file_handling;
 
 use coalesce::Coalesce;
 use rotate::FileRotate;
@@ -103,8 +103,20 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    // Holds report messages, in case files or folders had incorrect permissions.
+    let mut integrity_report = HashSet::new();
+
     let config: Config = match matches.opt_str("c") {
-        Some(f_name) => toml::from_slice(&fs::read(&f_name)?)?,
+        Some(f_name) => {
+            match file_handling::check_path(&f_name, 0o640)? {
+                Some(report) => {
+                    // There were permission/owner mismatches, log them.
+                    integrity_report.insert(report);
+                }
+                None => {} // Everything went well, nothing to report.
+            }
+            toml::from_slice(&fs::read(&f_name)?)?
+        },
         None => Config::default(),
     };
 
@@ -118,9 +130,13 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     };
 
     let dir = config.directory.clone().unwrap_or(Path::new(".").to_path_buf());
-    fs::create_dir_all(&dir)?;
-    chown(&dir, Some(runas_user.uid), Some(runas_user.gid))?;
-    fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))?;
+    match file_handling::create_log_dir(&dir)? {
+        Some(report) => {
+            // There were permission/owner mismatches, log them.
+            integrity_report.insert(report);
+        }
+        None => {} // Log-dir created or all permissions were fine.
+    }
 
     let mut logger = match &config.auditlog.file {
         p if p.as_os_str() == "-" => Logger { output: BufWriter::new(Box::new(io::stdout())) },
@@ -167,6 +183,15 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             "version": env!("CARGO_PKG_VERSION"),
             "config": &config
         }}));
+
+    for (report_file, report_msg) in integrity_report {
+        logger.log(&json!({
+            "notice": {
+                "action": "warning",
+                "path": &report_file,
+                "msg": &report_msg
+            }}));
+    }
 
     let mut coalesce = Coalesce::default();
     coalesce.populate_proc_table()?;
