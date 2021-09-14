@@ -212,21 +212,21 @@ pub fn main() {
     {
         let progname = progname.clone();
         std::panic::set_hook(Box::new(move |panic_info| {
-        let payload = panic_info.payload();
-        let message = if let Some(s) = payload.downcast_ref::<&str>() {
-            s
-        } else if let Some(s) = payload.downcast_ref::<String>() {
-            &s
-        } else {
-            "(unknown error)"
-        };
-        let location = match panic_info.location() {
-            Some(l) => format!("{}:{},{}", l.file(), l.line(), l.column()),
-            None => "(unknown)".to_string(),
-        };
-        let e = format!("fatal error '{}' at {}", &message, &location);
-        eprintln!("{}: {}", &progname, &e);
-        log_crit(&e);
+            let payload = panic_info.payload();
+            let message = if let Some(s) = payload.downcast_ref::<&str>() {
+                s
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                &s
+            } else {
+                "(unknown error)"
+            };
+            let location = match panic_info.location() {
+                Some(l) => format!("{}:{},{}", l.file(), l.line(), l.column()),
+                None => "(unknown)".to_string(),
+            };
+            let e = format!("fatal error '{}' at {}", &message, &location);
+            eprintln!("{}: {}", &progname, &e);
+            log_crit(&e);
         }));
     }
 
