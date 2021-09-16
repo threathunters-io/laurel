@@ -307,6 +307,17 @@ mod test {
             assert_eq!(t, BPF);
             assert_eq!(id, EventID{timestamp: 1626883065201, sequence: 216697});
         }
+        {
+            let (t, _id, _rv) = parse(Vec::from(br#"type=AVC msg=audit(1631798689.083:65686): avc:  denied  { setuid } for  pid=15381 comm="laurel" capability=7  scontext=system_u:system_r:auditd_t:s0 tcontext=system_u:system_r:auditd_t:s0 tclass=capability permissive=1
+"#.as_ref()))?;
+            assert_eq!(t, AVC);
+        }
+        {
+            let (t, _id, _rv) = parse(Vec::from(br#"type=AVC msg=audit(1631870323.500:7098): avc:  granted  { setsecparam } for  pid=11209 comm="tuned" scontext=system_u:system_r:tuned_t:s0 tcontext=system_u:object_r:security_t:s0 tclass=security
+"#.as_ref()))?;
+            assert_eq!(t, AVC);
+        }
+
 
         Ok(())
     }
