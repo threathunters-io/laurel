@@ -90,15 +90,38 @@ peg::parser!{
             ("node=" $([^b' ']+) " ")?
             "type=" t:typ() _
             "msg=audit(" s:number() "." ms:number() ":" seq:number() "):" _?
-            kvs:((kv() ** _) **<,2> [b'\x1d'])
+            body:body()
             "\n"
         {
             (
                 t,
                 EventID{timestamp: s*1000 + ms, sequence: seq as u32},
-                kvs.into_iter().flatten().collect::<Vec<_>>(),
+                body,
             )
         }
+
+        rule body() -> Vec<(Key,Value)>
+            = prefix:body_prefix()? kvs:((kv() ** _) ** <,2> [b'\x1d']) {
+                let mut v = Vec::new();
+                if let Some(p) = prefix { v.push(p) };
+                let mut rest = kvs.into_iter().flatten().collect::<Vec<_>>();
+                v.append(&mut rest);
+                v
+            }
+
+        rule body_prefix() -> (Key, Value)
+            = "avc:" _ b:position!() ("granted"/"denied") e:position!() _
+              "{" _ words:(safeunq() ** _ ) _ "}" _ "for" _
+            {
+                let mut values: Vec<Value> = Vec::new();
+                for w in words {
+                    values.push(Value::Str((w.0..w.1), Quote::None));
+                }
+                (Key::Name(b..e), Value::List(values))
+            }
+            / b:position!() "netlabel" e:position!() ":" _ {
+                (Key::Name(b..e), Value::Empty)
+            }
 
         // whitespace
         rule _ = " "+
@@ -133,11 +156,13 @@ peg::parser!{
         rule ident() -> &'input[u8] = $( [b'a'..=b'z'|b'A'..=b'Z']
                                          [b'a'..=b'z'|b'A'..=b'Z'|b'0'..=b'9'|b'_'|b'-']* )
 
-        rule hex_string() -> &'input[u8] = $( ([b'0'..=b'9'|b'A'..=b'F']*<2>)+ )
+        rule hex_string() = ( ([b'0'..=b'9'|b'A'..=b'F']*<2>)+ )
         // all printable ASCII except <SPC> and double quote
-        rule safestr() -> &'input[u8] = $( [b'!'|b'#'..=b'~']* )
+        rule safestr() = ( [b'!'|b'#'..=b'~']* )
         // ... and except single quote and braces
-        rule safeunq() -> &'input[u8] = $( [b'!'|b'#'..=b'&'|b'('..=b'z'|b'|'|b'~']+ )
+        rule safeunq() -> (usize, usize)
+            = b:position!() ( [b'!'|b'#'..=b'&'|b'('..=b'z'|b'|'|b'~']+ ) e:position!()
+            { (b, e) }
 
         rule kv() -> (Key, Value)
             // "encoded" string value
