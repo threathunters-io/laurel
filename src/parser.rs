@@ -170,6 +170,9 @@ peg::parser!{
             / k:key() "="   b:position!() safeunq()    e:position!()      &eot() {
                 (k.0, Value::Str(b..e, Quote::None))
             }
+            / b:position!() [^ b'\n']* e:position!() {
+                (Key::Literal("NOT_PARSED"), Value::Str(b..e, Quote::None))
+            }
     }
 }
 
