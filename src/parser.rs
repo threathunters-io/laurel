@@ -137,7 +137,7 @@ peg::parser!{
         // all printable ASCII except <SPC> and double quote
         rule safestr() -> &'input[u8] = $( [b'!'|b'#'..=b'~']* )
         // ... and except single quote and braces
-        rule safeunq() -> &'input[u8] = $( [b'!'|b'#'..=b'&'|b'('..=b'z'|b'|'|b'~']* )
+        rule safeunq() -> &'input[u8] = $( [b'!'|b'#'..=b'&'|b'('..=b'z'|b'|'|b'~']+ )
 
         rule kv() -> (Key, Value)
             // "encoded" string value
