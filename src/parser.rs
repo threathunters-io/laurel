@@ -321,8 +321,9 @@ mod test {
             assert_eq!(t, AVC);
         }
         {
-            let (t, _id, _rv) = parse(Vec::from(br#"type=MAC_UNLBL_ALLOW msg=audit(1631783567.248:3): netlabel: auid=0 ses=0 unlbl_accept=1 old=0AUID="root""#.as_ref()))?;
-            assert_eq!(t, AVC);
+            let (t, _id, _rv) = parse(Vec::from(br#"type=MAC_UNLBL_ALLOW msg=audit(1631783567.248:3): netlabel: auid=0 ses=0 unlbl_accept=1 old=0AUID="root"
+"#.as_ref()))?;
+            assert_eq!(t, MAC_UNLBL_ALLOW);
         }
 
 
