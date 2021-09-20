@@ -47,6 +47,10 @@ Static Linux/x86_64 binaries are built for tagged releases.
     $ sudo pkill -HUP auditd
     ```
 
+## Test, Debug
+
+For debugging and other testing purposes, _LAUREL_ can be run without specifying any configuration file. It will not change users and read events from standard input, just as it would when called from _auditd_. Log entries arewritten to `audit.log` in the current working directory.
+
 ## License
 
 GNU General Public License, version 3
