@@ -90,6 +90,9 @@ pub struct Coalesce {
     next_expire: Option<u64>,
     /// process table built from observing process-related events
     processes: ProcTable,
+    /// Generate ARGV and ARGV_STR from EXECVE
+    pub execve_argv_list: bool,
+    pub execve_argv_string: bool,
 }
 
 const EXPIRE_PERIOD: u64  = 30_000;
@@ -171,7 +174,12 @@ impl Coalesce {
                     _ => new.push((k.key.clone(), v.value.clone())),
                 };
             }
-            new.push((Key::Literal("ARGV"), Value::List(argv)));
+            if self.execve_argv_list {
+                new.push((Key::Literal("ARGV"), Value::List(argv.clone())));
+            }
+            if self.execve_argv_string {
+                new.push((Key::Literal("ARGV_STR"), Value::StringifiedList(argv.clone())));
+            }
             rv.elems = new;
         }
         // Turn "sudo\x00ls\x00-l" into  "ARGV":["sudo","ls","-l"]
@@ -285,7 +293,7 @@ mod test {
 
     #[test]
     fn coalesce() -> Result<(), String> {
-        let mut c = Coalesce::default();
+        let mut c = Coalesce { execve_argv_list: true, ..Coalesce::default() };
 
         match c.process_line(
             Vec::from(
@@ -329,7 +337,7 @@ mod test {
 
     #[test]
     fn coalesce_long() -> Result<(), String> {
-        let mut c = Coalesce::default();
+        let mut c = Coalesce { execve_argv_list: true, ..Coalesce::default() };
         for line in [
             br#"type=SYSCALL msg=audit(1615150974.493:21028): arch=c000003e syscall=59 success=yes exit=0 a0=593d4c9f5f50 a1=593d4c9adc80 a2=593d4c9c38a0 a3=fffffffffffff878 items=2 ppid=10881 pid=8832 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts1 ses=1 comm="echo" exe="/usr/bin/echo" key=(null)ARCH=x86_64 SYSCALL=execve AUID="user" UID="user" GID="user" EUID="user" SUID="user" FSUID="user" EGID="user" SGID="user" FSGID="user"
 "#.as_ref(),
