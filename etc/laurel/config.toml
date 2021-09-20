@@ -13,3 +13,19 @@ generations = 10
 # Grant read permissions on the log files to these users, using
 # POSIX ACLs
 read-users = [ "splunk" ]
+
+[transform]
+
+# "array" (the default) causes EXECVE a0, a1, a2 … arguments to be
+# output as a list of strings, "ARGV". This is the default, it allows
+# analysts to reliably reproduce what was executed.
+#
+# "string" causes arguments to be concatenated into a single string,
+# separated by space characters, "ARGV_STR". This form allows for
+# easier grepping, but it is impossible to tell if space characters in
+# the resulting string are a separator or were part of an individual
+# argument in the original command line.
+
+execve-argv = [ "array" ]
+
+#  execve-argv = [ "array", "string" ]

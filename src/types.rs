@@ -3,7 +3,7 @@ use std::string::*;
 use std::ops::Range;
 use std::iter::Iterator;
 use std::error::Error as StdError;
-use std::convert::TryFrom;
+use std::convert::{TryFrom,TryInto};
 use std::str;
 
 use serde::{Serialize,Serializer};
@@ -123,6 +123,7 @@ pub enum Value {
     /// Lists are generated in Coalesce::normalize() e.g.: `EXECVE` /
     /// `a0`, `a1`, `a2` … -> `ARGV`
     List(Vec<Value>),
+    StringifiedList(Vec<Value>),
     /// Values generated in parse() from unquoted Str values
     ///
     /// For example, `SYSCALL` / `a0` etc are interpreted as
@@ -174,7 +175,8 @@ impl<'a> Record {
                 Value::Str(r,q) => Value::Str(r.offset(rawlen),q),
                 Value::Empty => Value::Empty,
                 Value::Number(n) => Value::Number(n),
-                Value::Segments(_) | Value::List(_) => panic!("extend after normalize?"),
+                Value::Segments(_) | Value::List(_) | Value::StringifiedList(_) =>
+                    panic!("extend after normalize?"),
             }
         )).collect::<Vec<_>>())
     }
@@ -271,7 +273,7 @@ impl<'a> TryFrom<RValue<'a>> for Vec<u8> {
                 Ok(sb)
             }
             Value::Number(_) => Err("Won't convert number to string".into()),
-            Value::List(_) => Err("Can't convert list to scalarr".into()),
+            Value::List(_) | Value::StringifiedList(_) => Err("Can't convert list to scalarr".into()),
         }
     }
 }
@@ -326,7 +328,31 @@ impl<'a> Debug for RValue<'a> {
                         Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
                         Value::Empty     => panic!("list can't contain empty value"),
                         Value::HexStr(_) => panic!("list can't contain hex string"),
-                        Value::List(_)   => panic!("list can't contain list"),
+                        Value::List(_) | Value::StringifiedList(_) => panic!("list can't contain list"),
+                        Value::Number(_) => panic!("List can't contain number"),
+                    }
+                }
+                write!(f, ">")
+            }
+            Value::StringifiedList(vs) => {
+                write!(f, "StringifiedList:<")?;
+                for (n, v) in vs.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, " ")?;
+                    }
+                    match v {
+                        Value::Str(r, _) => {
+                            write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                        }
+                        Value::Segments(rs) => {
+                            for r in rs {
+                                write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                            }
+                        }
+                        Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
+                        Value::Empty     => panic!("list can't contain empty value"),
+                        Value::HexStr(_) => panic!("list can't contain hex string"),
+                        Value::List(_) | Value::StringifiedList(_) => panic!("list can't contain list"),
                         Value::Number(_) => panic!("List can't contain number"),
                     }
                 }
@@ -384,6 +410,21 @@ impl<'a> Serialize for RValue<'a> {
                     seq.serialize_element(&RValue{raw: &self.raw, value: &v})?;
                 }
                 seq.end()
+            },
+            Value::StringifiedList(vs) => {
+                let mut buf: Vec<u8> = Vec::new();
+                let mut first = true;
+                for v in vs {
+                    if first {
+                        first = false;
+                    } else {
+                        buf.push(b' ');
+                    }
+                    buf.extend(RValue{raw: &self.raw, value: &v}
+                               .try_into().
+                               unwrap_or_else(|_| vec!(b'x')));
+                }
+                s.serialize_str(&buf.to_quoted_string())
             },
             Value::Number(n) => {
                 match n {

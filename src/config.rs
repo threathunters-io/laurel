@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::collections::HashSet;
 
 use serde::{Serialize,Deserialize};
 
@@ -11,8 +12,19 @@ pub struct Logfile {
     pub generations: Option<u64>,
 }
 
+#[derive(PartialEq,Eq,Debug,Serialize,Deserialize,Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum ArrayOrString { Array, String }
+
+impl Default for ArrayOrString {
+    fn default() -> Self { ArrayOrString::Array }
+}
+
 #[derive(Default,Debug,Serialize,Deserialize)]
-pub struct Transform {}
+pub struct Transform {
+    #[serde(rename="execve-argv")] #[serde(default)]
+    pub execve_argv: HashSet<ArrayOrString>
+}
 
 #[derive(Default,Debug,Serialize,Deserialize)]
 pub struct Enrich {}
