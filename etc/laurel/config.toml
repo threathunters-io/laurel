@@ -28,4 +28,9 @@ read-users = [ "splunk" ]
 
 execve-argv = [ "array" ]
 
-#  execve-argv = [ "array", "string" ]
+# execve-argv = [ "array", "string" ]
+
+[enrich]
+
+# List of environment variables to log for every EXECVE event
+execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]

@@ -30,8 +30,20 @@ impl Default for Transform {
     }
 }
 
-#[derive(Default,Debug,Serialize,Deserialize)]
-pub struct Enrich {}
+#[derive(Debug,Serialize,Deserialize)]
+pub struct Enrich {
+    #[serde(rename="execve-env")] #[serde(default)]
+    pub execve_env: HashSet<String>
+}
+
+impl Default for Enrich {
+    fn default() -> Self {
+        let mut execve_env = HashSet::new();
+        execve_env.insert("LD_PRELOAD".into());
+        execve_env.insert("LD_LIBRARY_PATH".into());
+        Enrich { execve_env }
+    }
+}
 
 #[derive(Default,Debug,Serialize,Deserialize)]
 pub struct Filter {}
