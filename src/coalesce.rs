@@ -79,15 +79,48 @@ impl Serialize for Event {
     }
 }
 
-impl EventBody {
+/// Coalesce collects Audit Records from individual lines and assembles them to Events
+#[derive(Debug,Default)]
+pub struct Coalesce {
+    /// Events that are being collected/processed
+    inflight: HashMap<EventID,EventBody>,
+    /// Event IDs that have been recently processed
+    done: HashSet<EventID>,
+    /// Timestamp for next cleanup
+    next_expire: Option<u64>,
+    /// process table built from observing process-related events
+    processes: ProcTable,
+}
+
+const EXPIRE_PERIOD: u64  = 30_000;
+const EXPIRE_TIMEOUT: u64 = 120_000;
+
+impl Coalesce {
+    /// Fill shadow process table from system's /proc directory
+    pub fn populate_proc_table(&mut self) -> Result<(), Box<dyn Error>> {
+        Ok(self.processes = ProcTable::from_proc()?)
+    }
+
+    /// Cleans up stale "done" entries
+    fn expire_done(&mut self, now: u64) {
+        let ids = self.done.iter()
+            .filter(|id| id.timestamp + EXPIRE_TIMEOUT > now)
+            .copied()
+            .collect::<Vec<_>>();
+        for id in ids {
+            self.done.remove(&id);
+        }
+        self.next_expire = Some(now + EXPIRE_PERIOD);
+    }
+
     /// Rewrite EventBody to normal form
     ///
     /// This function
     /// - turns SYSCALL/a* fields into a single an ARGV list
     /// - turns EXECVE/a* and EXECVE/a*[*] fields into an ARGV list
     /// - turns PROCTITLE/proctitle into a (abbreviated) ARGV list
-    fn normalize(&mut self) {
-        if let Some(EventValues::Single(rv)) = self.values.get_mut(&SYSCALL) {
+    fn normalize_eventbody(&self, eb: &mut EventBody) {
+        if let Some(EventValues::Single(rv)) = eb.values.get_mut(&SYSCALL) {
             let mut new: Vec<(Key, Value)> = Vec::with_capacity(rv.elems.len() - 3);
             let mut argv: Vec<Value> = Vec::with_capacity(4 as usize);
             for item in 0..4 {
@@ -104,7 +137,7 @@ impl EventBody {
             new.push((Key::Literal("ARGV"), Value::List(argv)));
             rv.elems = new;
         }
-        if let Some(EventValues::Single(rv)) = self.values.get_mut(&EXECVE) {
+        if let Some(EventValues::Single(rv)) = eb.values.get_mut(&EXECVE) {
             let mut new: Vec<(Key, Value)> = Vec::new();
             let mut argv: Vec<Value> = Vec::new();
             for (k, v) in rv.into_iter() {
@@ -142,7 +175,7 @@ impl EventBody {
             rv.elems = new;
         }
         // Turn "sudo\x00ls\x00-l" into  "ARGV":["sudo","ls","-l"]
-        if let Some(EventValues::Single(rv)) = self.values.get_mut(&PROCTITLE) {
+        if let Some(EventValues::Single(rv)) = eb.values.get_mut(&PROCTITLE) {
             if let Some(v) = rv.get(b"proctitle") {
                 if let Value::Str(r, _) = v.value {
                     let mut argv: Vec<Value> = Vec::new();
@@ -162,47 +195,16 @@ impl EventBody {
     }
 
     /// Augment event with information from shadow process table
-    pub fn augment_process(&mut self, processes: &mut ProcTable, syscall_rv: &Record) {
-        if let Some(v) = syscall_rv.get(b"ppid") {
+    pub fn augment_syscall(&mut self, eb: &mut EventBody) {
+        let sc = match eb.values.get(&SYSCALL) {
+            Some(EventValues::Single(r)) => r,
+            _ => return,
+        };
+        if let Some(v) = sc.get(b"ppid") {
             if let Value::Number(Number::Dec(ppid)) = v.value {
-                self.parent = processes.get_process(*ppid);
+                eb.parent = self.processes.get_process(*ppid);
             }
         }
-    }
-}
-
-/// Coalesce collects Audit Records from individual lines and assembles them to Events
-#[derive(Debug,Default)]
-pub struct Coalesce {
-    /// Events that are being collected/processed
-    inflight: HashMap<EventID,EventBody>,
-    /// Event IDs that have been recently processed
-    done: HashSet<EventID>,
-    /// Timestamp for next cleanup
-    next_expire: Option<u64>,
-    /// process table built from observing process-related events
-    processes: ProcTable,
-}
-
-const EXPIRE_PERIOD: u64  = 30_000;
-const EXPIRE_TIMEOUT: u64 = 120_000;
-
-impl Coalesce {
-    /// Fill shadow process table from system's /proc directory
-    pub fn populate_proc_table(&mut self) -> Result<(), Box<dyn Error>> {
-        Ok(self.processes = ProcTable::from_proc()?)
-    }
-
-    /// Cleans up stale "done" entries
-    fn expire_done(&mut self, now: u64) {
-        let ids = self.done.iter()
-            .filter(|id| id.timestamp + EXPIRE_TIMEOUT > now)
-            .copied()
-            .collect::<Vec<_>>();
-        for id in ids {
-            self.done.remove(&id);
-        }
-        self.next_expire = Some(now + EXPIRE_PERIOD);
     }
 
     /// Ingest a log line and add it to the coalesce object.
@@ -232,8 +234,8 @@ impl Coalesce {
                     return Err(format!("duplicate SYSCALL for id {}", id).into());
                 }
                 let mut eb = EventBody::default();
-                eb.augment_process(&mut self.processes, &rv);
                 eb.values.insert(typ, EventValues::Single(rv));
+                self.augment_syscall(&mut eb);
                 self.inflight.insert(id, eb);
                 return Ok(None);
             },
@@ -243,7 +245,7 @@ impl Coalesce {
                 }
                 self.done.insert(id);
                 let mut eb = self.inflight.remove(&id).ok_or(format!("Event {} for EOE marker not found", &id))?;
-                eb.normalize();
+                self.normalize_eventbody(&mut eb);
                 if let Some(EventValues::Single(rexecve)) = eb.values.get(&EXECVE) {
                     if let Some(EventValues::Single(rsyscall)) = eb.values.get(&SYSCALL) {
                         self.processes.add_execve(&id, &rsyscall, &rexecve)?;
