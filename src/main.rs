@@ -33,16 +33,21 @@ use config::*;
 
 mod syslog {
     use std::ffi::CString;
+    use std::mem::forget;
     use libc::{openlog,syslog,LOG_DAEMON,LOG_CRIT,LOG_PERROR};
 
     pub fn init(progname: &String) {
-        let s = CString::new(progname.as_str()).unwrap();
-        unsafe { openlog(s.as_ptr(), LOG_PERROR, LOG_DAEMON) };
+        let ident = CString::new(progname.as_str()).unwrap();
+        unsafe { openlog(ident.as_ptr(), LOG_PERROR, LOG_DAEMON) };
+        // The libc syslog code stores the pointer to ident, it must
+        // not be dropped.
+        forget(ident);
     }
 
     pub fn log_crit(message: &str) {
+        let fs = CString::new("%s").unwrap();
         let s = CString::new(message).unwrap();
-        unsafe { syslog(LOG_CRIT|LOG_DAEMON, s.as_ptr()) };
+        unsafe { syslog(LOG_CRIT|LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
     }
 }
 use syslog::log_crit;
