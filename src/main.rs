@@ -99,12 +99,16 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let args : Vec<String> = env::args().collect();
 
     let mut opts = Options::new();
-    opts.optopt("c", "config", "configfile", "FILE");
-    opts.optflag("h", "help", "help");
+    opts.optopt("c", "config", "Configuration file", "FILE");
+    opts.optflag("d", "dry-run", "Only parse configuration and exit");
+    opts.optflag("h", "help", "Print short help text and exit");
 
     let matches = opts.parse(&args[1..])?;
     if matches.opt_present("h") {
-        println!("Usage: {} [ -c configfile ]", args[0]);
+        println!("{}", opts.usage(&args[0]));
+        return Ok(());
+    }
+    if matches.opt_present("d") {
         return Ok(());
     }
 
