@@ -218,6 +218,16 @@ impl ProcTable {
     }
 }
 
+/// Returns environment for a given process
+pub fn get_environ(pid: u64) -> Result<Vec<(Vec<u8>,Vec<u8>)>, Box<dyn Error>> {
+    Ok(read(format!("/proc/{}/environ", pid))?
+       .split(|c| *c == 0)
+       .map(|f| {
+           let mut kv = f.splitn(2, |c| *c == b'=');
+           (kv.next().unwrap().to_owned(), kv.next().or(Some(b"")).unwrap().to_owned())
+       }).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
