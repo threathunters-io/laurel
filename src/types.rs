@@ -125,6 +125,8 @@ pub enum Value {
     /// `a0`, `a1`, `a2` … -> `ARGV`
     List(Vec<Value>),
     StringifiedList(Vec<Value>),
+    /// Key/Value map, used in ENV (environment variables) list
+    Map(Vec<(Range<usize>,Range<usize>)>),
     /// Values generated in parse() from unquoted Str values
     ///
     /// For example, `SYSCALL` / `a0` etc are interpreted as
@@ -176,7 +178,7 @@ impl<'a> Record {
                 Value::Str(r,q) => Value::Str(r.offset(rawlen),q),
                 Value::Empty => Value::Empty,
                 Value::Number(n) => Value::Number(n),
-                Value::Segments(_) | Value::List(_) | Value::StringifiedList(_) =>
+                Value::Segments(_) | Value::List(_) | Value::StringifiedList(_) | Value::Map(_) =>
                     panic!("extend after normalize?"),
             }
         )).collect::<Vec<_>>())
@@ -282,6 +284,7 @@ impl<'a> TryFrom<RValue<'a>> for Vec<u8> {
             }
             Value::Number(_) => Err("Won't convert number to string".into()),
             Value::List(_) | Value::StringifiedList(_) => Err("Can't convert list to scalarr".into()),
+            Value::Map(_) => Err("Can't convert map to scalar".into()),
         }
     }
 }
@@ -337,6 +340,7 @@ impl<'a> Debug for RValue<'a> {
                         Value::Empty     => panic!("list can't contain empty value"),
                         Value::HexStr(_) => panic!("list can't contain hex string"),
                         Value::List(_) | Value::StringifiedList(_) => panic!("list can't contain list"),
+                        Value::Map(_) => panic!("list can't contain map"),
                         Value::Number(_) => panic!("List can't contain number"),
                     }
                 }
@@ -361,10 +365,24 @@ impl<'a> Debug for RValue<'a> {
                         Value::Empty     => panic!("list can't contain empty value"),
                         Value::HexStr(_) => panic!("list can't contain hex string"),
                         Value::List(_) | Value::StringifiedList(_) => panic!("list can't contain list"),
+                        Value::Map(_) => panic!("List can't contain mapr"),
                         Value::Number(_) => panic!("List can't contain number"),
                     }
                 }
                 write!(f, ">")
+            }
+            Value::Map(vs) => {
+                write!(f, "Map:<")?;
+                for (n, v) in vs.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{}={}",
+                           String::from_utf8_lossy(&self.raw[v.0.clone()]),
+                           String::from_utf8_lossy(&self.raw[v.1.clone()]))?;
+                }
+                write!(f, ">")?;
+                unimplemented!();
             }
             Value::Number(n) => {
                 write!(f, "{:?}", n)
@@ -420,6 +438,14 @@ impl<'a> Serialize for RValue<'a> {
                     Number::Hex(n) => s.serialize_str(&format!("0x{:x}", n)),
                     Number::Oct(n) => s.serialize_str(&format!("0o{:o}", n)),
                 }
+            }
+            Value::Map(vs) => {
+                let mut map = s.serialize_map(Some(vs.len()))?;
+                for v in vs {
+                    map.serialize_key(&self.raw[v.0.clone()].to_quoted_string())?;
+                    map.serialize_value(&self.raw[v.1.clone()].to_quoted_string())?;
+                }
+                map.end()
             }
             Value::HexStr(_r) => {
                 Err(S::Error::custom("can't serialize untreated hex string"))

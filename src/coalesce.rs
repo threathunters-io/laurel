@@ -8,7 +8,7 @@ use serde::{Serialize,Serializer};
 use serde::ser::{SerializeSeq,SerializeMap};
 
 use crate::constants::msg_type::*;
-use crate::proc::{ProcTable,Process};
+use crate::proc::{ProcTable,Process,get_environ};
 use crate::types::*;
 use crate::parser::parse;
 
@@ -93,6 +93,7 @@ pub struct Coalesce {
     /// Generate ARGV and ARGV_STR from EXECVE
     pub execve_argv_list: bool,
     pub execve_argv_string: bool,
+    pub execve_env: HashSet<Vec<u8>>,
 }
 
 const EXPIRE_PERIOD: u64  = 30_000;
@@ -202,8 +203,33 @@ impl Coalesce {
         }
     }
 
+    /// Add environment variables to event body
+    fn augment_execve_env(&mut self, execve: &mut Record, pid: u64) {
+        if self.execve_env.is_empty() {
+            return;
+        }
+        let vars = get_environ(pid).ok()
+            .and_then( |environ| {
+                let added = environ.iter()
+                    .filter( |(k,_v)| self.execve_env.contains(k) )
+                    .map( |(k,v)| {
+                        let rk = execve.put(k);
+                        let rv = execve.put(v);
+                        (rk,rv)
+                    })
+                    .collect::<Vec<_>>();
+                if added.len() > 0 { Some(added) } else { None }
+            });
+        match vars {
+            Some(a) => {
+                execve.elems.push( (Key::Literal("ENV"),Value::Map(a)) );
+            }
+            None => {}
+        };
+    }
+
     /// Augment event with information from shadow process table
-    pub fn augment_syscall(&mut self, eb: &mut EventBody) {
+    fn augment_syscall(&mut self, eb: &mut EventBody) {
         let sc = match eb.values.get(&SYSCALL) {
             Some(EventValues::Single(r)) => r,
             _ => return,
@@ -254,11 +280,25 @@ impl Coalesce {
                 self.done.insert(id);
                 let mut eb = self.inflight.remove(&id).ok_or(format!("Event {} for EOE marker not found", &id))?;
                 self.normalize_eventbody(&mut eb);
-                if let Some(EventValues::Single(rexecve)) = eb.values.get(&EXECVE) {
-                    if let Some(EventValues::Single(rsyscall)) = eb.values.get(&SYSCALL) {
-                        self.processes.add_execve(&id, &rsyscall, &rexecve)?;
+
+                let mut pid = None;
+                if let Some(EventValues::Single(ref syscall)) = eb.values.get(&SYSCALL) {
+                    #[allow(unused_must_use)]
+                    if let Some(EventValues::Single(ref execve)) = eb.values.get(&EXECVE) {
+                        self.processes.add_execve(&id, &syscall, &execve);
                     }
-                }
+                    if let Some(v) = syscall.get(b"pid") {
+                        if let Value::Number(Number::Dec(p)) = v.value {
+                            pid = Some(*p);
+                        }
+                    }
+                };
+                match (pid, eb.values.get_mut(&EXECVE)) {
+                    (Some(pid), Some(EventValues::Single(ref mut execve))) =>  {
+                        self.augment_execve_env(execve, pid);
+                    }
+                    _ => (),
+                };
                 return Ok(Some(Event{id, body: eb}));
             },
             _ => {

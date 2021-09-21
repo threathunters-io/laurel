@@ -186,6 +186,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let mut coalesce = Coalesce::default();
     coalesce.execve_argv_list = config.transform.execve_argv.contains(&ArrayOrString::Array);
     coalesce.execve_argv_string = config.transform.execve_argv.contains(&ArrayOrString::String);
+    coalesce.execve_env = config.enrich.execve_env.iter()
+        .map( |s| s.as_bytes().to_vec() )
+        .collect();
     coalesce.populate_proc_table()
         .map_err(|e| format!("populate proc table: {}", e))?;
     let mut line: Vec<u8> = Vec::new();
