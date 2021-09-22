@@ -24,9 +24,9 @@ More transformations will likely be added in the future.
 - Most byte values that represent printable ASCII characters are reproduced as-is (but are subject to JSON string escaping rules).
 - Bytes that map to non-printable ASCII characters (less than 32/0x20; 127/0x7f) are percent-encoded.
 - Byte values that map to `%` (37/0x25) and `+` (42/0x2b) are percent-encoded.
-- Byte values outside of the ASCII range (greater than 127/0x7f) are percent-encoded.
+- Byte values outside of the ASCII range (greater than 127/0x7f) are reproduced as-is if they are part of a valid UTF-8 sequence. Otherwise, they are percent-encoded.
 
-Handling of valid UTF-8 sequences will likely change in the future.
+Handling of special Unicode characters may change in the future.
 
 Rationale: The [JSON specification](https://datatracker.ietf.org/doc/html/rfc8259) mandates that "text exchanged between systems that are not part of a closed ecosystem MUST be encoded using UTF-8". JSON strings are comprised of Unicode character and thus cannot be used to represent arbitrary binary data. However, most values we think of as "strings" on Unix systems (processes, file names, command line arguments, environment variables) are, in reality, octet strings with varying restrictions. Being able to store those values without losing detail is important for log files that are used in a security context.
 

@@ -18,7 +18,8 @@ use nix::sys::time::TimeSpec;
 use serde::{Serialize,Serializer};
 use serde::ser::{SerializeStruct};
 
-use crate::types::{EventID,Record,Value,Number,ToQuotedString};
+use crate::types::{EventID,Record,Value,Number};
+use crate::quoted_string::ToQuotedString;
 
 lazy_static! {
     /// kernel clock ticks per second

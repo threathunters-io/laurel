@@ -10,6 +10,7 @@ use serde::{Serialize,Serializer};
 use serde::ser::{SerializeSeq,SerializeMap,Error};
 
 use crate::constants::*;
+use crate::quoted_string::ToQuotedString;
 
 /// The identifier of an audit event, corresponding to the
 /// `msg=audit(…)` part of every _auditd(8)_ log line.
@@ -365,26 +366,6 @@ impl<'a> Debug for RValue<'a> {
     }
 }
 
-/// Format byte sequence as a string that is suitable for serializing
-/// to the audit log
-pub(crate) trait ToQuotedString {
-    fn to_quoted_string(&self) -> String;
-}
-
-impl ToQuotedString for [u8] {
-    fn to_quoted_string(self: &[u8]) -> String {
-        // FIXME Properly handle UTF-8
-        let mut sb = String::with_capacity(self.len());
-        for c in self {
-            if *c < 32 || *c == b'%' || *c == b'+' || *c >= 127 {
-                sb.push_str(&format!("%{:02x}", *c))
-            } else {
-                sb.push(*c as char)
-            }
-        }
-        sb
-    }
-}
 
 impl<'a> Serialize for RValue<'a> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
@@ -448,3 +429,4 @@ impl Offset for Range<usize> {
         Range{start: self.start + offset, end: self.end + offset }
     }
 }
+
