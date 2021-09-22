@@ -8,7 +8,7 @@ Every audit log line produced by _LAUREL_ is one single JSON object that contain
 
 `SYSCALL`, `EXECVE`, `CWD`, `PROCTITLE` fields point to single JSON objects.
 
-`PATH`, `SOCKADDR` fields point to a list of JSON objects.
+`PATH`, `SOCKADDR` fields point to lists of JSON objects.
 
 Every other kernel-produced audit message not mentioned above results in field pointing to a list of JSON objects. Details may change after the list of kernel audit message types has been reviewed.
 
@@ -21,10 +21,15 @@ More transformations will likely be added in the future.
 
 ## Encoding of invalid UTF-8 strings and binary data
 
-Since it is not possible to represent arbitrary binary data within JSON strings without applying some encoding, non-printable ASCII characters, the `%` (37), and the `+` (43) ASCII character are percent-encoded.
+- Most byte values that represent printable ASCII characters are reproduced as-is (but are subject to JSON string escaping rules).
+- Bytes that map to non-printable ASCII characters (less than 32/0x20; 127/0x7f) are percent-encoded.
+- Byte values that map to `%` (37/0x25) and `+` (42/0x2b) are percent-encoded.
+- Byte values outside of the ASCII range (greater than 127/0x7f) are percent-encoded.
 
-This behavior may change in the future so that valid UTF-8 byte sequences will be output as-is.
+Handling of valid UTF-8 sequences will likely change in the future.
+
+Rationale: The [JSON specification](https://datatracker.ietf.org/doc/html/rfc8259) mandates that "text exchanged between systems that are not part of a closed ecosystem MUST be encoded using UTF-8". JSON strings are comprised of Unicode character and thus cannot be used to represent arbitrary binary data. However, most values we think of as "strings" on Unix systems (processes, file names, command line arguments, environment variables) are, in reality, octet strings with varying restrictions. Being able to store those values without losing detail is important for log files that are used in a security context.
 
 ## Numeric values
 
-Numbers in the Linux audit logs may have been formatted as decimal (e.g. user id), hexadecimal (e.g. syscall arguments) or octal numbers (e.g. file modes). Decimal numbers are serialized as regular JSON numbers, i.e. without string quotes. Since JSON number literals do not support octal or decimal encoding, those numbers are serialized as JSON strings with a prefix, e.g. `"0o1337"` or `"0xcafe"`.
+Numbers in the Linux audit logs may have been formatted as decimal (e.g. user id), hexadecimal (e.g. syscall arguments) or octal numbers (e.g. file modes). Decimal numbers are serialized as regular JSON numbers, i.e. without double quotes. Since JSON number literals do not support octal or hexadecimal encoding, those numbers are serialized as JSON strings with a `0o` or `0x` prefix, e.g. `"0o1337"` or `"0xcafe"`.
