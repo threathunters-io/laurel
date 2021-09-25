@@ -11,12 +11,27 @@ pub struct Logfile {
     pub generations: Option<u64>,
 }
 
+#[derive(Default,Debug,Serialize,Deserialize)]
+pub struct Transform {}
+
+#[derive(Default,Debug,Serialize,Deserialize)]
+pub struct Enrich {}
+
+#[derive(Default,Debug,Serialize,Deserialize)]
+pub struct Filter {}
+
 #[derive(Debug,Serialize,Deserialize)]
 pub struct Config {
     pub user: Option<String>,
     pub directory: Option<PathBuf>,
     pub auditlog: Logfile,
     pub debuglog: Option<Logfile>,
+    #[serde(default)]
+    pub transform: Transform,
+    #[serde(default)]
+    pub enrich: Enrich,
+    #[serde(default)]
+    pub filter: Filter,
 }
 
 impl Default for Config {
@@ -31,6 +46,9 @@ impl Default for Config {
                 generations: None,
             },
             debuglog: None,
+            transform: Transform::default(),
+            enrich: Enrich::default(),
+            filter: Filter::default(),
         }
     }
 }
