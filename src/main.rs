@@ -246,7 +246,6 @@ pub fn main() {
         Ok(_) => (),
         Err(e) => {
             let e = e.to_string();
-            eprintln!("{}: {}", &progname, &e);
             log_crit(&e);
             std::process::abort();
         }
