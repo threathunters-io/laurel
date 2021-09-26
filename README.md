@@ -1,4 +1,8 @@
-# Linux Audit – Usable, Robust, Easy Logging
+# LAUREL
+
+Laurel is an event multiplexor plugin for auditd to improve its usability in modern security monitoring setups
+
+## Linux Audit – Usable, Robust, Easy Logging
 
 TLDR: Instead of audit events that look like this…
 ```
