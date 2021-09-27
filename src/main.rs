@@ -109,9 +109,6 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         println!("{}", opts.usage(&args[0]));
         return Ok(());
     }
-    if matches.opt_present("d") {
-        return Ok(());
-    }
 
     let config: Config = match matches.opt_str("c") {
         Some(f_name) => toml::from_slice(&fs::read(&f_name)?)?,
@@ -126,6 +123,11 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             User::from_uid(uid)?.ok_or_else(||format!("uid {} not found", uid))?
         }
     };
+
+    if matches.opt_present("d") {
+        println!("Laurel {}: Config ok.", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
 
     let dir = config.directory.clone().unwrap_or(Path::new(".").to_path_buf());
     fs::create_dir_all(&dir)
