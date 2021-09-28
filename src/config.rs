@@ -16,14 +16,18 @@ pub struct Logfile {
 #[serde(rename_all = "lowercase")]
 pub enum ArrayOrString { Array, String }
 
-impl Default for ArrayOrString {
-    fn default() -> Self { ArrayOrString::Array }
-}
-
-#[derive(Default,Debug,Serialize,Deserialize)]
+#[derive(Debug,Serialize,Deserialize)]
 pub struct Transform {
     #[serde(rename="execve-argv")] #[serde(default)]
     pub execve_argv: HashSet<ArrayOrString>
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        let mut execve_argv = HashSet::new();
+        execve_argv.insert(ArrayOrString::Array);
+        Transform { execve_argv }
+    }
 }
 
 #[derive(Default,Debug,Serialize,Deserialize)]
