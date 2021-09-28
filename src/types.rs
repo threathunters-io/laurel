@@ -191,6 +191,13 @@ impl<'a> Record {
         }
         None
     }
+
+    /// Add a byte string to a record.
+    pub fn put(&mut self, s: &[u8]) -> Range<usize> {
+        let b = self.raw.len();
+        self.raw.extend(s);
+        b .. b+s.len()
+    }
 }
 
 impl<'a> IntoIterator for &'a Record {
