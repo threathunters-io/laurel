@@ -1,0 +1,1 @@
+type=EXECVE msg=audit(1614788539.386:13232): argc=0 a0="whoami"

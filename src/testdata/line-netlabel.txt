@@ -1,0 +1,1 @@
+type=MAC_UNLBL_ALLOW msg=audit(1631783567.248:3): netlabel: auid=0 ses=0 unlbl_accept=1 old=0AUID="root"
