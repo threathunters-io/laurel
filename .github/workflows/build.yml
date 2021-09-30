@@ -10,7 +10,7 @@ jobs:
         toolchain: stable
 
     - name: Install dependency
-      run: sudo apt-get -qy install libacl1-dev
+      run: sudo apt-get -qy install libacl1-dev selinux-policy-dev
 
     - uses: actions/cache@v2
       with:
@@ -24,3 +24,4 @@ jobs:
 
     - run: cargo build
     - run: cargo test
+    - run: make -C contrib/selinux
