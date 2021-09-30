@@ -1,0 +1,5 @@
+/usr/local/sbin/laurel			gen_context(system_u:object_r:laurel_exec_t,s0)
+/usr/sbin/laurel			gen_context(system_u:object_r:laurel_exec_t,s0)
+/sbin/laurel				gen_context(system_u:object_r:laurel_exec_t,s0)
+/etc/laurel(/.*)?			gen_context(system_u:object_r:laurel_etc_t,s0)
+/var/log/laurel(/.*)?			gen_context(system_u:object_r:laurel_etc_t,s0)
