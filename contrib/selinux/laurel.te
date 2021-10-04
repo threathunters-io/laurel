@@ -11,8 +11,10 @@ permissive laurel_t;
 
 init_daemon_domain(laurel_t, laurel_exec_t)
 
-type auditd_t;
-type passwd_file_t;
+gen_require(`
+  type auditd_t;
+  type passwd_file_t;
+')
 
 # auditd -> laurel
 allow auditd_t laurel_exec_t:file { getattr open read execute entrypoint };
