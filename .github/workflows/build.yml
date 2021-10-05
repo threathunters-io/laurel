@@ -1,4 +1,16 @@
-on: [ push, pull_request ]
+on:
+  push:
+    paths:
+      - src/**
+      - audit-specs/**
+      - build.rs
+      - Cargo.toml
+  pull_request:
+    paths:
+      - src/**
+      - audit-specs/**
+      - build.rs
+      - Cargo.toml
 
 jobs:
   build_n_test:
