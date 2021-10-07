@@ -20,6 +20,7 @@ use serde_json::{self,json};
 
 pub mod types;
 pub mod parser;
+pub mod quoted_string;
 pub mod coalesce;
 pub mod proc;
 pub mod rotate;
@@ -33,16 +34,21 @@ use config::*;
 
 mod syslog {
     use std::ffi::CString;
+    use std::mem::forget;
     use libc::{openlog,syslog,LOG_DAEMON,LOG_CRIT,LOG_PERROR};
 
     pub fn init(progname: &String) {
-        let s = CString::new(progname.as_str()).unwrap();
-        unsafe { openlog(s.as_ptr(), LOG_PERROR, LOG_DAEMON) };
+        let ident = CString::new(progname.as_str()).unwrap();
+        unsafe { openlog(ident.as_ptr(), LOG_PERROR, LOG_DAEMON) };
+        // The libc syslog code stores the pointer to ident, it must
+        // not be dropped.
+        forget(ident);
     }
 
     pub fn log_crit(message: &str) {
+        let fs = CString::new("%s").unwrap();
         let s = CString::new(message).unwrap();
-        unsafe { syslog(LOG_CRIT|LOG_DAEMON, s.as_ptr()) };
+        unsafe { syslog(LOG_CRIT|LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
     }
 }
 use syslog::log_crit;
@@ -94,12 +100,13 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let args : Vec<String> = env::args().collect();
 
     let mut opts = Options::new();
-    opts.optopt("c", "config", "configfile", "FILE");
-    opts.optflag("h", "help", "help");
+    opts.optopt("c", "config", "Configuration file", "FILE");
+    opts.optflag("d", "dry-run", "Only parse configuration and exit");
+    opts.optflag("h", "help", "Print short help text and exit");
 
     let matches = opts.parse(&args[1..])?;
     if matches.opt_present("h") {
-        println!("Usage: {} [ -c configfile ]", args[0]);
+        println!("{}", opts.usage(&args[0]));
         return Ok(());
     }
 
@@ -128,6 +135,11 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             User::from_uid(uid)?.ok_or_else(||format!("uid {} not found", uid))?
         }
     };
+
+    if matches.opt_present("d") {
+        println!("Laurel {}: Config ok.", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
 
     let dir = config.directory.clone().unwrap_or(Path::new(".").to_path_buf());
     match file_handling::create_log_dir(&dir)? {
@@ -194,7 +206,13 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     }
 
     let mut coalesce = Coalesce::default();
-    coalesce.populate_proc_table()?;
+    coalesce.execve_argv_list = config.transform.execve_argv.contains(&ArrayOrString::Array);
+    coalesce.execve_argv_string = config.transform.execve_argv.contains(&ArrayOrString::String);
+    coalesce.execve_env = config.enrich.execve_env.iter()
+        .map( |s| s.as_bytes().to_vec() )
+        .collect();
+    coalesce.populate_proc_table()
+        .map_err(|e| format!("populate proc table: {}", e))?;
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();
 
@@ -233,21 +251,21 @@ pub fn main() {
     {
         let progname = progname.clone();
         std::panic::set_hook(Box::new(move |panic_info| {
-        let payload = panic_info.payload();
-        let message = if let Some(s) = payload.downcast_ref::<&str>() {
-            s
-        } else if let Some(s) = payload.downcast_ref::<String>() {
-            &s
-        } else {
-            "(unknown error)"
-        };
-        let location = match panic_info.location() {
-            Some(l) => format!("{}:{},{}", l.file(), l.line(), l.column()),
-            None => "(unknown)".to_string(),
-        };
-        let e = format!("fatal error '{}' at {}", &message, &location);
-        eprintln!("{}: {}", &progname, &e);
-        log_crit(&e);
+            let payload = panic_info.payload();
+            let message = if let Some(s) = payload.downcast_ref::<&str>() {
+                s
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                &s
+            } else {
+                "(unknown error)"
+            };
+            let location = match panic_info.location() {
+                Some(l) => format!("{}:{},{}", l.file(), l.line(), l.column()),
+                None => "(unknown)".to_string(),
+            };
+            let e = format!("fatal error '{}' at {}", &message, &location);
+            eprintln!("{}: {}", &progname, &e);
+            log_crit(&e);
         }));
     }
 
@@ -255,7 +273,6 @@ pub fn main() {
         Ok(_) => (),
         Err(e) => {
             let e = e.to_string();
-            eprintln!("{}: {}", &progname, &e);
             log_crit(&e);
             std::process::abort();
         }

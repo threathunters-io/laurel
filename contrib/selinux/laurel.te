@@ -1,0 +1,58 @@
+policy_module(laurel, 1.0.0)
+
+type laurel_t;
+type laurel_exec_t;
+type laurel_etc_t;
+type laurel_log_t;
+
+# The line below should be removed if no "avc: denied { … }" are
+# logged by auditd after laurel has been activated.
+permissive laurel_t;
+
+init_daemon_domain(laurel_t, laurel_exec_t)
+
+gen_require(`
+  type auditd_t;
+  type passwd_file_t;
+')
+
+# auditd -> laurel
+allow auditd_t laurel_exec_t:file { getattr open read execute entrypoint };
+type_transition auditd_t laurel_exec_t:process laurel_t;
+allow auditd_t auditd_t:capability kill;
+allow auditd_t laurel_t:process { transition signal };
+
+# Set / retain capabilities
+allow laurel_t self:process { getcap setcap };
+# ability to set permissions at initialization time
+allow laurel_t self:capability { chown fowner fsetid setuid setgid };
+# ability to inspect process environments, override UNIX read permissions
+allow laurel_t self:capability { sys_ptrace dac_read_search };
+
+# Write to Syslog
+logging_send_syslog_msg(laurel_t)
+
+# Read from /proc
+domain_read_all_domains_state(laurel_t)
+list_dirs_pattern(laurel_t, proc_t, proc_t);
+
+# Access user database or SSSD
+allow laurel_t passwd_file_t:file { open read };
+sssd_read_public_files(laurel_t)
+sssd_stream_connect(laurel_t)
+
+# Read config files
+read_files_pattern(laurel_t, laurel_etc_t, laurel_etc_t)
+
+# Write/rotate log files
+manage_dirs_pattern(laurel_t, laurel_log_t, laurel_log_t)
+manage_files_pattern(laurel_t, laurel_log_t, laurel_log_t)
+manage_lnk_files_pattern(laurel_t, laurel_log_t, laurel_log_t)
+setattr_files_pattern(laurel_t, laurel_log_t, laurel_log_t)
+
+# Mark config, log files
+files_config_file(laurel_etc_t)
+logging_log_file(laurel_log_t)
+
+# Create log directory with specified label
+logging_log_filetrans(laurel_t, laurel_log_t, dir)

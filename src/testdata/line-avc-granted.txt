@@ -1,0 +1,1 @@
+type=AVC msg=audit(1631870323.500:7098): avc:  granted  { setsecparam } for  pid=11209 comm="tuned" scontext=system_u:system_r:tuned_t:s0 tcontext=system_u:object_r:security_t:s0 tclass=security

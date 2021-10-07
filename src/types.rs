@@ -3,13 +3,14 @@ use std::string::*;
 use std::ops::Range;
 use std::iter::Iterator;
 use std::error::Error as StdError;
-use std::convert::TryFrom;
+use std::convert::{TryFrom,TryInto};
 use std::str;
 
 use serde::{Serialize,Serializer};
 use serde::ser::{SerializeSeq,SerializeMap,Error};
 
 use crate::constants::*;
+use crate::quoted_string::ToQuotedString;
 
 /// The identifier of an audit event, corresponding to the
 /// `msg=audit(…)` part of every _auditd(8)_ log line.
@@ -123,6 +124,9 @@ pub enum Value {
     /// Lists are generated in Coalesce::normalize() e.g.: `EXECVE` /
     /// `a0`, `a1`, `a2` … -> `ARGV`
     List(Vec<Value>),
+    StringifiedList(Vec<Value>),
+    /// Key/Value map, used in ENV (environment variables) list
+    Map(Vec<(Range<usize>,Range<usize>)>),
     /// Values generated in parse() from unquoted Str values
     ///
     /// For example, `SYSCALL` / `a0` etc are interpreted as
@@ -174,7 +178,8 @@ impl<'a> Record {
                 Value::Str(r,q) => Value::Str(r.offset(rawlen),q),
                 Value::Empty => Value::Empty,
                 Value::Number(n) => Value::Number(n),
-                Value::Segments(_) | Value::List(_) => panic!("extend after normalize?"),
+                Value::Segments(_) | Value::List(_) | Value::StringifiedList(_) | Value::Map(_) =>
+                    panic!("extend after normalize?"),
             }
         )).collect::<Vec<_>>())
     }
@@ -187,6 +192,13 @@ impl<'a> Record {
             }
         }
         None
+    }
+
+    /// Add a byte string to a record.
+    pub fn put(&mut self, s: &[u8]) -> Range<usize> {
+        let b = self.raw.len();
+        self.raw.extend(s);
+        b .. b+s.len()
     }
 }
 
@@ -271,7 +283,8 @@ impl<'a> TryFrom<RValue<'a>> for Vec<u8> {
                 Ok(sb)
             }
             Value::Number(_) => Err("Won't convert number to string".into()),
-            Value::List(_) => Err("Can't convert list to scalarr".into()),
+            Value::List(_) | Value::StringifiedList(_) => Err("Can't convert list to scalarr".into()),
+            Value::Map(_) => Err("Can't convert map to scalar".into()),
         }
     }
 }
@@ -326,11 +339,50 @@ impl<'a> Debug for RValue<'a> {
                         Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
                         Value::Empty     => panic!("list can't contain empty value"),
                         Value::HexStr(_) => panic!("list can't contain hex string"),
-                        Value::List(_)   => panic!("list can't contain list"),
+                        Value::List(_) | Value::StringifiedList(_) => panic!("list can't contain list"),
+                        Value::Map(_) => panic!("list can't contain map"),
                         Value::Number(_) => panic!("List can't contain number"),
                     }
                 }
                 write!(f, ">")
+            }
+            Value::StringifiedList(vs) => {
+                write!(f, "StringifiedList:<")?;
+                for (n, v) in vs.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, " ")?;
+                    }
+                    match v {
+                        Value::Str(r, _) => {
+                            write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                        }
+                        Value::Segments(rs) => {
+                            for r in rs {
+                                write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                            }
+                        }
+                        Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
+                        Value::Empty     => panic!("list can't contain empty value"),
+                        Value::HexStr(_) => panic!("list can't contain hex string"),
+                        Value::List(_) | Value::StringifiedList(_) => panic!("list can't contain list"),
+                        Value::Map(_) => panic!("List can't contain mapr"),
+                        Value::Number(_) => panic!("List can't contain number"),
+                    }
+                }
+                write!(f, ">")
+            }
+            Value::Map(vs) => {
+                write!(f, "Map:<")?;
+                for (n, v) in vs.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{}={}",
+                           String::from_utf8_lossy(&self.raw[v.0.clone()]),
+                           String::from_utf8_lossy(&self.raw[v.1.clone()]))?;
+                }
+                write!(f, ">")?;
+                unimplemented!();
             }
             Value::Number(n) => {
                 write!(f, "{:?}", n)
@@ -339,26 +391,6 @@ impl<'a> Debug for RValue<'a> {
     }
 }
 
-/// Format byte sequence as a string that is suitable for serializing
-/// to the audit log
-pub(crate) trait ToQuotedString {
-    fn to_quoted_string(&self) -> String;
-}
-
-impl ToQuotedString for [u8] {
-    fn to_quoted_string(self: &[u8]) -> String {
-        // FIXME Properly handle UTF-8
-        let mut sb = String::with_capacity(self.len());
-        for c in self {
-            if *c < 32 || *c == b'%' || *c == b'+' || *c >= 127 {
-                sb.push_str(&format!("%{:02x}", *c))
-            } else {
-                sb.push(*c as char)
-            }
-        }
-        sb
-    }
-}
 
 impl<'a> Serialize for RValue<'a> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
@@ -385,12 +417,35 @@ impl<'a> Serialize for RValue<'a> {
                 }
                 seq.end()
             },
+            Value::StringifiedList(vs) => {
+                let mut buf: Vec<u8> = Vec::new();
+                let mut first = true;
+                for v in vs {
+                    if first {
+                        first = false;
+                    } else {
+                        buf.push(b' ');
+                    }
+                    buf.extend(RValue{raw: &self.raw, value: &v}
+                               .try_into().
+                               unwrap_or_else(|_| vec!(b'x')));
+                }
+                s.serialize_str(&buf.to_quoted_string())
+            },
             Value::Number(n) => {
                 match n {
                     Number::Dec(n) => s.serialize_u64(*n),
                     Number::Hex(n) => s.serialize_str(&format!("0x{:x}", n)),
                     Number::Oct(n) => s.serialize_str(&format!("0o{:o}", n)),
                 }
+            }
+            Value::Map(vs) => {
+                let mut map = s.serialize_map(Some(vs.len()))?;
+                for v in vs {
+                    map.serialize_key(&self.raw[v.0.clone()].to_quoted_string())?;
+                    map.serialize_value(&self.raw[v.1.clone()].to_quoted_string())?;
+                }
+                map.end()
             }
             Value::HexStr(_r) => {
                 Err(S::Error::custom("can't serialize untreated hex string"))
@@ -407,3 +462,4 @@ impl Offset for Range<usize> {
         Range{start: self.start + offset, end: self.end + offset }
     }
 }
+

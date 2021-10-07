@@ -1,0 +1,1 @@
+type=USER_ACCT msg=audit(1615113648.981:15220): pid=9460 uid=1000 auid=1000 ses=1 msg='op=PAM:accounting grantors=pam_permit acct="user" exe="/usr/bin/sudo" hostname=? addr=? terminal=/dev/pts/1 res=success'UID="user" AUID="user"

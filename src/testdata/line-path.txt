@@ -1,0 +1,1 @@
+node=work type=PATH msg=audit(1614788539.386:13232): item=0 name="/usr/bin/whoami" inode=261214 dev=ca:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0000000000000000 cap_fi=0000000000000000 cap_fe=0 cap_fver=0
