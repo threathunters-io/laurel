@@ -5,12 +5,13 @@ use getopts::Options;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::error::Error;
 use std::path::Path;
 use std::sync::Arc;
 
-use nix::unistd::{setresuid,setresgid,User,Uid};
+use nix::unistd::{chown,setresuid,setresgid,User,Uid};
 
 use caps::{Capability, CapSet};
 use caps::securebits::set_keepcaps;
@@ -26,7 +27,6 @@ pub mod proc;
 pub mod rotate;
 pub mod config;
 pub mod constants;
-pub mod file_handling;
 
 use coalesce::Coalesce;
 use rotate::FileRotate;
@@ -35,7 +35,7 @@ use config::*;
 mod syslog {
     use std::ffi::CString;
     use std::mem::forget;
-    use libc::{openlog,syslog,LOG_DAEMON,LOG_CRIT,LOG_PERROR};
+    use libc::{openlog,syslog,LOG_DAEMON,LOG_WARNING,LOG_CRIT,LOG_PERROR};
 
     pub fn init(progname: &String) {
         let ident = CString::new(progname.as_str()).unwrap();
@@ -45,13 +45,20 @@ mod syslog {
         forget(ident);
     }
 
+    pub fn log_warn(message: &str) {
+        let fs = CString::new("%s").unwrap();
+        let s = CString::new(message).unwrap();
+        unsafe { syslog(LOG_WARNING|LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
+    }
+
     pub fn log_crit(message: &str) {
         let fs = CString::new("%s").unwrap();
         let s = CString::new(message).unwrap();
         unsafe { syslog(LOG_CRIT|LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
     }
 }
-use syslog::log_crit;
+
+use syslog::{log_warn,log_crit};
 
 #[derive(Default,Serialize)]
 struct Stats { lines: u64, events: u64, errors: u64 }
@@ -110,17 +117,10 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    // Holds report messages, in case files or folders had incorrect permissions.
-    let mut integrity_report = HashSet::new();
-
     let config: Config = match matches.opt_str("c") {
         Some(f_name) => {
-            match file_handling::check_path(&f_name, 0o640)? {
-                Some(report) => {
-                    // There were permission/owner mismatches, log them.
-                    integrity_report.insert(report);
-                }
-                None => {} // Everything went well, nothing to report.
+            if fs::metadata(&f_name)?.permissions().mode() & 0o002 != 0 {
+                return Err(format!("Config file {} must not be world-writable", f_name).into());
             }
             toml::from_slice(&fs::read(&f_name)?)?
         },
@@ -142,13 +142,22 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     }
 
     let dir = config.directory.clone().unwrap_or(Path::new(".").to_path_buf());
-    match file_handling::create_log_dir(&dir)? {
-        Some(report) => {
-            // There were permission/owner mismatches, log them.
-            integrity_report.insert(report);
+    if dir.exists() {
+        if !dir.is_dir() {
+            return Err(format!("{} is not a directory", dir.to_string_lossy()).into());
         }
-        None => {} // Log-dir created or all permissions were fine.
+        if dir.metadata()?.permissions().mode() & 0o002 != 0 {
+            log_warn(&format!("Base directory {} must not be world-wirtable",
+                              dir.to_string_lossy()));
+        }
+    } else {
+        fs::create_dir_all(&dir)
+            .map_err(|e| format!("create_dir: {}: {}", dir.to_string_lossy(), e))?;
     }
+    chown(&dir, Some(runas_user.uid), Some(runas_user.gid))
+        .map_err(|e| format!("chown: {}: {}", dir.to_string_lossy(), e))?;
+    fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
+        .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
 
     let mut logger = match &config.auditlog.file {
         p if p.as_os_str() == "-" => Logger { output: BufWriter::new(Box::new(io::stdout())) },
@@ -160,6 +169,14 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         p => {
             let mut filename = dir.clone();
             filename.push(&p);
+            // Set permissions on main (active) logfile before
+            // FileRotate is created.
+            if filename.exists() {
+                chown(&filename, Some(runas_user.uid), Some(runas_user.gid))
+                    .map_err(|e| format!("chown: {}: {}", filename.to_string_lossy(), e))?;
+                fs::set_permissions(&filename, PermissionsExt::from_mode(0o600))
+                    .map_err(|e| format!("chmod: {}: {}", filename.to_string_lossy(), e))?;
+            }
             let mut rot = FileRotate::new(filename);
             for user in &config.auditlog.clone().users.unwrap_or(vec!()) {
                 rot = rot.with_uid(User::from_name(&user)?
@@ -195,15 +212,6 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             "version": env!("CARGO_PKG_VERSION"),
             "config": &config
         }}));
-
-    for (report_file, report_msg) in integrity_report {
-        logger.log(&json!({
-            "notice": {
-                "action": "warning",
-                "path": &report_file,
-                "msg": &report_msg
-            }}));
-    }
 
     let mut coalesce = Coalesce::default();
     coalesce.execve_argv_list = config.transform.execve_argv.contains(&ArrayOrString::Array);
