@@ -24,6 +24,14 @@ Refer to [JSON-based log format](json-format.md) for a description of the log fo
 
 We developed this tool because we were not content with feature sets and performance characteristics of existing projects and products. Please refer to [Performance](performance.md) for details.
 
+## A word about audit rules
+
+A good starting point for an audit ruleset is <https://github.com/Neo23x0/auditd>, but generally speaking, any ruleset will do. _LAUREL_ will currently not work properly if _End Of Event_ record are not suppressed, so rules like
+
+> `-a always,exclude -F msgtype=EOE`
+
+should be removed.
+
 ## Build from source…
 
 _LAUREL_ is written in Rust. To build it, a reasonably recent Rust compiler (we currently use 1.48), `cargo`, and the 
