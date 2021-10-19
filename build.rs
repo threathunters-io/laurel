@@ -12,7 +12,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let msg_file = "audit-specs/messages/message-dictionary.csv";
     let fields_file = "audit-specs/fields/field-dictionary.csv";
 
-    let constants: Vec<(String, String)> =
+    let mut constants: Vec<(String, String)> =
         BufReader::new(fs::File::open(msg_file)?)
         .lines()
         .skip(1) // skip over header
@@ -20,6 +20,9 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
         .map(|fields| 
              (fields[0].strip_prefix("AUDIT_").unwrap().to_string(), fields[1].clone()))
         .collect();
+
+    // Artificial record
+    constants.push(("PARENT_INFO".into(), "0xffffff00".into()));
 
     let fields: Vec<(String, String)> =
         BufReader::new(fs::File::open(fields_file)?)

@@ -8,7 +8,7 @@ use serde::{Serialize,Serializer};
 use serde::ser::{SerializeSeq,SerializeMap};
 
 use crate::constants::msg_type::*;
-use crate::proc::{ProcTable,Process,get_environ};
+use crate::proc::{ProcTable,get_environ};
 use crate::types::*;
 use crate::parser::parse;
 
@@ -50,7 +50,6 @@ impl Serialize for EventValues {
 #[derive(Debug,Default)]
 pub struct EventBody {
     values: IndexMap<MessageType,EventValues>,
-    parent: Option<Process>,
 }
 
 #[derive(Debug)]
@@ -63,17 +62,11 @@ impl Serialize for Event {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where S: Serializer
     {
-        let mut map = s.serialize_map(Some(1 +
-                                           self.body.values.len() +
-                                           if let None = self.body.parent {0} else {1} ))?;
+        let mut map = s.serialize_map(Some(1 + self.body.values.len()))?;
         map.serialize_key("ID")?;
         map.serialize_value(&self.id)?;
         for (k,v) in &self.body.values {
             map.serialize_entry(&k,&v)?;
-        }
-        if let Some(p) = &self.body.parent {
-            map.serialize_key("PARENT_INFO")?;
-            map.serialize_value(&p)?;
         }
         map.end()
     }
@@ -236,7 +229,23 @@ impl Coalesce {
         };
         if let Some(v) = sc.get(b"ppid") {
             if let Value::Number(Number::Dec(ppid)) = v.value {
-                eb.parent = self.processes.get_process(*ppid);
+                if let Some(p) = self.processes.get_process(*ppid) {
+                    let mut pi = Record::default();
+                    let vs = p.argv.iter()
+                        .map(|v| Value::Str(pi.put(v), Quote::None))
+                        .collect::<Vec<_>>();
+                    if self.execve_argv_string {
+                        let k = Key::Name(pi.put(b"ARGV_STR"));
+                        pi.elems.push((k, Value::StringifiedList(vs.clone())));
+                    }
+                    if self.execve_argv_list {
+                        let k = Key::Name(pi.put(b"ARGV"));
+                        pi.elems.push((k, Value::List(vs)));
+                    }
+                    let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid)));
+                    pi.elems.push(kv);
+                    eb.values.insert(PARENT_INFO, EventValues::Single(pi));
+                }
             }
         }
     }
@@ -320,7 +329,7 @@ impl Coalesce {
                     self.done.insert(id);
                     let mut values = IndexMap::new();
                     values.insert(typ, EventValues::Single(rv));
-                    Ok(Some(Event{id, body: EventBody{values, parent: None}}))
+                    Ok(Some(Event{id, body: EventBody{values}}))
                 }
             },
         }

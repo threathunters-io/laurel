@@ -136,7 +136,7 @@ pub enum Value {
 
 /// List of [`Key`]/[`Value`] pairs, that are, for the most part,
 /// stored offsets into the raw log line.
-#[derive(Clone)]
+#[derive(Default,Clone)]
 pub struct Record {
     pub elems: Vec<(Key, Value)>,
     pub raw: Vec<u8>,

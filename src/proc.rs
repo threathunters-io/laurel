@@ -13,11 +13,7 @@ use nix::unistd::{sysconf,SysconfVar};
 use nix::time::{clock_gettime,ClockId};
 use nix::sys::time::TimeSpec;
 
-use serde::{Serialize,Serializer};
-use serde::ser::{SerializeStruct};
-
 use crate::types::{EventID,Record,Value,Number};
-use crate::quoted_string::ToQuotedString;
 
 lazy_static! {
     /// kernel clock ticks per second
@@ -33,22 +29,6 @@ pub struct Process {
     pub ppid: u64,
     /// command line
     pub argv: Vec<Vec<u8>>
-}
-
-impl Serialize for Process {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer
-    {
-        let mut s = serializer.serialize_struct("Process", 3)?;
-        let launch_time = self.launch_time as f64 / 1000.0;
-        s.serialize_field("ARGV", &self.argv
-                          .iter()
-                          .map(|s| s.to_quoted_string() )
-                          .collect::<Vec<_>>())?;
-        s.serialize_field("launch_time", &launch_time)?;
-        s.serialize_field("ppid", &self.ppid)?;
-        s.end()
-    }
 }
 
 impl Process {
