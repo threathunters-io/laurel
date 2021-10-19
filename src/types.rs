@@ -292,15 +292,16 @@ impl<'a> TryFrom<RValue<'a>> for Vec<u8> {
 impl<'a> TryFrom<RValue<'a>> for Vec<Vec<u8>> {
     type Error = Box<dyn StdError>;
     fn try_from(value: RValue<'a>) -> Result<Self, Self::Error> {
-        if let Value::List(values) = value.value {
-            let mut rv = Vec::new();
-            for v in values {
-                let s = Vec::try_from(RValue{value: &v, raw: &value.raw})?;
-                rv.push(s);
+        match value.value {
+            Value::List(values) | Value::StringifiedList(values) => {
+                let mut rv = Vec::with_capacity(values.len());
+                for v in values {
+                    let s = Vec::try_from(RValue{value: &v, raw: &value.raw})?;
+                    rv.push(s);
+                }
+                Ok(rv)
             }
-            Ok(rv)
-        } else {
-            Err("not a list".into())
+            _ => Err("not a list".into())
         }
     }
 }
