@@ -29,7 +29,7 @@ We developed this tool because we were not content with feature sets and perform
 
 ## A word about audit rules
 
-A good starting point for an audit ruleset is <https://github.com/Neo23x0/auditd>, but generally speaking, any ruleset will do. _LAUREL_ will currently not work properly if _End Of Event_ record are not suppressed, so rules like
+A good starting point for an audit ruleset is <https://github.com/Neo23x0/auditd>, but generally speaking, any ruleset will do. _LAUREL_ will currently only work properly if _End Of Event_ record are not suppressed, so rules like
 
 > `-a always,exclude -F msgtype=EOE`
 
