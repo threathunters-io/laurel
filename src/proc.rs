@@ -1,5 +1,3 @@
-use std::ffi::{OsStr,OsString};
-use std::os::unix::ffi::OsStrExt;
 use std::error::Error;
 use std::boxed::Box;
 use std::fs::{read,read_dir};
@@ -34,7 +32,7 @@ pub struct Process {
     /// parent process id
     pub ppid: u64,
     /// command line
-    pub argv: Vec<OsString>
+    pub argv: Vec<Vec<u8>>
 }
 
 impl Serialize for Process {
@@ -45,7 +43,7 @@ impl Serialize for Process {
         let launch_time = self.launch_time as f64 / 1000.0;
         s.serialize_field("ARGV", &self.argv
                           .iter()
-                          .map(|s|s.as_bytes().to_quoted_string())
+                          .map(|s| s.to_quoted_string() )
                           .collect::<Vec<_>>())?;
         s.serialize_field("launch_time", &launch_time)?;
         s.serialize_field("ppid", &self.ppid)?;
@@ -60,8 +58,8 @@ impl Process {
         let argv = read(format!("/proc/{}/cmdline", pid))
             .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?
             .split(|c| *c == 0)
-            .filter(|s|!s.is_empty())
-            .map(|s|OsStr::from_bytes(s).to_os_string())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_owned())
             .collect::<Vec<_>>();
 
         let buf = read(format!("/proc/{}/stat", pid))
@@ -120,9 +118,7 @@ impl Process {
         match rexecve.get(b"ARGV") {
             Some(v) =>  {
                 let l: Vec<Vec<u8>> = v.try_into()?;
-                p.argv = l.iter()
-                    .map(|elem| OsStr::from_bytes(&elem).into() )
-                    .collect::<Vec<OsString>>();
+                p.argv = l;
             },
             _ => return Err("ARGV field not found".into()),
         }
