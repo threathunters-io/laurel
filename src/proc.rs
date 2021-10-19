@@ -115,12 +115,12 @@ impl Process {
         } else {
             return Err("ppid field not found".into());
         }
-        match rexecve.get(b"ARGV") {
-            Some(v) =>  {
-                let l: Vec<Vec<u8>> = v.try_into()?;
-                p.argv = l;
-            },
-            _ => return Err("ARGV field not found".into()),
+        if let Some(v) = rexecve.get(b"ARGV") {
+            p.argv = v.try_into()?;
+        } else if let Some(v) = rexecve.get(b"ARGV_STR") {
+            p.argv = v.try_into()?;
+        } else {
+            return Err("ARGV field not found".into());
         }
         Ok((pid, p))
     }
