@@ -1,0 +1,3 @@
+type=SYSCALL msg=audit(1634728455.294:53732): arch=c000003e syscall=1 success=yes exit=19577 a0=7 a1=560174cd7790 a2=4c79 a3=0 items=0 ppid=3981294 pid=3981295 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="apparmor_parser" exe="/usr/sbin/apparmor_parser" subj=unconfined key=(null)ARCH=x86_64 SYSCALL=write AUID="unset" UID="root" GID="root" EUID="root" SUID="root" FSUID="root" EGID="root" SGID="root" FSGID="root"
+type=AVC msg=audit(1634728455.294:53732): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap-update-ns.amazon-ssm-agent" pid=3981295 comm="apparmor_parser"
+type=EOE msg=audit(1634728455.294:53732): 
