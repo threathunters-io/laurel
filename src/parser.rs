@@ -192,8 +192,8 @@ peg::parser!{
                 (k.0, Value::Str(b..e, Quote::Braces))
             }
             // default: interpret as string
-            / k:key() "="   b:position!() safeunq()    e:position!()      &eot() {
-                (k.0, Value::Str(b..e, Quote::None))
+            / k:key() "="   s:safeunq() &eot() {
+                (k.0, Value::Str(s.0..s.1, Quote::None))
             }
             / b:position!() [^ b'\n']* e:position!() {
                 (Key::Literal("NOT_PARSED"), Value::Str(b..e, Quote::None))
