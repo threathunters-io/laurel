@@ -1,0 +1,1 @@
+type=SYSCALL msg=audit(1634628127.584:166): arch=c000003e syscall=59 success=yes exit=0 a0=55b26d44a6a0 a1=55b26d44a878 a2=55b26d44a8e8 a3=7faeccab5850 items=2 ppid=659 pid=661 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="dhclient" exe="/sbin/dhclient" subj=/{,usr/}sbin/dhclient key=(null)

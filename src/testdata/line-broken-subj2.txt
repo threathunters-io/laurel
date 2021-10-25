@@ -1,0 +1,1 @@
+type=SYSCALL msg=audit(1634623555.431:13835339): arch=c000003e syscall=49 success=yes exit=0 a0=15 a1=55c5e046e264 a2=1c a3=7ffc8fab77ec items=0 ppid=1899774 pid=1899780 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="ntpd" exe="/usr/sbin/ntpd" subj==/usr/sbin/ntpd (enforce) key=(null)
