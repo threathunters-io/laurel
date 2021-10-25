@@ -159,9 +159,13 @@ peg::parser!{
         rule hex_string() = ( [b'0'..=b'9'|b'A'..=b'F']*<2> )+
         // all printable ASCII except <SPC> and double quote
         rule safestr() = [b'!'|b'#'..=b'~']*
-        // ... and except single quote and braces
+        // all printable ASCII except single quote and braces
         rule safeunq() -> (usize, usize)
             = b:position!() [b'!'|b'#'..=b'&'|b'('..=b'z'|b'|'|b'~']+ e:position!()
+            { (b, e) }
+        // all printable ASCII except double quote
+        rule dqstr() -> (usize, usize)
+            = "\"" b:position!() [b' '|b'!'|b'#'..=b'~']+ e:position!() "\""
             { (b, e) }
 
         rule kv() -> (Key, Value)
@@ -197,6 +201,10 @@ peg::parser!{
               vb:position!() "="? safestr() (" (" ident() ")")? ve:position!()
             {
                 (Key::Name(kb..ke), Value::Str(vb..ve, Quote::None))
+            }
+            // special case for AppArmor AVC.info messages
+            / k:key() "="   s:dqstr() &eot() {
+                (k.0, Value::Str(s.0..s.1, Quote::Double))
             }
             // default: interpret as string
             / k:key() "="   s:safeunq() &eot() {
@@ -425,6 +433,19 @@ mod test {
                        "subj: Str:<=/usr/sbin/ntpd (enforce)>",
                        "key: Empty",
                    ));
+
+        let (_t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-broken-avc-info.txt").as_ref()))?;
+        assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
+                   vec!(
+                       "apparmor: Str:<STATUS>",
+                       "operation: Str:<profile_replace>",
+                       "info: Str:<same as current profile, skipping>",
+                       "profile: Str:<unconfined>",
+                       "name: Str:<snap-update-ns.amazon-ssm-agent>",
+                       "pid: Num:<3981295>",
+                       "comm: Str:<apparmor_parser>",
+                   ));
+
         Ok(())
     }
 }

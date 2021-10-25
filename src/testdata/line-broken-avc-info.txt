@@ -1,0 +1,1 @@
+type=AVC msg=audit(1634728455.294:53732): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="snap-update-ns.amazon-ssm-agent" pid=3981295 comm="apparmor_parser"
