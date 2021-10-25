@@ -156,12 +156,12 @@ peg::parser!{
         rule ident() -> &'input[u8] = $( [b'a'..=b'z'|b'A'..=b'Z']
                                          [b'a'..=b'z'|b'A'..=b'Z'|b'0'..=b'9'|b'_'|b'-']* )
 
-        rule hex_string() = ( ([b'0'..=b'9'|b'A'..=b'F']*<2>)+ )
+        rule hex_string() = ( [b'0'..=b'9'|b'A'..=b'F']*<2> )+
         // all printable ASCII except <SPC> and double quote
-        rule safestr() = ( [b'!'|b'#'..=b'~']* )
+        rule safestr() = [b'!'|b'#'..=b'~']*
         // ... and except single quote and braces
         rule safeunq() -> (usize, usize)
-            = b:position!() ( [b'!'|b'#'..=b'&'|b'('..=b'z'|b'|'|b'~']+ ) e:position!()
+            = b:position!() [b'!'|b'#'..=b'&'|b'('..=b'z'|b'|'|b'~']+ e:position!()
             { (b, e) }
 
         rule kv() -> (Key, Value)
