@@ -9,6 +9,7 @@ homepage = "https://github.com/threathunters-io/laurel"
 license = "GPL-3.0-or-later"
 keywords = ["linux", "audit", "log", "json", "security"]
 categories = ["encoding"]
+rust-version = "1.52"
 
 [features]
 static = [] # static build, causes libacl and libc to be linked statically into the binary.
