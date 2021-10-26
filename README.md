@@ -72,6 +72,50 @@ Static Linux/x86_64 binaries are built for tagged releases.
 
 For debugging and other testing purposes, _LAUREL_ can be run without specifying any configuration file. It will not change users and read events from standard input, just as it would when called from _auditd_. Log entries arewritten to `audit.log` in the current working directory.
 
+## Local development using a container
+
+If you'd like to skip all the bells and whistles of setting up the project, you can get up and running quickly using an
+"All-In-One" Docker container. It's a wrapper around laurel that enables you to compile it and all of its dependencies,
+and then work off the container instead of compiling locally.
+
+The `Makefile` contains a set of commands intended to scaffold a container from scratch.
+ 
+Just run `make dargo COMMAND=X`, where `X` is any valid `cargo` command, inside the project's root folder.
+If this is the first time you run the command, it will:
+
+1. Create a Docker image with a pre-determined working directory
+2. Run an (interactive / long-running) container off that image, with the local `laurel` project folder bind-mounted to the working directory
+3. Run `cargo X` inside the container
+
+When the Makefile target finishes, you will have a running container on your machine that you can compile `laurel` in.
+That container allows you to take advantage of `rustc`'s incremental compilation, without compiling locally.
+
+If it's not the first time you run the command, it will just run `cargo X` inside the container.
+
+If you'd like to go for maximum ergonomics, run the following command (swapping `~/.bashrc` for `~/.zshrc` or wherever you keep your shell stuff):
+ 
+```bash
+echo 'dargo(){ make dargo COMMAND=$1}' >> ~/.bashrc
+source ~/.bashrc
+```
+
+This will now enable you to run `dargo X` instead of `make dargo COMMAND=X`, to get a more `cargo`-like feel while using the container.
+Try running `dargo check` to see how if feels!
+
+### Container-based development example
+
+Just to make sure everything is clear, let's run a step-by-step mini tutorial on developing in container-based workflow "mode":
+
+1. Clone the repo to your local machine:
+```shell 
+git clone https://github.com/threathunters-io/laurel.git # Or your fork
+cd laurel
+```
+2. Make some changes to a source file.
+3. Run the following to create the laurel container and then test your changes:
+```shell
+make dargo COMMAND=test
+```
 ## License
 
 GNU General Public License, version 3
