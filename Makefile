@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 LOCAL_DEV_CONTAINER_NAME = "docker-laurel"
 LOCAL_DEV_WORKDIR = "/usr/src/laurel"
-RUST_VERSION := 1.52
+RUST_VERSION := 1.56
 
 dargo: ## Run a cargo command inside the container
 	@# If the dargo container does not exist, create it
