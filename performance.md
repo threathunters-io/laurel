@@ -2,7 +2,7 @@
 
 While _LAUREL_ was written with performance in mind, running it on busy systems with audit rule sets that actually produce log entries does incur some CPU overhead. 
 
-We have conducted benchmarks of _LAUREL_ against _auditd_ and several other tools. A load generator that spawns trivial processes (`/bin/true`) at a set frequency was used to generate load and CPU time (system+user) for all processes involved was measured. The number of exec events per second was chosen due to our experience with systems where hundreds of processes are spawned during regular operation.
+We have conducted benchmarks of _LAUREL_ against _auditd_ and several other tools. A load generator that spawns trivial processes (`/bin/true`) at a set frequency was used to generate load and CPU time (system+user) for all processes involved was measured. The number of exec events per second was chosen due to our experience with systems where hundreds of processes are spawned during regular operation. A custom tool, [edr-loadgen](https://github.com/hillu/edr-loadgen), was written for this task.
 
 ![CPU overhead under load](performance.svg)
 
