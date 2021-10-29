@@ -177,16 +177,15 @@ impl ProcTable {
         for pid in self.processes.keys() {
             if Path::new(&format!("/proc/{}", pid)).is_dir() {
                 let mut pid = *pid;
-                loop {
-                    if let Some(proc) = self.processes.get(&pid) {
-                        prune.remove(&pid);
-                        if pid == 0 || pid == proc.ppid {
-                            break
-                        }
-                        pid = proc.ppid;
-                    } else {
-                        break;
+                // Guard against infinite loops
+                let mut n = 100i32;
+                while let Some(proc) = self.processes.get(&pid) {
+                    n -= 1;
+                    prune.remove(&pid);
+                    if pid <= 1 || pid == proc.ppid || n <= 0 {
+                        break
                     }
+                    pid = proc.ppid;
                 }
             }
         }
