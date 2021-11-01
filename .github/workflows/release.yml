@@ -12,12 +12,19 @@ jobs:
         run: |
           apk add git ca-certificates \
                   rust cargo \
-                  acl-static musl-dev
+                  acl-static musl-dev \
+                  jq
+      - uses: actions/checkout@v2
       - name: Get Version
         id: version
         run: |
-          echo ::set-output name=version::${GITHUB_REF/refs\/tags\//}
-      - uses: actions/checkout@v2
+          version_git="${GITHUB_REF/refs\/tags\//}"
+          version_cargo="v$(cargo read-manifest | jq -r '.version')"
+          if [ "$version_git" != "$version_cargo" ]; then
+              echo "git != cargo: $version_git != $version_cargo" >&2
+              exit 1
+          fi
+          echo ::set-output "name=version::$version_git"
       - name: Build
         run: |
           RUSTFLAGS="-C target-feature=+crt-static" \
