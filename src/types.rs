@@ -163,7 +163,7 @@ impl Serialize for Record {
     }
 }
 
-impl<'a> Record {
+impl Record {
     /// Merges two Records into one
     pub fn extend(&mut self, other: Self) {
         let rawlen = self.raw.len();
@@ -233,13 +233,13 @@ pub struct RKey<'a> { pub key: &'a Key, pub raw: &'a[u8] }
 #[derive(Clone,Copy)]
 pub struct RValue<'a> { pub value: &'a Value, pub raw: &'a[u8] }
 
-impl<'a> Debug for RKey<'a> {
+impl Debug for RKey<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.to_string())
     }
 }
 
-impl<'a> Display for RKey<'a> {
+impl Display for RKey<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.key {
             Key::Arg(x, Some(y)) => write!(f, "a{}[{}]", x, y),
@@ -255,15 +255,15 @@ impl<'a> Display for RKey<'a> {
     }
 }
 
-impl<'a> PartialEq<str> for RKey<'a> {
+impl PartialEq<str> for RKey<'_> {
     fn eq(&self, other: &str) -> bool {
         self.to_string() == *other
     }
 }
 
-impl<'a> TryFrom<RValue<'a>> for Vec<u8> {
+impl TryFrom<RValue<'_>> for Vec<u8> {
     type Error = Box<dyn StdError>;
-    fn try_from(v: RValue<'a>) -> Result<Self, Self::Error> {
+    fn try_from(v: RValue) -> Result<Self, Self::Error> {
         match v.value {
             Value::HexStr(_) => Err("HexStr occurred after parse".into()),
             Value::Str(r,Quote::Braces) => {
@@ -289,9 +289,9 @@ impl<'a> TryFrom<RValue<'a>> for Vec<u8> {
     }
 }
 
-impl<'a> TryFrom<RValue<'a>> for Vec<Vec<u8>> {
+impl TryFrom<RValue<'_>> for Vec<Vec<u8>> {
     type Error = Box<dyn StdError>;
-    fn try_from(value: RValue<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: RValue) -> Result<Self, Self::Error> {
         match value.value {
             Value::List(values) | Value::StringifiedList(values) => {
                 let mut rv = Vec::with_capacity(values.len());
@@ -306,7 +306,7 @@ impl<'a> TryFrom<RValue<'a>> for Vec<Vec<u8>> {
     }
 }
 
-impl<'a> Debug for RValue<'a> {
+impl Debug for RValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.value {
             Value::HexStr(r) => write!(f, "HexStr:<{}>", &String::from_utf8_lossy(&self.raw[r.clone()])),
@@ -393,7 +393,7 @@ impl<'a> Debug for RValue<'a> {
 }
 
 
-impl<'a> Serialize for RValue<'a> {
+impl Serialize for RValue<'_> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
         match self.value {
             Value::Empty => s.serialize_none(),
