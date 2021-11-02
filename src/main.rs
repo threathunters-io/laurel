@@ -19,18 +19,9 @@ use caps::securebits::set_keepcaps;
 use serde::Serialize;
 use serde_json::{self,json};
 
-pub mod types;
-pub mod parser;
-pub mod quoted_string;
-pub mod coalesce;
-pub mod proc;
-pub mod rotate;
-pub mod config;
-pub mod constants;
-
-use coalesce::Coalesce;
-use rotate::FileRotate;
-use config::*;
+use laurel::coalesce::Coalesce;
+use laurel::rotate::FileRotate;
+use laurel::config::{ArrayOrString,Config};
 
 mod syslog {
     use std::ffi::CString;
