@@ -113,7 +113,10 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             if fs::metadata(&f_name)?.permissions().mode() & 0o002 != 0 {
                 return Err(format!("Config file {} must not be world-writable", f_name).into());
             }
-            toml::from_slice(&fs::read(&f_name)?)?
+            let lines = fs::read(&f_name)
+                .map_err(|e| format!("read {}: {}", f_name, e))?;
+            toml::from_slice(&lines)
+                .map_err(|e| format!("parse {}: {}", f_name, e))?
         },
         None => Config::default(),
     };
