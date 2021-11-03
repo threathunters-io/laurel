@@ -11,6 +11,7 @@ use crate::constants::msg_type::*;
 use crate::proc::{ProcTable,get_environ};
 use crate::types::*;
 use crate::parser::parse;
+use crate::quoted_string::ToQuotedString;
 
 /// Collect records in [`EventBody`] context as single or multiple
 /// instances.
@@ -54,6 +55,7 @@ pub struct EventBody {
 
 #[derive(Debug)]
 pub struct Event {
+    node: Option<Vec<u8>>,
     id: EventID,
     body: EventBody,
 }
@@ -62,9 +64,17 @@ impl Serialize for Event {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where S: Serializer
     {
-        let mut map = s.serialize_map(Some(1 + self.body.values.len()))?;
+        let mut length = 1 + self.body.values.len();
+        if let Some(_) = self.node {
+            length += 1
+        };
+        let mut map = s.serialize_map(Some(length))?;
         map.serialize_key("ID")?;
         map.serialize_value(&self.id)?;
+        if let Some(node) = &self.node {
+            map.serialize_key("NODE")?;
+            map.serialize_value(&node.as_slice().to_quoted_string())?;
+        }
         for (k,v) in &self.body.values {
             map.serialize_entry(&k,&v)?;
         }
@@ -76,9 +86,9 @@ impl Serialize for Event {
 #[derive(Debug,Default)]
 pub struct Coalesce {
     /// Events that are being collected/processed
-    inflight: HashMap<EventID,EventBody>,
+    inflight: HashMap<(Option<Vec<u8>>, EventID), EventBody>,
     /// Event IDs that have been recently processed
-    done: HashSet<EventID>,
+    done: HashSet<(Option<Vec<u8>>, EventID)>,
     /// Timestamp for next cleanup
     next_expire: Option<u64>,
     /// process table built from observing process-related events
@@ -100,12 +110,12 @@ impl Coalesce {
 
     /// Cleans up stale "done" entries
     fn expire_done(&mut self, now: u64) {
-        let ids = self.done.iter()
-            .filter(|id| id.timestamp + EXPIRE_TIMEOUT > now)
-            .copied()
+        let node_ids = self.done.iter()
+            .filter(|(_, id)| id.timestamp + EXPIRE_TIMEOUT > now)
+            .cloned()
             .collect::<Vec<_>>();
-        for id in ids {
-            self.done.remove(&id);
+        for node_id in node_ids {
+            self.done.remove(&node_id);
         }
         self.next_expire = Some(now + EXPIRE_PERIOD);
     }
@@ -262,7 +272,8 @@ impl Coalesce {
     /// The line is consumed and serves as backing store for the
     /// EventBody objects.
     pub fn process_line(&mut self, line: Vec<u8>) -> Result<Option<Event>, Box<dyn Error>> {
-        let (typ, id, rv) = parse(line)?;
+        let (node, typ, id, rv) = parse(line)?;
+        let nid = (node.clone(), id);
         match self.next_expire {
             Some(t) if t < id.timestamp => {
                 self.expire_done(id.timestamp);
@@ -273,21 +284,22 @@ impl Coalesce {
         };
         match typ {
             SYSCALL => {
-                if self.inflight.contains_key(&id) {
+                if self.inflight.contains_key(&nid) {
                     return Err(format!("duplicate SYSCALL for id {}", id).into());
                 }
                 let mut eb = EventBody::default();
                 eb.values.insert(typ, EventValues::Single(rv));
                 self.augment_syscall(&mut eb);
-                self.inflight.insert(id, eb);
+                self.inflight.insert(nid, eb);
                 return Ok(None);
             },
             EOE => {
-                if self.done.contains(&id) {
+                if self.done.contains(&nid) {
                     return Err(format!("duplicate EOE for id {}", id).into());
                 }
-                self.done.insert(id);
-                let mut eb = self.inflight.remove(&id).ok_or(format!("Event {} for EOE marker not found", &id))?;
+                self.done.insert(nid.clone());
+                let mut eb = self.inflight.remove(&nid)
+                    .ok_or(format!("Event {} for EOE marker not found", &id))?;
                 self.normalize_eventbody(&mut eb);
 
                 let mut pid = None;
@@ -308,10 +320,10 @@ impl Coalesce {
                     }
                     _ => (),
                 };
-                return Ok(Some(Event{id, body: eb}));
+                return Ok(Some(Event{node, id, body: eb}));
             },
             _ => {
-                if let Some(eb) = self.inflight.get_mut(&id) {
+                if let Some(eb) = self.inflight.get_mut(&nid) {
                     match eb.values.get_mut(&typ) {
                         Some(EventValues::Single(v)) => v.extend(rv),
                         Some(EventValues::Multi(v)) => v.push(rv),
@@ -326,10 +338,10 @@ impl Coalesce {
                     };
                     Ok(None)
                 } else {
-                    self.done.insert(id);
+                    self.done.insert(nid);
                     let mut values = IndexMap::new();
                     values.insert(typ, EventValues::Single(rv));
-                    Ok(Some(Event{id, body: EventBody{values}}))
+                    Ok(Some(Event{node, id, body: EventBody{values}}))
                 }
             },
         }
