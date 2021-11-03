@@ -257,7 +257,16 @@ impl Display for RKey<'_> {
 
 impl PartialEq<str> for RKey<'_> {
     fn eq(&self, other: &str) -> bool {
-        self.to_string() == *other
+        self == other.as_bytes()
+    }
+}
+
+impl PartialEq<[u8]> for RKey<'_> {
+    fn eq(&self, other: &[u8]) -> bool {
+        match self.key {
+            Key::Name(r) => &self.raw[r.clone()] == other,
+            _ => self.to_string().as_bytes() == other,
+        }
     }
 }
 
