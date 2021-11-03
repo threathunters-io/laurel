@@ -130,14 +130,10 @@ impl Coalesce {
         if let Some(EventValues::Single(rv)) = eb.values.get_mut(&SYSCALL) {
             let mut new: Vec<(Key, Value)> = Vec::with_capacity(rv.elems.len() - 3);
             let mut argv: Vec<Value> = Vec::with_capacity(4 as usize);
-            for item in 0..4 {
-                if let Some(v) = rv.get(format!("a{}", item).as_bytes()) {
-                    argv.push(v.value.clone());
-                }
-            }
             for (k,v) in &rv.elems {
                 match k {
-                    Key::Arg(_,_) | Key::ArgLen(_) => continue,
+                    Key::Arg(_,_) => argv.push(v.clone()),
+                    Key::ArgLen(_) => continue,
                     _ => new.push((k.clone(), v.clone())),
                 };
             }
@@ -146,7 +142,7 @@ impl Coalesce {
         }
         if let Some(EventValues::Single(rv)) = eb.values.get_mut(&EXECVE) {
             let mut new: Vec<(Key, Value)> = Vec::new();
-            let mut argv: Vec<Value> = Vec::new();
+            let mut argv: Vec<Value> = Vec::with_capacity(rv.elems.len());
             for (k, v) in rv.into_iter() {
                 match k.key {
                     Key::ArgLen(_) => continue,
