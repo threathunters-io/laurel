@@ -9,4 +9,5 @@ plot \
      "go-audit-1.0.0.dat"  using (1/$1):($2) lw 2 title "go-audit 1.0.0"            with linespoints, \
      "auditbeat-7.12.dat"  using (1/$1):($2) lw 2 title "auditbeat 7.12.0"          with linespoints, \
      "sysmon-1.0.0.dat"    using (1/$1):($2) lw 2 title "Sysmon/Linux 1.0.0"        with linespoints, \
+     "sysmon-3f3e9820.dat" using (1/$1):($2) lw 2 title "Sysmon/Linux commit 3f3e9820" with linespoints, \
 

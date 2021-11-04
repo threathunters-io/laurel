@@ -250,6 +250,23 @@
 	<use xlink:href='#gpPt5' transform='translate(536.76,126.01) scale(4.50)' color='rgb(  0, 114, 178)'/>
 </g>
 	</g>
+	<g id="gnuplot_plot_7" ><title>Sysmon/Linux commit 3f3e9820</title>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(507.09,147.91)" stroke="none" fill="black" font-family="Arial" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="Arial" >Sysmon/Linux commit 3f3e9820</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(229,  30,  16)'  d='M515.48,144.01 L558.04,144.01 M66.98,418.13 L73.60,409.54 L92.51,390.57 L104.67,378.49 L158.71,331.14 L347.85,210.77
+		 '/>	<use xlink:href='#gpPt6' transform='translate(66.98,418.13) scale(4.50)' color='rgb(229,  30,  16)'/>
+	<use xlink:href='#gpPt6' transform='translate(73.60,409.54) scale(4.50)' color='rgb(229,  30,  16)'/>
+	<use xlink:href='#gpPt6' transform='translate(92.51,390.57) scale(4.50)' color='rgb(229,  30,  16)'/>
+	<use xlink:href='#gpPt6' transform='translate(104.67,378.49) scale(4.50)' color='rgb(229,  30,  16)'/>
+	<use xlink:href='#gpPt6' transform='translate(158.71,331.14) scale(4.50)' color='rgb(229,  30,  16)'/>
+	<use xlink:href='#gpPt6' transform='translate(347.85,210.77) scale(4.50)' color='rgb(229,  30,  16)'/>
+	<use xlink:href='#gpPt6' transform='translate(536.76,144.01) scale(4.50)' color='rgb(229,  30,  16)'/>
+</g>
+	</g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="black" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
