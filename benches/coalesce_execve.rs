@@ -1,7 +1,11 @@
 #[macro_use]
 extern crate bencher;
-// use bencher;
+extern crate gperftools;
+
 use bencher::Bencher;
+
+use gperftools::profiler::PROFILER;
+
 use std::process;
 
 use laurel::coalesce::Coalesce;
@@ -39,5 +43,16 @@ fn measure(bench: &mut Bencher) {
     });
 }
 
-benchmark_group!(benches, measure);
-benchmark_main!(benches);
+benchmark_group!(b, measure);
+
+fn main() {
+    PROFILER.lock().unwrap().start(format!("{}.prof", std::env::args().next().unwrap())).unwrap();
+    let test_opts = bencher::TestOpts::default();
+    // if let Some(arg) = std::env::args().skip(1).find(|arg| *arg != "--bench") {
+    //     test_opts.filter = Some(arg);
+    // }
+    let mut benches = Vec::new();
+    benches.extend(b());
+    bencher::run_tests_console(&test_opts, benches).unwrap();
+    PROFILER.lock().unwrap().stop().unwrap();
+}
