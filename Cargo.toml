@@ -15,7 +15,7 @@ categories = ["encoding"]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-peg = ">= 0.7"
+nom = ">= 0"
 lazy_static = ">= 1.4"
 getopts = ">= 0.2"
 serde = { version = ">= 1", features = ["derive"] }
