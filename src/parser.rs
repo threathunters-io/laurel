@@ -1,227 +1,452 @@
 use std::str::{self,FromStr};
+use std::ops::Range;
 
 use crate::constants::*;
 use crate::types::*;
 
+use nom::{IResult,
+          Offset,
+          branch::*,
+          character::*,
+          character::complete::*,
+          bytes::complete::*,
+          sequence::*,
+          multi::*,
+          combinator::*,
+};
+
 /// Parse a single log line as produced by _auditd(8)_
-///
-/// The parser is based around a parsing expression grammar that
-/// understands quoted strings. Hex-encoded strings are properly
-/// decoded.
-pub fn parse(mut line: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record),String> {
-    let (node, typ, id, mut values) = audit_parser::record(&line[..]).map_err(|e|e.to_string())?;
+pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record),String> {
+    let (rest, (nd, ty, id)) = parse_header(&raw)
+        .map_err(|_| "cannot parse header".to_string())?;
 
-    // Fix up SYSCALL aN arguments. They may have been recognized as
-    // Str or HexStr and are converted to numbers here.
-    if typ == msg_type::SYSCALL {
-        for (k,v) in values.iter_mut() {
-            if let Key::Arg(_, None) = k {
-                let s = match v {
-                    Value::Str(r, Quote::None) | Value::HexStr(r) => {
-                        // safety: The parser guarantees an ASCII-only value.
-                        unsafe { str::from_utf8_unchecked(&line[r.clone()]) }
-                    }
-                    _ => continue,
-                };
-                if let Ok(n) = u64::from_str_radix(&s, 16) {
-                    *v = Value::Number(Number::Hex(n));
+    let (rest, body) = parse_body(&rest, ty)
+        .map_err(|_| "cannot parse body".to_string())?;
+
+    if rest.len() > 0 {
+        return Err("garbage at end of message".into());
+    }
+
+    let nd = nd.map(|s| s.to_vec() );
+
+    let mut hex_strides = Vec::with_capacity(body.len());
+
+    let elems = body.into_iter()
+        .map(|(k,v)| -> (Key,Value) {
+            (
+                match &k {
+                    PKey::Name(s) => {
+                        let o = raw.offset(s);
+                        Key::Name(o .. o+s.len())
+                    },
+                    PKey::Arg(x,y) => Key::Arg(*x,*y),
+                    PKey::ArgLen(x) => Key::ArgLen(*x),
+                },
+                match &v {
+                    PValue::Empty => Value::Empty,
+                    PValue::Number(n) => Value::Number(n.clone()),
+                    PValue::Str(s,q) => Value::Str(to_range(&raw, s), *q),
+                    PValue::List(vs) =>
+                        Value::List(vs.iter()
+                                    .map(|v| Value::Str(to_range(&raw, v), Quote::None))
+                                    .collect::<Vec<_>>()),
+                    PValue::HexStr(s) => {
+                        // Record position of hex string. Conversion happens below.
+                        let o = raw.offset(s);
+                        hex_strides.push(o .. o+s.len());
+                        Value::Str(o .. o+s.len()/2, Quote::None)
+                    },
                 }
-            }
+            )
+        })
+        .collect::<Vec<_>>();
+
+    for stride in hex_strides {
+        for i in 0 .. stride.len()/2 {
+            // safety: The area to be hex-decoded has been recognized
+            // as valid ASCII (and thus UTF-8) by the nom parser.
+            let d = unsafe {
+                str::from_utf8_unchecked(&raw[stride.start+2*i .. stride.start+2*i+2])
+            };
+            raw[stride.start+i] = u8::from_str_radix(d, 16)
+                .map_err(|_| {
+                    let hex_str = unsafe { str::from_utf8_unchecked(&raw[stride.clone()]) };
+                    format!("{} ({}) can't hex-decode {}", id, ty, hex_str)
+                })?;
         }
     }
 
-    // Convert hex strings contained in the line buffer in-place.
-    for (k, v) in values.iter_mut() {
-        match v {
-            Value::HexStr(r) => {
-                let mut digits = Vec::from(&line[r.clone()])
-                    .into_iter()
-                    .map(|c| match c {
-                        b'0'..=b'9' => (c - b'0'),
-                        b'A'..=b'F' => (c - b'A') + 10,
-                        b'a'..=b'f' => (c - b'a') + 10,
-                        _ => unreachable!(),
-                    });
-                let start = r.start as usize;
-                for p in 0 .. r.len() / 2 {
-                    if let (Some(hi), Some(lo)) = (digits.next(), digits.next()) {
-                        line[start + p] = (hi<<4) + lo;
-                    }
-                }
-                *v = Value::Str(r.start .. r.start + (r.end-r.start)/2, Quote::None);
-            }
-            Value::Str(vr, Quote::None) => {
-                if let Key::Name(k) = k {
-                    if let Some(typ) = FIELD_TYPES.get(&line[k.clone()]) {
-                        let s : &[u8] = &line[vr.clone()];
-                        // safety: The parser guarantees an ASCII-only value.
-                        let s = unsafe { str::from_utf8_unchecked(s) };
-                        match typ {
-                            FieldType::NumericDec => {
-                                if let Ok(n) = u64::from_str(&s) {
-                                    *v = Value::Number(Number::Dec(n));
-                                }
-                            },
-                            FieldType::NumericHex => {
-                                if let Ok(n) = u64::from_str_radix(&s, 16) {
-                                    *v = Value::Number(Number::Hex(n));
-                                }
-                            },
-                            FieldType::NumericOct => {
-                                if let Ok(n) = u64::from_str_radix(&s, 8) {
-                                    *v = Value::Number(Number::Oct(n));
-                                }
-                            },
-                            _ => (),
-                        }
-                    }
-                }
-            }
-            _ => (),
-        }
-    }
-
-    Ok((node, typ, id, Record{elems: values, raw: line}))
+    Ok((nd, ty, id, Record{elems, raw}))
 }
 
-peg::parser!{
-    grammar audit_parser() for [u8] {
-        pub(super) rule record() -> (Option<Vec<u8>>, MessageType, EventID, Vec<(Key,Value)>) =
-            node:node()?
-            "type=" typ:typ() _
-            "msg=audit(" s:number() "." ms:number() ":" seq:number() "):" _?
-            body:body()
-            "\n"
-        {
-            (node, typ, EventID{timestamp: s*1000 + ms, sequence: seq as u32}, body )
-        }
-
-        rule node() -> Vec<u8>
-            = "node=" name:ident() _ { Vec::from(name) }
-
-        rule body() -> Vec<(Key,Value)>
-            = prefix:body_prefix()? kvs:((kv() ** _) ** <,2> [b'\x1d']) {
-                let mut v = Vec::new();
-                if let Some(p) = prefix { v.push(p) };
-                let mut rest = kvs.into_iter().flatten().collect::<Vec<_>>();
-                v.append(&mut rest);
-                v
-            }
-
-        rule body_prefix() -> (Key, Value)
-            = "avc:" _ b:position!() ("granted"/"denied") e:position!() _
-              "{" _ words:(safeunq() ** _ ) _ "}" _ "for" _
-            {
-                let mut values: Vec<Value> = Vec::new();
-                for w in words {
-                    values.push(Value::Str((w.0..w.1), Quote::None));
-                }
-                (Key::Name(b..e), Value::List(values))
-            }
-            / b:position!() "netlabel" e:position!() ":" _ {
-                (Key::Name(b..e), Value::Empty)
-            }
-
-        // whitespace
-        rule _ = " "+
-        // "end of token" for positive lookahead usage.
-        // Matches on whitespace and on "EOF".
-        rule eot() = [b' '|0x1d|b'\n'] / ![_]
-        // simple decimal number
-        rule number() -> u64 = num:$([b'0'..=b'9']+) {
-            let mut acc: u64 = 0;
-            for digit in num.iter() {
-                acc = acc * 10 + (*digit - b'0') as u64
-            }
-            acc
-        }
-        // EXECVE, SYSCALL, etc.
-        rule typ() -> MessageType
-            = "UNKNOWN[" n:number() "]"     { MessageType(n as u32) }
-            / name:$( [b'A'..=b'Z'|b'_']+ ) { MessageType(EVENT_IDS[name]) }
-
-        rule kvs() -> Vec<(Key, Value)> = kv() ** _
-
-        rule key() -> (Key, Option<&'input[u8]>)
-            = "a" x:number() "[" y:number() "]"
-            { (Key::Arg(x as u16, Some(y as u16)), None) }
-            / "a" x:number() "_len"
-            { (Key::ArgLen(x as u16), None) }
-            / "a" x:number()
-            { (Key::Arg(x as u16, None), None) }
-            / b:position!() name:ident() e:position!()
-            { (Key::Name(b..e), Some(name)) }
-
-        rule ident() -> &'input[u8] = $( [b'a'..=b'z'|b'A'..=b'Z']
-                                         [b'a'..=b'z'|b'A'..=b'Z'|b'0'..=b'9'|b'_'|b'-']* )
-
-        rule hex_string() = ( [b'0'..=b'9'|b'A'..=b'F']*<2> )+
-        // all printable ASCII except <SPC> and double quote
-        rule safestr() = [b'!'|b'#'..=b'~']*
-        // all printable ASCII except single quote and braces
-        rule safeunq() -> (usize, usize)
-            = b:position!() [b'!'|b'#'..=b'&'|b'('..=b'z'|b'|'|b'~']+ e:position!()
-            { (b, e) }
-        // all printable ASCII except double quote
-        rule dqstr() -> (usize, usize)
-            = "\"" b:position!() [b' '|b'!'|b'#'..=b'~']+ e:position!() "\""
-            { (b, e) }
-
-        rule kv() -> (Key, Value)
-            // "encoded" string value
-            = k:key() "=" b:position!() (hex_string()) e:position!() &eot() {
-                match k {
-                    (Key::Arg(_,_), _) =>  (k.0, Value::HexStr(b..e)),
-                    (Key::Name(_), Some(name))
-                        if FIELD_TYPES.get(name) == Some(&FieldType::Encoded)
-                        => (k.0, Value::HexStr(b..e)),
-                    (Key::Literal(_), _) => unreachable!(),
-                    (_, _) => (k.0, Value::Str(b..e, Quote::None)),
-                }
-            }
-            // special case for empty string, single "?", unquoted (null)
-            / k:key() "=" ( "(null)" / "?" )? &eot() {
-                (k.0, Value::Empty)
-            }
-            // regular "quoted" string
-            / k:key() "=\"" b:position!() safestr()    e:position!() "\"" &eot() {
-                (k.0, Value::Str(b..e, Quote::Double))
-            }
-            // strings observed in audit output from user-space programs
-            / k:key() "='"  b:position!() $([^b'\'']*) e:position!() "'"  &eot() {
-                (k.0, Value::Str(b..e, Quote::Single))
-            }
-            / k:key() "={"  b:position!() $([^b'}']*)  e:position!()  "}" &eot() {
-                (k.0, Value::Str(b..e, Quote::Braces))
-            }
-            // special case for AppArmor subject labels generated by
-            // from Linux kernel that aren't quoted properly
-            / kb:position!() "subj" ke:position!() "="
-              vb:position!() "="? safestr() (" (" ident() ")")? ve:position!()
-            {
-                (Key::Name(kb..ke), Value::Str(vb..ve, Quote::None))
-            }
-            // special case for AppArmor AVC.info messages
-            / k:key() "="   s:dqstr() &eot() {
-                (k.0, Value::Str(s.0..s.1, Quote::Double))
-            }
-            // default: interpret as string
-            / k:key() "="   s:safeunq() &eot() {
-                (k.0, Value::Str(s.0..s.1, Quote::None))
-            }
-            // fallback
-            / b:position!() [^ b'\n']* e:position!() {
-                (Key::Literal("NOT_PARSED"), Value::Str(b..e, Quote::None))
-            }
-    }
+#[inline(always)]
+fn to_range(line: &[u8], subset: &[u8]) -> Range<usize> {
+    let s = line.offset(subset);
+    s .. s+subset.len()
 }
+
+/// Recognize the header: node, type, event identifier
+#[inline(always)]
+fn parse_header(input: &[u8]) -> IResult<&[u8], (Option<&[u8]>, MessageType, EventID)> {
+    tuple((
+        opt(terminated(parse_node, is_a(" "))),
+        terminated(parse_type, is_a(" ")),
+        parse_msgid
+    )) (input)
+}
+
+/// Recognize the node name
+#[inline(always)]
+fn parse_node(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    preceded(tag("node="), is_not(" \t\r\n")) (input)
+}
+
+/// Recognize event type
+#[inline(always)]
+fn parse_type(input: &[u8]) -> IResult<&[u8], MessageType> {
+    preceded(
+        tag("type="),
+        alt((
+            map_res(
+                delimited(tag("UNKNOWN["),
+                          recognize(many1(is_a("0123456789"))),
+                          tag("]")),
+                |s| str::from_utf8(s).unwrap().
+                    parse::<u32>().
+                    and_then(|n|Ok(MessageType(n)))),
+            map_res(
+                is_not(" \t\r\n"),
+                |s| EVENT_IDS.get(s)
+                    .ok_or(format!("unknown event id {}",
+                                   String::from_utf8_lossy(s)))
+                    .and_then(|n|Ok(MessageType(*n))))
+        )) ) (input)
+}
+
+/// Recognize the "msg=audit(…):" event identifier
+#[inline(always)]
+fn parse_msgid(input: &[u8]) -> IResult<&[u8], EventID> {
+    map_res(
+        tuple((
+            tag("msg=audit("),
+            digit1,tag("."),digit1,tag(":"),digit1,tag("):"),take_while(is_space),
+        )),
+        |(_,sec,_,msec,_,seq,_,_)| -> Result<EventID,std::num::ParseIntError> {
+            Ok(
+                EventID{
+                    // safety: captured strings contain only ASCII digits
+                    timestamp: 1000 * unsafe { str::from_utf8_unchecked(sec) }.parse::<u64>()?
+                        + unsafe { str::from_utf8_unchecked(msec) }.parse::<u64>()?,
+                    sequence: unsafe { str::from_utf8_unchecked(seq) }.parse::<u32>()?,
+                }
+            )
+        }) (input)
+}
+
+enum PKey<'a> {
+    Name(&'a[u8]),
+    /// `a0`, `a1`, `a2[0]`, `a2[1]`…
+    Arg(u16, Option<u16>),
+    /// `a0_len` …
+    ArgLen(u16),
+}
+
+enum PValue<'a> {
+    Empty,
+    HexStr(&'a[u8]),
+    Str(&'a[u8], Quote),
+    List(Vec<&'a[u8]>),
+    Number(Number),
+}
+
+/// Recognize the body: Multiple key/value pairs, with special cases
+/// for some irregular messages
+#[inline(always)]
+fn parse_body(input: &[u8], ty: MessageType) -> IResult<&[u8], Vec<(PKey,PValue)>> {
+    let (input, special) = opt(
+        alt((
+            map_res(
+                tuple((
+                    tuple((tag("avc:"),space0)),
+                    alt((tag("granted"),tag("denied"))),
+                    tuple((space0,tag("{"),space0)),
+                    many1(terminated(parse_identifier,space0)),
+                    tuple((tag("}"),space0,tag("for"),space0)),
+                )),
+                |(_,k,_,v,_)| -> Result<_,()> {
+                    Ok((PKey::Name(k),PValue::List(v)))
+                }
+            ),
+            map_res(
+                tuple(( tag("netlabel"), tag(":"), space0 )),
+                |(s,_,_)| -> Result<_,()> {
+                    Ok((PKey::Name(s),PValue::Empty))
+                }
+            )
+        ))) (input)?;
+
+    let (input, mut kv) = terminated(
+        separated_list0(
+            take_while1( |c| c == b' ' || c == b'\x1d' ),
+            |input| parse_kv(input,ty)
+        ),
+        newline) (input)?;
+
+    special.map( |s| kv.push(s) );
+
+    Ok((input,kv))
+}
+
+/// Recognize one key/value pair
+#[inline(always)]
+fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
+    let (input, key) = match ty {
+        // Special case for execve arguments: aX, aX[Y], aX_len
+        msg_type::EXECVE if input.len() > 0 && input[0] == b'a' => terminated(
+            alt((parse_key_a_x_len, parse_key_a_xy, parse_key_a_x, parse_key)),
+            tag("=")) (input),
+        // SYCALL: Special case for syscall params: aX
+        msg_type::SYSCALL => terminated(
+            alt((parse_key_a_x, parse_key)),
+            tag("=")) (input),
+        _ => terminated(parse_key, tag("=")) (input)
+    }?;
+
+    let (input, value) = match (ty,&key) {
+        (msg_type::SYSCALL, PKey::Arg(_,None)) => {
+            map_res(
+                recognize(terminated(
+                    many1_count(take_while1(is_hex_digit)),
+                    peek(take_while1(is_sep)))
+                ),
+                |s| -> Result<_,()> {
+                    let ps = unsafe { str::from_utf8_unchecked(s) };
+                    match u64::from_str_radix(ps, 16) {
+                        Ok(n) =>  Ok(PValue::Number(Number::Hex(n))),
+                        Err(_) => Ok(PValue::Str(s, Quote::None)),
+                    }
+                }) (input)?
+        },
+        (msg_type::EXECVE, PKey::Arg(_,_)) =>
+            parse_encoded (&input)?,
+        (msg_type::EXECVE, PKey::ArgLen(_)) =>
+            parse_dec (&input)?,
+        (_, PKey::Name(name)) => {
+            match FIELD_TYPES.get(name) {
+                Some(&FieldType::Encoded) =>
+                    alt((parse_encoded, |input | parse_unspec_value (input, ty, name))) (input)?,
+                Some(&FieldType::NumericHex) =>
+                    alt((parse_hex, |input| parse_unspec_value(input, ty, name))) (input)?,
+                Some(&FieldType::NumericDec) =>
+                    alt((parse_dec, |input| parse_unspec_value(input, ty, name))) (input)?,
+                Some(&FieldType::NumericOct) => 
+                    alt((parse_oct, |input| parse_unspec_value(input, ty, name))) (input)?,
+                _ => alt((parse_encoded, |input| parse_unspec_value(input, ty, name))) (input)?
+                // FIXME: Some(&FieldType::Numeric)
+            }
+        },
+        _ => parse_encoded (input)?,
+    };
+
+    Ok((input, (key, value)))
+}
+
+/// Recognize encoded value:
+/// 
+/// May be double-quoted string, hex-encoded blob, (null), ?.
+#[inline(always)]
+fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
+    alt((
+        map_res(
+            delimited(tag("\""), take_while1(is_safe_chr), tag("\"")),
+            |s| -> Result<_,()> {
+                Ok(PValue::Str(s, Quote::Double))
+            }
+        ),
+        map_res(
+            recognize(terminated(
+                many1_count(take_while_m_n(2, 2, is_hex_digit)),
+                peek(take_while1(is_sep)))
+            ),
+            |s| -> Result<_,()> { Ok(PValue::HexStr(s)) } ),
+        map_res(
+            alt((tag("(null)"),tag("?"))),
+            |_| -> Result<_,()> { Ok(PValue::Empty) } )
+    )) (input)
+}
+
+/// Recognize hexadecimal value
+#[inline(always)]
+fn parse_hex(input: &[u8]) -> IResult<&[u8], PValue> {
+    map_res(
+        terminated(
+            take_while1(is_hex_digit),
+            peek(take_while1(is_sep)),
+        ),
+        |s| -> Result<_,std::num::ParseIntError> {
+            let s = unsafe { str::from_utf8_unchecked(s) };
+            Ok(PValue::Number(Number::Hex(u64::from_str_radix(s, 16)?)))
+        }
+    ) (input)
+}
+
+/// Recognize decimal value
+#[inline(always)]
+fn parse_dec(input: &[u8]) -> IResult<&[u8], PValue> {
+    map_res(
+        terminated(
+            take_while1(is_digit),
+            peek(take_while1(is_sep)),
+        ),
+        |s| -> Result<_,std::num::ParseIntError> {
+            let s = unsafe { str::from_utf8_unchecked(s) };
+            Ok(PValue::Number(Number::Dec(u64::from_str(s)?)))
+        }
+    ) (input)
+}
+
+/// Recognize octal value
+#[inline(always)]
+fn parse_oct(input: &[u8]) -> IResult<&[u8], PValue> {
+    map_res(
+        terminated(
+            take_while1(is_oct_digit),
+            peek(take_while1(is_sep)),
+        ),
+        |s| -> Result<_,std::num::ParseIntError> {
+            let s = unsafe { str::from_utf8_unchecked(s) };
+            Ok(PValue::Number(Number::Oct(u64::from_str_radix(s, 8)?)))
+        }
+    ) (input)
+}
+
+#[inline(always)]
+fn parse_unspec_value<'a>(input: &'a[u8], ty: MessageType, name: &[u8]) -> IResult<&'a[u8], PValue<'a>> {
+    // work around apparent AppArmor breakage
+    match (ty, name) {
+        (msg_type::SYSCALL, b"subj") =>
+            if let Ok((input, s)) =
+                recognize(
+                    tuple((
+                        opt(tag("=")),
+                        take_while(is_safe_chr),
+                        opt(delimited(tag(" ("), parse_identifier, tag(")"))),
+                    ))) (input)
+            {
+                return Ok((input, PValue::Str(s, Quote::None)));
+            }
+        (msg_type::AVC, b"info") =>
+            if let Ok((input, s)) =
+                delimited::<_,_,_,_,(),_,_,_>(tag("\""), take_while(|c| c != b'"'), tag("\"") ) (input)
+            {
+                return Ok((input,PValue::Str(s, Quote::None)));
+            },
+        _ => ()
+    };
+
+    alt((
+        map_res(
+            terminated(
+                take_while1(is_safe_unquoted_chr),
+                peek(take_while1(is_sep))
+            ),
+            |s| -> Result<_,()> { Ok(PValue::Str(s, Quote::None)) }
+        ),
+        map_res(
+            delimited(tag("'"), take_while(|c| c != b'\''), tag("'")),
+            |s| -> Result<_,()> { Ok(PValue::Str(s, Quote::Single)) }
+        ),
+        map_res(
+            delimited(tag("{"), take_while(|c| c != b'}'), tag("}")),
+            |s| -> Result<_,()> { Ok(PValue::Str(s, Quote::Braces)) }
+        ),
+    )) (input)
+}
+
+/// Recognize regular keys of key/value pairs
+#[inline(always)]
+fn parse_key(input: &[u8]) -> IResult<&[u8], PKey> {
+    map_res(
+        recognize(pair(alpha1, many0(alt((alphanumeric1,is_a("-_")))))),
+        |s| -> Result<_,()> { Ok(PKey::Name(s)) }
+    ) (input)
+}
+
+/// Recognize length specifier for EXECVE split arguments, e.g. a1_len
+#[inline(always)]
+fn parse_key_a_x_len(input: &[u8]) -> IResult<&[u8], PKey> {
+    map_res(
+        delimited(tag("a"), digit1, tag("_len")),
+        |x| -> Result<_,std::num::ParseIntError> {
+            let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
+            Ok(PKey::ArgLen(x))
+        }
+    ) (input)
+}
+
+/// Recognize EXECVE split arguments, e.g. a1[3]
+#[inline(always)]
+fn parse_key_a_xy(input: &[u8]) -> IResult<&[u8],PKey> {
+    map_res(
+        tuple((tag("a"),digit1,tag("["),digit1,tag("]"))),
+        |(_,x,_,y,_)| -> Result<PKey,std::num::ParseIntError> {
+            let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
+            let y = unsafe { str::from_utf8_unchecked(y) }.parse()?;
+            Ok(PKey::Arg(x,Some(y)))
+        }
+    ) (input)
+}
+
+/// Recognize SYSCALL, EXECVE regular argument keys, e.g. a1, a2, a3…
+#[inline(always)]
+fn parse_key_a_x(input: &[u8]) -> IResult<&[u8],PKey> {
+    map_res(
+        preceded(tag("a"), digit1),
+        |x| -> Result<PKey,std::num::ParseIntError> {
+            let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
+            Ok(PKey::Arg(x,None))
+        }
+    ) (input)
+}
+
+/// Recognize identifiers (used in some irregular messages)
+/// Like [A-Za-z_][A-Za-z0-9_]*
+#[inline(always)]
+fn parse_identifier(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    recognize(
+        pair(
+            alt((alpha1, tag("_"))),
+            many0(alt((alphanumeric1,tag("_"))))
+        )
+    ) (input)
+}
+
+/// Characters permitted in kernel "encoded" strings that would
+/// otherwise be hex-encoded.
+#[inline(always)]
+fn is_safe_chr(c: u8) -> bool { c == b'!' || (b'#'..=b'~').contains(&c) }
+
+/// Characters permitted in kernel "encoded" strings, minus
+/// single-quotes, braces
+#[inline(always)]
+fn is_safe_unquoted_chr(c: u8) -> bool {
+    (b'#'..=b'&').contains(&c) || (b'('..=b'z').contains(&c) ||
+        c == b'!'|| c == b'|' || c == b'~'
+}
+
+/// Separator characters
+#[inline(always)]
+fn is_sep(c: u8) -> bool { c == b' ' || c == b'\x1d' || c == b'\n' }
+
+
 
 #[cfg(test)]
 mod test {
     use super::*;
     use super::msg_type::*;
+
     #[test]
-    fn parser() -> Result<(),String> {
+    fn parser() -> Result<(),Box<dyn std::error::Error>> {
         // ensure that constant init works
         assert_eq!(format!("--{}--", EOE), "--EOE--");
         assert_eq!(format!("--{}--", MessageType(9999)), "--UNKNOWN[9999]--");
@@ -339,38 +564,42 @@ mod test {
         let (_n, t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-avc-denied.txt").as_ref()))?;
         assert_eq!(t, AVC);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
-                   vec!("denied: List:<setuid>",
-                        "pid: Num:<15381>",
-                        "comm: Str:<laurel>",
-                        "capability: Num:<7>",
-                        "scontext: Str:<system_u:system_r:auditd_t:s0>",
-                        "tcontext: Str:<system_u:system_r:auditd_t:s0>",
-                        "tclass: Str:<capability>",
-                        "permissive: Num:<1>",
+                   vec!(
+                       "pid: Num:<15381>",
+                       "comm: Str:<laurel>",
+                       "capability: Num:<7>",
+                       "scontext: Str:<system_u:system_r:auditd_t:s0>",
+                       "tcontext: Str:<system_u:system_r:auditd_t:s0>",
+                       "tclass: Str:<capability>",
+                       "permissive: Num:<1>",
+                       "denied: List:<setuid>",
                    ));
 
         let (_n, t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-avc-granted.txt").as_ref()))?;
         assert_eq!(t, AVC);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
-                   vec!("granted: List:<setsecparam>",
-                        "pid: Num:<11209>",
-                        "comm: Str:<tuned>",
-                        "scontext: Str:<system_u:system_r:tuned_t:s0>",
-                        "tcontext: Str:<system_u:object_r:security_t:s0>",
-                        "tclass: Str:<security>",
+                   vec!(
+                       "pid: Num:<11209>",
+                       "comm: Str:<tuned>",
+                       "scontext: Str:<system_u:system_r:tuned_t:s0>",
+                       "tcontext: Str:<system_u:object_r:security_t:s0>",
+                       "tclass: Str:<security>",
+                       "granted: List:<setsecparam>",
                    ));
 
         let (_n, t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-netlabel.txt").as_ref()))?;
         assert_eq!(t, MAC_UNLBL_ALLOW);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
-                   vec!("netlabel: Empty",
-                        "auid: Num:<0>",
-                        "ses: Num:<0>",
-                        // FIXME: strings should be numbers
-                        "unlbl_accept: Str:<1>",
-                        "old: Str:<0>",
-                        "AUID: Str:<root>",
+                   vec!(
+                       "auid: Num:<0>",
+                       "ses: Num:<0>",
+                       // FIXME: strings should be numbers
+                       "unlbl_accept: Str:<1>",
+                       "old: Str:<0>",
+                       "AUID: Str:<root>",
+                       "netlabel: Empty",
                    ));
+
         let (_n, _t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-broken-subj1.txt").as_ref()))?;
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!("arch: Num:<0xc000003e>",

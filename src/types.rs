@@ -7,7 +7,7 @@ use std::convert::{TryFrom,TryInto};
 use std::str;
 
 use serde::{Serialize,Serializer};
-use serde::ser::{SerializeSeq,SerializeMap,Error};
+use serde::ser::{SerializeSeq,SerializeMap};
 
 use crate::constants::*;
 use crate::quoted_string::ToQuotedString;
@@ -89,7 +89,7 @@ pub enum Key {
 }
 
 /// Quotes in [`Value`] strings
-#[derive(PartialEq,Clone)]
+#[derive(PartialEq,Clone,Copy)]
 pub enum Quote { None, Single, Double, Braces }
 
 #[derive(Clone)]
@@ -114,9 +114,6 @@ impl Debug for Number {
 #[derive(Clone)]
 pub enum Value {
     Empty,
-    /// HexStr is transformed in parse(), to a bare Str by the time
-    /// any external code sees the Value.
-    HexStr(Range<usize>),
     Str(Range<usize>, Quote),
     /// Segments are generated in Coalesce::normalize() from `EXECVE`
     /// / `aX[Y]` fragments.
@@ -174,7 +171,6 @@ impl Record {
                 _ => k,
             },
             match v {
-                Value::HexStr(r) => Value::HexStr(r.offset(rawlen)),
                 Value::Str(r,q) => Value::Str(r.offset(rawlen),q),
                 Value::Empty => Value::Empty,
                 Value::Number(n) => Value::Number(n),
@@ -274,7 +270,6 @@ impl TryFrom<RValue<'_>> for Vec<u8> {
     type Error = Box<dyn StdError>;
     fn try_from(v: RValue) -> Result<Self, Self::Error> {
         match v.value {
-            Value::HexStr(_) => Err("HexStr occurred after parse".into()),
             Value::Str(r,Quote::Braces) => {
                 let mut s = Vec::with_capacity(r.len() + 2);
                 s.push(b'{');
@@ -318,7 +313,6 @@ impl TryFrom<RValue<'_>> for Vec<Vec<u8>> {
 impl Debug for RValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.value {
-            Value::HexStr(r) => write!(f, "HexStr:<{}>", &String::from_utf8_lossy(&self.raw[r.clone()])),
             Value::Str(r,_q) => write!(f, "Str:<{}>", &String::from_utf8_lossy(&self.raw[r.clone()])),
             Value::Empty     => write!(f, "Empty"),
             Value::Segments(segs) => {
@@ -348,7 +342,6 @@ impl Debug for RValue<'_> {
                         }
                         Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
                         Value::Empty     => panic!("list can't contain empty value"),
-                        Value::HexStr(_) => panic!("list can't contain hex string"),
                         Value::List(_) | Value::StringifiedList(_) => panic!("list can't contain list"),
                         Value::Map(_) => panic!("list can't contain map"),
                         Value::Number(_) => panic!("List can't contain number"),
@@ -373,7 +366,6 @@ impl Debug for RValue<'_> {
                         }
                         Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
                         Value::Empty     => panic!("list can't contain empty value"),
-                        Value::HexStr(_) => panic!("list can't contain hex string"),
                         Value::List(_) | Value::StringifiedList(_) => panic!("list can't contain list"),
                         Value::Map(_) => panic!("List can't contain mapr"),
                         Value::Number(_) => panic!("List can't contain number"),
@@ -456,9 +448,6 @@ impl Serialize for RValue<'_> {
                     map.serialize_value(&self.raw[v.1.clone()].to_quoted_string())?;
                 }
                 map.end()
-            }
-            Value::HexStr(_r) => {
-                Err(S::Error::custom("can't serialize untreated hex string"))
             }
         }
     }
