@@ -5,12 +5,14 @@ on:
       - audit-specs/**
       - build.rs
       - Cargo.toml
+      - .github/workflows/build.yml
   pull_request:
     paths:
       - src/**
       - audit-specs/**
       - build.rs
       - Cargo.toml
+      - .github/workflows/build.yml
 
 jobs:
   build_n_test:
@@ -37,3 +39,46 @@ jobs:
     - run: cargo build
     - run: cargo test
     - run: make -C contrib/selinux
+
+  build_static_musl:
+    runs-on: ubuntu-latest
+    container: alpine:3.14
+    steps:
+      - name: Prepare
+        run: |
+          apk add git ca-certificates \
+                  rust cargo \
+                  acl-static musl-dev \
+                  binutils file jq
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build
+      - name: Show binary charcteristics
+        run: |
+          set -x
+          file target/debug/laurel
+          ldd  target/debug/laurel
+          objdump -x target/debug/laurel | grep NEEDED || true
+          set +
+          if [ -n "$(objdump -x target/debug/laurel | grep NEEDED)" ]; then
+              echo "laurel is linked against shared libraries" >&2
+              exit 1
+          fi
+
+      - name: Launch test
+        run: |
+          ppid=$$
+          pid=$(($$ + 1000))
+
+          ./target/debug/laurel <<EOF
+          type=SYSCALL msg=audit(1615114232.375:15558): arch=c000003e syscall=59 success=yes exit=0 a0=63b29337fd18 a1=63b293387d58 a2=63b293375640 a3=fffffffffffff000 items=2 ppid=$ppid pid=$pid auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="whoami" exe="/usr/bin/whoami" key=(null)
+          type=EXECVE msg=audit(1615114232.375:15558): argc=1 a0="whoami"
+          type=CWD msg=audit(1615114232.375:15558): cwd="/home/user/tmp"
+          type=PATH msg=audit(1615114232.375:15558): item=0 name="/usr/bin/whoami" inode=261214 dev=ca:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0000000000000000 cap_fi=0000000000000000 cap_fe=0 cap_fver=0
+          type=PATH msg=audit(1615114232.375:15558): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=262146 dev=ca:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0000000000000000 cap_fi=0000000000000000 cap_fe=0 cap_fver=0
+          type=PROCTITLE msg=audit(1615114232.375:15558): proctitle="whoami"
+          type=EOE msg=audit(1615114232.375:15558):
+          EOF
+
+          jq . < audit.log
