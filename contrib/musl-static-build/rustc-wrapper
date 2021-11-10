@@ -1,0 +1,48 @@
+#!/bin/sh
+
+#
+# Extra flags that are set by this script are needed to build a fully
+# static binary using Alpine Linux / musl
+#
+# We found that after turning the crate from bin-only to mixed
+# lib/bin, the previous approach (having build.rs output
+# "cargo:rustc-link-lib=static=FOO" stanzas and enabling the
+# "+crt-static" target feature through RUSTC) would no longer work on
+# libmusl-based Alpine Linux:
+# 
+# 1. When building the library, the C libraries would no longer be found.
+#    produce binaries that segfaulted
+#
+# 2. After specifying the search path, a binary would be built, but it
+#    would crash immediately on startup. Cursory inspection of the
+#    binary revealed that at least musl-libc had probably been linked
+#    both statically and dynamically.
+#
+# This script sets the options for controlling linker-specific options
+# only when building binaries for the laurel crate. This works, for
+# now.
+# 
+# Tested with rust-1.52.1-r1 / cargo-1.52.1-r1 / musl-1.2.2-r3 on
+# Alpine 3.14/x86_64.
+# 
+
+set -eu
+
+EXTRA_FLAGS=
+if [ "${CARGO_CRATE_NAME-}" = laurel ] && [ -n "${CARGO_BIN_NAME-}" ]; then
+    EXTRA_FLAGS="-C target-feature=+crt-static -l static=acl -l static=c"
+fi
+
+if [ -n "${RUSTC_WRAPPER_VERBOSE-}" ]; then
+    (
+	echo 'vv----------------------------------------------------------------------'
+	echo "$@"
+	echo '------------------------------------------------------------------------'
+	env|grep '^\(CARGO\|RUST\)' | sort
+	echo '------------------------------------------------------------------------'
+	echo "Setting EXTRA_FLAGS=$EXTRA_FLAGS"
+	echo '^^----------------------------------------------------------------------'
+    ) >> "$0.log"
+fi
+
+exec rustc $EXTRA_FLAGS "$@"
