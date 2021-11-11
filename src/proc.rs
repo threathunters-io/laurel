@@ -190,13 +190,18 @@ impl ProcTable {
 }
 
 /// Returns environment for a given process
-pub fn get_environ(pid: u64) -> Result<Vec<(Vec<u8>,Vec<u8>)>, Box<dyn Error>> {
-    Ok(read(format!("/proc/{}/environ", pid))?
-       .split(|c| *c == 0)
-       .map(|f| {
-           let mut kv = f.splitn(2, |c| *c == b'=');
-           (kv.next().unwrap().to_owned(), kv.next().or(Some(b"")).unwrap().to_owned())
-       }).collect())
+pub fn get_environ<F: Fn(&[u8]) -> bool>(pid: u64, pred: F) -> Result<Vec<(Vec<u8>,Vec<u8>)>, Box<dyn Error>> {
+    let buf = read(format!("/proc/{}/environ", pid))?;
+    let mut res = Vec::new();
+    for f in buf.split(|c| *c == 0) {
+        let mut kv = f.splitn(2, |c| *c == b'=');
+        let k = kv.next().unwrap();
+        if pred(k) {
+            let v = kv.next().or(Some(b"")).unwrap();
+            res.push((k.to_owned(), v.to_owned()));
+        }
+    }
+    Ok(res)
 }
 
 #[cfg(test)]
