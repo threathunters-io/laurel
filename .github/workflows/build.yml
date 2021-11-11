@@ -60,7 +60,7 @@ jobs:
           file target/debug/laurel
           ldd  target/debug/laurel
           objdump -x target/debug/laurel | grep NEEDED || true
-          set +
+          set +x
           if [ -n "$(objdump -x target/debug/laurel | grep NEEDED)" ]; then
               echo "laurel is linked against shared libraries" >&2
               exit 1
