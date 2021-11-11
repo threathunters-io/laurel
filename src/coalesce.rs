@@ -211,24 +211,12 @@ impl Coalesce {
         if self.execve_env.is_empty() {
             return;
         }
-        let vars = get_environ(pid).ok()
-            .and_then( |environ| {
-                let added = environ.iter()
-                    .filter( |(k,_v)| self.execve_env.contains(k) )
-                    .map( |(k,v)| {
-                        let rk = execve.put(k);
-                        let rv = execve.put(v);
-                        (rk,rv)
-                    })
-                    .collect::<Vec<_>>();
-                if added.len() > 0 { Some(added) } else { None }
-            });
-        match vars {
-            Some(a) => {
-                execve.elems.push( (Key::Literal("ENV"),Value::Map(a)) );
-            }
-            None => {}
-        };
+        if let Ok(vars) = get_environ(pid, |k| self.execve_env.contains(k) ) {
+            let map = vars.iter()
+                .map(|(k,v)| (execve.put(k), execve.put(v)))
+                .collect();
+            execve.elems.push( (Key::Literal("ENV"), Value::Map(map)) );
+        }
     }
 
     /// Augment event with information from shadow process table
