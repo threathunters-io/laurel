@@ -275,7 +275,6 @@ mod test {
         let (_n, t, id, rv) = parse(Vec::from(include_bytes!("testdata/line-execve.txt").as_ref()))?;
         assert_eq!(t, EXECVE);
         assert_eq!(id, EventID{timestamp: 1614788539386, sequence: 13232});
-        // FIXME: This should be argv["whoami"]
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!("argc: Num:<0>",
                         "a0: Str:<whoami>"));
