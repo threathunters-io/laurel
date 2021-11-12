@@ -10,10 +10,11 @@ use std::process;
 
 use laurel::coalesce::Coalesce;
 
-fn measure(bench: &mut Bencher) {
+fn measure(bench: &mut Bencher, s: bool) {
 
     // simulate edr-loadgen behavior: this process simulates many process spawns
     let ppid = process::id();
+    let mut sink = std::io::sink();
 
     bench.iter(|| {
         let mut c = Coalesce::default();
@@ -37,13 +38,21 @@ fn measure(bench: &mut Bencher) {
                 format!(r#"type=EOE msg=audit(1615114232.{:03}:{:03}): 
 "#, ms, seq),
             ] {
-                c.process_line(Vec::from(line.as_bytes())).unwrap();
+                if let Some(msg) = c.process_line(Vec::from(line.as_bytes())).unwrap() {
+                    if s {
+                        serde_json::to_writer(&mut sink, &msg).unwrap();
+                    }
+                }
             }
         }
     });
 }
 
-benchmark_group!(b, measure);
+fn parse_only(bench: &mut Bencher) {measure(bench, false) }
+
+fn parse_serialize(bench: &mut Bencher) { measure(bench, true) }
+
+benchmark_group!(b, parse_only, parse_serialize);
 
 fn main() {
     PROFILER.lock().unwrap().start(format!("{}.prof", std::env::args().next().unwrap())).unwrap();
