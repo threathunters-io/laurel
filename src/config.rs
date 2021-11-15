@@ -30,6 +30,13 @@ impl Default for Transform {
     }
 }
 
+#[derive(Debug,Default,Serialize,Deserialize)]
+pub struct Translate {
+    pub universal: bool,
+    #[serde(rename="user-db")]
+    pub userdb: bool,
+}
+
 #[derive(Debug,Serialize,Deserialize)]
 pub struct Enrich {
     #[serde(rename="execve-env")] #[serde(default)]
@@ -57,6 +64,8 @@ pub struct Config {
     #[serde(default)]
     pub transform: Transform,
     #[serde(default)]
+    pub translate: Translate,
+    #[serde(default)]
     pub enrich: Enrich,
     #[serde(default)]
     pub filter: Filter,
@@ -75,6 +84,7 @@ impl Default for Config {
             },
             debuglog: None,
             transform: Transform::default(),
+            translate: Translate::default(),
             enrich: Enrich::default(),
             filter: Filter::default(),
         }

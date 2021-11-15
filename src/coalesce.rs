@@ -1,4 +1,4 @@
-use std::collections::{HashMap,HashSet};
+use std::collections::{HashMap,HashSet,VecDeque};
 use std::error::Error;
 use std::ops::Range;
 
@@ -7,11 +7,13 @@ use indexmap::IndexMap;
 use serde::{Serialize,Serializer};
 use serde::ser::{SerializeSeq,SerializeMap};
 
-use crate::constants::msg_type::*;
+use crate::constants::{ARCH_NAMES,SYSCALL_NAMES,msg_type::*};
+use crate::userdb::UserDB;
 use crate::proc::{ProcTable,get_environ};
 use crate::types::*;
 use crate::parser::parse;
 use crate::quoted_string::ToQuotedString;
+use crate::sockaddr::SocketAddr;
 
 /// Collect records in [`EventBody`] context as single or multiple
 /// instances.
@@ -93,14 +95,105 @@ pub struct Coalesce {
     next_expire: Option<u64>,
     /// process table built from observing process-related events
     processes: ProcTable,
+    /// creadential cache
+    userdb: UserDB,
     /// Generate ARGV and ARGV_STR from EXECVE
     pub execve_argv_list: bool,
     pub execve_argv_string: bool,
     pub execve_env: HashSet<Vec<u8>>,
+
+    pub translate_universal: bool,
+    pub translate_userdb: bool,
 }
 
 const EXPIRE_PERIOD: u64  = 30_000;
 const EXPIRE_TIMEOUT: u64 = 120_000;
+
+/// generate translation of SocketAddr enum to a format similar to
+/// what auditd log_format=ENRICHED produces
+fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
+    let mut m = Vec::new();
+    let f = rv.put(b"saddr_fam");
+    match sa {
+        SocketAddr::Local(sa) => {
+            m.push((f, rv.put(b"local")));
+            m.push((rv.put(b"path"),
+                    rv.put(&sa.path)));
+        },
+        SocketAddr::Inet(sa) => {
+            m.push((f, rv.put(b"inet")));
+            m.push((rv.put(b"addr"),
+                    rv.put(format!("{}", sa.ip()).as_bytes())));
+            m.push((rv.put(b"port"),
+                    rv.put(format!("{}", sa.port()).as_bytes())));
+        },
+        SocketAddr::AX25(sa) => {
+            m.push((f, rv.put(b"ax25")));
+            m.push((rv.put(b"call"),
+                    rv.put(&sa.call)));
+        },
+        SocketAddr::ATMPVC(sa) => {
+            m.push((f, rv.put(b"atmpvc")));
+            m.push((rv.put(b"itf"),
+                    rv.put(format!("{}", sa.itf).as_bytes())));
+            m.push((rv.put(b"vpi"),
+                    rv.put(format!("{}", sa.vpi).as_bytes())));
+            m.push((rv.put(b"vci"),
+                    rv.put(format!("{}", sa.vci).as_bytes())));
+        },
+        SocketAddr::X25(sa) => {
+            m.push((f, rv.put(b"x25")));
+            m.push((rv.put(b"addr"),
+                    rv.put(&sa.address)));
+        },
+        SocketAddr::IPX(sa) => {
+            m.push((f, rv.put(b"ipx")));
+            m.push((rv.put(b"network"),
+                    rv.put(format!("{:08x}", sa.network)
+                           .as_bytes())));
+            m.push((rv.put(b"node"),
+                    rv.put(
+                        format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                                sa.node[0], sa.node[1],
+                                sa.node[2], sa.node[3],
+                                sa.node[4], sa.node[5])
+                            .as_bytes())));
+            m.push((rv.put(b"port"),
+                    rv.put(format!("{}", sa.port).as_bytes())));
+            m.push((rv.put(b"type"),
+                    rv.put(format!("{}", sa.typ).as_bytes())));
+        },
+        SocketAddr::Inet6(sa) => {
+            m.push((f, rv.put(b"inet6")));
+            m.push((rv.put(b"addr"),
+                    rv.put(format!("{}", sa.ip()).as_bytes())));
+            m.push((rv.put(b"port"),
+                    rv.put(format!("{}", sa.port()).as_bytes())));
+            m.push((rv.put(b"flowinfo"),
+                    rv.put(format!("{}", sa.flowinfo())
+                           .as_bytes())));
+            m.push((rv.put(b"scope_id"),
+                    rv.put(format!("{}", sa.scope_id())
+                           .as_bytes())));
+        },
+        SocketAddr::Netlink(sa) => {
+            m.push((f, rv.put(b"netlink")));
+            m.push((rv.put(b"pid"),
+                    rv.put(format!("{}", sa.pid).as_bytes())));
+            m.push((rv.put(b"groups"),
+                    rv.put(format!("{}", sa.groups).as_bytes())));
+        },
+        SocketAddr::VM(sa) => {
+            m.push((f, rv.put(b"vsock")));
+            m.push((rv.put(b"cid"),
+                    rv.put(format!("{}", sa.cid).as_bytes())));
+            m.push((rv.put(b"port"),
+                    rv.put(format!("{}", sa.port).as_bytes())));
+        },
+    }
+    return Value::Map(m);
+}
+
 
 impl Coalesce {
     /// Fill shadow process table from system's /proc directory
@@ -120,88 +213,203 @@ impl Coalesce {
         self.next_expire = Some(now + EXPIRE_PERIOD);
     }
 
+    /// Translates UID, GID and variants, e.g.:
+    /// - auid=1000 -> AUID="user"
+    /// - ogid=1000 -> OGID="user"
+    #[inline(always)]
+    fn translate_userdb(&mut self, rv: &mut Record, k: &Key, v: &Value) -> Option<(Key, Value)> {
+        if !self.translate_userdb { return None }
+        if let Key::Name(r) = k {
+            let name = &rv.raw[r.clone()];
+            if name.ends_with(b"uid") {
+                if let Value::Number(Number::Dec(d)) = v {
+                    if let Some(user) = self.userdb.get_user(*d as u32) {
+                        return Some((Key::UpperCaseName(r.clone()),
+                                     Value::Str(rv.put(user.as_bytes()), Quote::None)));
+                    }
+                }
+            } else if name.ends_with(b"gid") {
+                if let Value::Number(Number::Dec(d)) = v {
+                    if let Some(group) = self.userdb.get_group(*d as u32) {
+                        return Some((Key::UpperCaseName(r.clone()),
+                                     Value::Str(rv.put(group.as_bytes()), Quote::None)));
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
     /// Rewrite EventBody to normal form
     ///
     /// This function
     /// - turns SYSCALL/a* fields into a single an ARGV list
     /// - turns EXECVE/a* and EXECVE/a*[*] fields into an ARGV list
     /// - turns PROCTITLE/proctitle into a (abbreviated) ARGV list
-    fn normalize_eventbody(&self, eb: &mut EventBody) {
-        if let Some(EventValues::Single(rv)) = eb.values.get_mut(&SYSCALL) {
-            let mut new: Vec<(Key, Value)> = Vec::with_capacity(rv.elems.len() - 3);
-            let mut argv: Vec<Value> = Vec::with_capacity(4 as usize);
-            for item in 0..4 {
-                if let Some(v) = rv.get(format!("a{}", item).as_bytes()) {
-                    argv.push(v.value.clone());
-                }
-            }
-            for (k,v) in &rv.elems {
-                match k {
-                    Key::Arg(_,_) | Key::ArgLen(_) => continue,
-                    _ => new.push((k.clone(), v.clone())),
-                };
-            }
-            new.push((Key::Literal("ARGV"), Value::List(argv)));
-            rv.elems = new;
-        }
-        if let Some(EventValues::Single(rv)) = eb.values.get_mut(&EXECVE) {
-            let mut new: Vec<(Key, Value)> = Vec::new();
-            let mut argv: Vec<Value> = Vec::new();
-            for (k, v) in rv.into_iter() {
-                match k.key {
-                    Key::ArgLen(_) => continue,
-                    Key::Arg(i, None) => {
-                        let idx = *i as usize;
-                        if argv.len() <= idx {
-                            argv.resize(idx+1, Value::Empty);
+    /// - translates *uid, *gid, syscall, arch, sockaddr if configured to do so.
+    fn normalize_eventbody(&mut self, eb: &mut EventBody) {
+        for (typ,ev) in eb.values.iter_mut() {
+            match (typ,ev) {
+                (&SYSCALL, EventValues::Single(rv)) => {
+                    rv.raw.reserve(
+                        if self.translate_universal { 16 } else { 0 } +
+                        if self.translate_userdb { 72 } else { 0 } );
+                    let mut new = Vec::with_capacity(rv.elems.len() - 3);
+                    let mut translated = VecDeque::with_capacity(11);
+                    let mut argv = Vec::with_capacity(4);
+                    let mut arch = None;
+                    let mut syscall = None;
+                    for (k,v) in &rv.elems.clone() {
+                        match k {
+                            Key::Arg(_,None) => {
+                                // FIXME: check argv length
+                                argv.push(v.clone());
+                                continue;
+                            },
+                            Key::Name(r) => {
+                                let name = &rv.raw[r.clone()];
+                                match name {
+                                    b"arch" if self.translate_universal => {
+                                        if let Value::Number(Number::Hex(n)) = v {
+                                            arch = Some((r.clone(), n.clone()));
+                                        }
+                                    },
+                                    b"syscall" if self.translate_universal => {
+                                        if let Value::Number(Number::Dec(n)) = v {
+                                            syscall = Some((r.clone(), n.clone()));
+                                        }
+                                    },
+                                    b"ARCH"|b"SYSCALL" if self.translate_universal => continue,
+                                    _ => {
+                                        if let Some((k,v)) = self.translate_userdb(rv, k, v) {
+                                            translated.push_back((k,v));
+                                        }
+                                    },
+                                }
+                            },
+                            _ => (),
                         };
-                        argv[idx] = v.value.clone();
-                    },
-                    Key::Arg(i, Some(f)) => {
-                        let idx = *i as usize;
-                        if argv.len() <= idx {
-                            argv.resize(idx+1, Value::Empty);
-                            argv[idx] = Value::Segments(Vec::new());
-                        }
-                        if let Some(Value::Segments(l)) = argv.get_mut(idx) {
-                            let frag = *f as usize;
-                            let r = match v.value {
-                                Value::Str(r, _) => r,
-                                _ => &Range{start: 0, end: 0}, // FIXME
-                            };
-                            if l.len() <= frag {
-                                l.resize(frag+1, 0..0);
-                                l[frag] = r.clone();
+                        new.push((k.clone(), v.clone()));
+                    }
+                    if let (Some(arch), Some(syscall)) = (arch, syscall) {
+                        if let Some(arch_name) = ARCH_NAMES.get(&(arch.1 as u32)) {
+                            if let Some(syscall_name) = SYSCALL_NAMES.get(arch_name)
+                                .and_then(|syscall_tbl| syscall_tbl.get(&(syscall.1 as u32)))
+                            {
+                                let v = rv.put(syscall_name);
+                                translated.push_front((Key::UpperCaseName(syscall.0), Value::Str(v, Quote::None)));
                             }
-                        }
-                    },
-                    _ => new.push((k.key.clone(), v.value.clone())),
-                };
-            }
-            if self.execve_argv_list {
-                new.push((Key::Literal("ARGV"), Value::List(argv.clone())));
-            }
-            if self.execve_argv_string {
-                new.push((Key::Literal("ARGV_STR"), Value::StringifiedList(argv.clone())));
-            }
-            rv.elems = new;
-        }
-        // Turn "sudo\x00ls\x00-l" into  "ARGV":["sudo","ls","-l"]
-        if let Some(EventValues::Single(rv)) = eb.values.get_mut(&PROCTITLE) {
-            if let Some(v) = rv.get(b"proctitle") {
-                if let Value::Str(r, _) = v.value {
-                    let mut argv: Vec<Value> = Vec::new();
-                    let mut prev = r.start;
-                    for i in r.start ..= r.end {
-                        if (i == r.end || rv.raw[i] == 0) &&
-                            !(prev..i).is_empty()
-                        {
-                            argv.push(Value::Str(prev..i, Quote::None));
-                            prev = i+1;
+                            let v = rv.put(arch_name);
+                            translated.push_front((Key::UpperCaseName(arch.0), Value::Str(v, Quote::None)));
                         }
                     }
-                    rv.elems = vec!((Key::Literal("ARGV"), Value::List(argv)));
-                }
+                    new.push((Key::Literal("ARGV"), Value::List(argv)));
+                    new.extend(translated);
+                    rv.elems = new;
+                },
+                (&EXECVE, EventValues::Single(rv)) => {
+                    let mut new: Vec<(Key, Value)> = Vec::new();
+                    let mut argv: Vec<Value> = Vec::new();
+                    for (k, v) in rv.into_iter() {
+                        match k.key {
+                            Key::ArgLen(_) => continue,
+                            Key::Arg(i, None) => {
+                                let idx = *i as usize;
+                                if argv.len() <= idx {
+                                    argv.resize(idx+1, Value::Empty);
+                                };
+                                argv[idx] = v.value.clone();
+                            },
+                            Key::Arg(i, Some(f)) => {
+                                let idx = *i as usize;
+                                if argv.len() <= idx {
+                                    argv.resize(idx+1, Value::Empty);
+                                    argv[idx] = Value::Segments(Vec::new());
+                                }
+                                if let Some(Value::Segments(l)) = argv.get_mut(idx) {
+                                    let frag = *f as usize;
+                                    let r = match v.value {
+                                        Value::Str(r, _) => r,
+                                        _ => &Range{start: 0, end: 0}, // FIXME
+                                    };
+                                    if l.len() <= frag {
+                                        l.resize(frag+1, 0..0);
+                                        l[frag] = r.clone();
+                                    }
+                                }
+                            },
+                            _ => new.push((k.key.clone(), v.value.clone())),
+                        };
+                    }
+                    if self.execve_argv_list {
+                        new.push((Key::Literal("ARGV"), Value::List(argv.clone())));
+                    }
+                    if self.execve_argv_string {
+                        new.push((Key::Literal("ARGV_STR"), Value::StringifiedList(argv.clone())));
+                    }
+                    rv.elems = new;
+                },
+                (&SOCKADDR, EventValues::Multi(rvs)) => {
+                    for mut rv in rvs {
+                        let mut new = Vec::new();
+                        let mut translated = Vec::new();
+                        for (k,v) in &rv.elems.clone() {
+                            if let (Key::Name(kr),Value::Str(vr, _)) = (k,v) {
+                                let name = &rv.raw[kr.clone()];
+                                match name {
+                                    b"saddr" if self.translate_universal => {
+                                        if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
+                                            translated.push((Key::UpperCaseName(kr.clone()), translate_socketaddr(&mut rv, sa)));
+                                            continue;
+                                        }
+                                    },
+                                    b"SADDR" if self.translate_universal => continue,
+                                    _ => {},
+                                }
+                            }
+                            new.push((k.clone(),v.clone()));
+                        }
+                        new.extend(translated);
+                        rv.elems = new;
+                    }
+                },
+                (&PROCTITLE, EventValues::Single(rv)) => {
+                    if let Some(v) = rv.get(b"proctitle") {
+                        if let Value::Str(r, _) = v.value {
+                            let mut argv: Vec<Value> = Vec::new();
+                            let mut prev = r.start;
+                            for i in r.start ..= r.end {
+                                if (i == r.end || rv.raw[i] == 0) &&
+                                    !(prev..i).is_empty()
+                                {
+                                    argv.push(Value::Str(prev..i, Quote::None));
+                                    prev = i+1;
+                                }
+                            }
+                            rv.elems = vec!((Key::Literal("ARGV"), Value::List(argv)));
+                        }
+                    }
+                },
+                (_, EventValues::Single(rv)) => {
+                    let mut translated = Vec::new();
+                    for (k,v) in &rv.elems.clone() {
+                        if let Some((k,v)) = self.translate_userdb(rv, k, v) {
+                            translated.push((k,v));
+                        }
+                    }
+                    rv.elems.extend(translated);
+                },
+                (_, EventValues::Multi(rvs)) => {
+                    for rv in rvs {
+                        let mut translated = Vec::new();
+                        for (k,v) in &rv.elems.clone() {
+                            if let Some((k,v)) = self.translate_userdb(rv, k, v) {
+                                translated.push((k,v));
+                            }
+                        }
+                        rv.elems.extend(translated);
+                    }
+                },
             }
         }
     }
