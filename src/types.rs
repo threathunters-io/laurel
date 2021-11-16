@@ -80,7 +80,11 @@ impl Serialize for MessageType {
 /// Representation of the key part of key/value pairs in [`Record`]
 #[derive(Debug,PartialEq,Clone)]
 pub enum Key {
+    /// regular ASCII-only name as returned by parser
     Name(Range<usize>),
+    /// regular ASCII-only name, output/serialization in all-caps, for
+    /// translated / "enriched" values
+    UpperCaseName(Range<usize>),
     /// `a0`, `a1`, `a2[0]`, `a2[1]`…
     Arg(u16, Option<u16>),
     /// `a0_len` …
@@ -250,6 +254,11 @@ impl Display for RKey<'_> {
                 let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
                 f.write_str(s)
             },
+            Key::UpperCaseName(r) => {
+                // safety: The peg parser guarantees an ASCII-only key.
+                let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
+                f.write_str(&str::to_uppercase(s))
+            }
             Key::Literal(s) => f.write_str(s),
         }
     }
