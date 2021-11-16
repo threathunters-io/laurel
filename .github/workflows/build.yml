@@ -48,7 +48,8 @@ jobs:
         run: |
           apk add git ca-certificates \
                   rust cargo \
-                  acl-static musl-dev \
+                  clang \
+                  acl-static musl-dev linux-headers \
                   binutils file jq
       - uses: actions/checkout@v2
       - name: Build
