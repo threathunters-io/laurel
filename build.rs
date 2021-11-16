@@ -1,10 +1,12 @@
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path,PathBuf};
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::string::String;
 use std::iter::FromIterator;
+
+extern crate bindgen;
 
 fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
     let mut buf = String::new();
@@ -99,8 +101,21 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
 
     fs::write(&dest_path, &buf)?;
 
+    // sockaddr
+    bindgen::Builder::default()
+        .header("src/sockaddr.h")
+        .rust_target(bindgen::RustTarget::Stable_1_47)
+        .allowlist_type("^sockaddr_.*")
+        .allowlist_var("^AF_.*")
+        .rustfmt_bindings(false)
+        .generate()
+        .expect("unable to generate bindings")
+        .write_to_file(PathBuf::from(env::var("OUT_DIR").unwrap()).join("sockaddr.rs"))
+        .expect("Couldn't write bindings!");
+
     println!("cargo:rerun-if-changed=build.rs"); 
     println!("cargo:rerun-if-changed=const.rs.in"); 
+    println!("cargo:rerun-if-changed=src/sockaddr.h");
     println!("cargo:rerun-if-changed={}", msg_file);
     println!("cargo:rerun-if-changed={}", fields_file);
 

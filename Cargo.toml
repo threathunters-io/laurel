@@ -27,6 +27,10 @@ caps = ">= 0.5"
 libc = ">= 0.2"
 posix-acl = ">= 1"
 
+[build-dependencies]
+bindgen = ">= 0.56"
+# cc = ">= 1"
+
 [dev-dependencies]
 bencher = ">= 0"
 gperftools = ">= 0"
