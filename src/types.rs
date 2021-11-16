@@ -80,7 +80,15 @@ impl Serialize for MessageType {
 /// Representation of the key part of key/value pairs in [`Record`]
 #[derive(Debug,PartialEq,Clone)]
 pub enum Key {
+    /// regular ASCII-only name as returned by parser
     Name(Range<usize>),
+    /// special case for *uid
+    NameUID(Range<usize>),
+    /// special case for *gid
+    NameGID(Range<usize>),
+    /// regular ASCII-only name, output/serialization in all-caps, for
+    /// translated / "enriched" values
+    NameTranslated(Range<usize>),
     /// `a0`, `a1`, `a2[0]`, `a2[1]`…
     Arg(u16, Option<u16>),
     /// `a0_len` …
@@ -168,6 +176,8 @@ impl Record {
         self.elems.extend(other.elems.into_iter().map(|(k,v)| (
             match k {
                 Key::Name(r) => Key::Name(r.offset(rawlen)),
+                Key::NameUID(r) => Key::NameUID(r.offset(rawlen)),
+                Key::NameGID(r) => Key::NameGID(r.offset(rawlen)),
                 _ => k,
             },
             match v {
@@ -241,11 +251,16 @@ impl Display for RKey<'_> {
             Key::Arg(x, Some(y)) => write!(f, "a{}[{}]", x, y),
             Key::Arg(x, None) => write!(f, "a{}", x),
             Key::ArgLen(x) => write!(f, "a{}_len", x),
-            Key::Name(r) => {
+            Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
                 // safety: The peg parser guarantees an ASCII-only key.
                 let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
                 f.write_str(s)
             },
+            Key::NameTranslated(r) => {
+                // safety: The peg parser guarantees an ASCII-only key.
+                let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
+                f.write_str(&str::to_uppercase(s))
+            }
             Key::Literal(s) => f.write_str(s),
         }
     }

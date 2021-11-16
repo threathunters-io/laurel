@@ -30,6 +30,16 @@ execve-argv = [ "array" ]
 
 # execve-argv = [ "array", "string" ]
 
+[translate]
+
+# Perform translations of numeric values that can also be done by
+# auditd if configured with log_format=ENRICHED.
+
+# arch, syscall, sockaddr structures
+universal = false
+# UID, GID values
+user-db = false
+
 [enrich]
 
 # List of environment variables to log for every EXECVE event

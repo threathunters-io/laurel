@@ -39,6 +39,14 @@ pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID,
                         let o = raw.offset(s);
                         Key::Name(o .. o+s.len())
                     },
+                    PKey::NameUID(s) => {
+                        let o = raw.offset(s);
+                        Key::NameUID(o .. o+s.len())
+                    },
+                    PKey::NameGID(s) => {
+                        let o = raw.offset(s);
+                        Key::NameGID(o .. o+s.len())
+                    },
                     PKey::Arg(x,y) => Key::Arg(*x,*y),
                     PKey::ArgLen(x) => Key::ArgLen(*x),
                 },
@@ -145,6 +153,8 @@ fn parse_msgid(input: &[u8]) -> IResult<&[u8], EventID> {
 
 enum PKey<'a> {
     Name(&'a[u8]),
+    NameUID(&'a[u8]),
+    NameGID(&'a[u8]),
     /// `a0`, `a1`, `a2[0]`, `a2[1]`…
     Arg(u16, Option<u16>),
     /// `a0_len` …
@@ -234,7 +244,7 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
         (_, PKey::Name(name)) => {
             match FIELD_TYPES.get(name) {
                 Some(&FieldType::Encoded) =>
-                    alt((parse_encoded, |input | parse_unspec_value (input, ty, name))) (input)?,
+                    alt((parse_encoded, |input| parse_unspec_value (input, ty, name))) (input)?,
                 Some(&FieldType::NumericHex) =>
                     alt((parse_hex, |input| parse_unspec_value(input, ty, name))) (input)?,
                 Some(&FieldType::NumericDec) =>
@@ -244,6 +254,9 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
                 _ => alt((parse_encoded, |input| parse_unspec_value(input, ty, name))) (input)?
                 // FIXME: Some(&FieldType::Numeric)
             }
+        },
+        (_, PKey::NameUID(name)) | (_, PKey::NameGID(name)) => {
+            alt((parse_dec, |input| parse_unspec_value(input, ty, name))) (input)?
         },
         _ => parse_encoded (input)?,
     };
@@ -368,7 +381,15 @@ fn parse_unspec_value<'a>(input: &'a[u8], ty: MessageType, name: &[u8]) -> IResu
 fn parse_key(input: &[u8]) -> IResult<&[u8], PKey> {
     map_res(
         recognize(pair(alpha1, many0(alt((alphanumeric1,is_a("-_")))))),
-        |s| -> Result<_,()> { Ok(PKey::Name(s)) }
+        |s: &[u8]| -> Result<_,()> {
+            if s.ends_with(b"uid") {
+                Ok(PKey::NameUID(s))
+            } else if s.ends_with(b"gid") {
+                Ok(PKey::NameGID(s))
+            } else {
+                Ok(PKey::Name(s))
+            }
+        }
     ) (input)
 }
 
