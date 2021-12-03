@@ -33,7 +33,9 @@ impl Default for Transform {
 #[derive(Debug,Serialize,Deserialize)]
 pub struct Enrich {
     #[serde(rename="execve-env")] #[serde(default)]
-    pub execve_env: HashSet<String>
+    pub execve_env: HashSet<String>,
+    #[serde(rename="silent")] #[serde(default)]
+    pub silent: bool
 }
 
 impl Default for Enrich {
@@ -41,7 +43,8 @@ impl Default for Enrich {
         let mut execve_env = HashSet::new();
         execve_env.insert("LD_PRELOAD".into());
         execve_env.insert("LD_LIBRARY_PATH".into());
-        Enrich { execve_env }
+        let silent = false;
+        Enrich { execve_env, silent }
     }
 }
 
