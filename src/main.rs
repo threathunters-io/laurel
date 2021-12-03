@@ -196,15 +196,13 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     };
 
     if !Uid::effective().is_root() {
-        match is_silent {
-            false => logger.log(&json!({"warning": "Not dropping privileges -- \
-                                        not running as root"})),
-            true => {}
+        if let false = is_silent {
+            logger.log(&json!({"warning": "Not dropping privileges -- \
+                                        not running as root"}))
         }
     } else if runas_user.uid.is_root() {
-        match is_silent {
-            false => logger.log(&json!({"warning": "Not dropping privileges -- no user configured"})),
-            true => {}
+        if let false = is_silent {
+            logger.log(&json!({"warning": "Not dropping privileges -- no user configured"}))
         }
     } else if let Err(e) = drop_privileges(&runas_user) {
         logger.log(&json!({"fatal": e.to_string()}));
@@ -212,16 +210,15 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     }
 
     // Initial setup is done at this point.
-    match is_silent {
-         false => logger.log(&json!({
+    if let false = is_silent {
+        logger.log(&json!({
             "notice": {
                 "program": &args[0],
                 "action": "start",
                 "euid": Uid::effective().as_raw(),
                 "version": env!("CARGO_PKG_VERSION"),
                 "config": &config
-            }})),
-        true => {}
+            }}))
     }
     
     let mut coalesce = Coalesce::default();
@@ -259,9 +256,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         };
     }
 
-    match is_silent {
-        false => logger.log(&json!({"notice": { "program": &args[0], "action": "stop", "stats": &stats }})),
-        true => {}
+    if let false = is_silent {
+        logger.log(&json!({"notice": { "program": &args[0], "action":
+                                             "stop", "stats": &stats }}))
     }
     
     Ok(())
