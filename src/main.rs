@@ -17,7 +17,7 @@ use caps::{Capability, CapSet};
 use caps::securebits::set_keepcaps;
 
 use serde::Serialize;
-use serde_json::{self,json};
+use serde_json;
 
 use laurel::coalesce::Coalesce;
 use laurel::rotate::FileRotate;
@@ -26,7 +26,7 @@ use laurel::config::{ArrayOrString,Config};
 mod syslog {
     use std::ffi::CString;
     use std::mem::forget;
-    use libc::{openlog,syslog,LOG_DAEMON,LOG_WARNING,LOG_CRIT,LOG_PERROR};
+    use libc::{openlog, syslog, LOG_CRIT, LOG_DAEMON, LOG_INFO, LOG_PERROR, LOG_WARNING};
 
     pub fn init(progname: &String) {
         let ident = CString::new(progname.as_str()).unwrap();
@@ -35,21 +35,29 @@ mod syslog {
         // not be dropped.
         forget(ident);
     }
-
+    pub fn log_info(message: &str) {
+        let fs = CString::new("%s").unwrap();
+        let s = CString::new(message).unwrap();
+        unsafe { syslog(LOG_INFO | LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
+    }
     pub fn log_warn(message: &str) {
         let fs = CString::new("%s").unwrap();
         let s = CString::new(message).unwrap();
-        unsafe { syslog(LOG_WARNING|LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
+        unsafe { syslog(LOG_WARNING | LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
     }
-
+    pub fn log_err(message: &str) {
+        let fs = CString::new("%s").unwrap();
+        let s = CString::new(message).unwrap();
+        unsafe { syslog(LOG_PERROR | LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
+    }
     pub fn log_crit(message: &str) {
         let fs = CString::new("%s").unwrap();
         let s = CString::new(message).unwrap();
-        unsafe { syslog(LOG_CRIT|LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
+        unsafe { syslog(LOG_CRIT | LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
     }
 }
 
-use syslog::{log_warn,log_crit};
+use syslog::{log_crit, log_err, log_info, log_warn};
 
 #[derive(Default,Serialize)]
 struct Stats { lines: u64, events: u64, errors: u64 }
@@ -188,24 +196,25 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     };
 
     if !Uid::effective().is_root() {
-        logger.log(&json!({"warning": "Not dropping privileges -- not running as root"}));
+        log_warn("Not dropping privileges -- not running as root");
     } else if runas_user.uid.is_root() {
-        logger.log(&json!({"warning": "Not dropping privileges -- no user configured"}));
+        log_warn("Not dropping privileges -- no user configured");
     } else if let Err(e) = drop_privileges(&runas_user) {
-        logger.log(&json!({"fatal": e.to_string()}));
+        // Logged to syslog by caller
         return Err(e);
     }
 
     // Initial setup is done at this point.
 
-    logger.log(&json!({
-        "notice": {
-            "program": &args[0],
-            "action": "start",
-            "euid": Uid::effective().as_raw(),
-            "version": env!("CARGO_PKG_VERSION"),
-            "config": &config
-        }}));
+    log_info(
+        format!(
+            "Started {} running version {}",
+            &args[0],
+            env!("CARGO_PKG_VERSION")
+        )
+        .as_str(),
+    );
+    log_info(format!("Running with EUID {} using config {}", Uid::effective().as_raw(), &config).as_str());
 
     let mut coalesce = Coalesce::default();
     coalesce.execve_argv_list = config.transform.execve_argv.contains(&ArrayOrString::Array);
@@ -236,13 +245,19 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             Err(e) => {
                 stats.errors += 1;
                 let line = String::from_utf8_lossy(&line);
-                logger.log(&json!({"error": { "message": e.to_string(), "input": &line }}));
+                log_err(format!("Error {} processing msg: {}", e.to_string(), &line).as_str());
                 continue
             }
         };
     }
 
-    logger.log(&json!({"notice": { "program": &args[0], "action": "stop", "stats": &stats }}));
+    log_info(
+        format!(
+            "Stopped {} processed {} lines {} events with {} errors in total",
+            &args[0], &stats.lines, &stats.events, &stats.errors
+        )
+        .as_str(),
+    );
 
     Ok(())
 }
