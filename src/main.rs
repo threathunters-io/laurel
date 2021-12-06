@@ -17,7 +17,7 @@ use caps::{Capability, CapSet};
 use caps::securebits::set_keepcaps;
 
 use serde::Serialize;
-use serde_json::{self};
+use serde_json;
 
 use laurel::coalesce::Coalesce;
 use laurel::rotate::FileRotate;
