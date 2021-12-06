@@ -100,7 +100,6 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let mut opts = Options::new();
     opts.optopt("c", "config", "Configuration file", "FILE");
     opts.optflag("d", "dry-run", "Only parse configuration and exit");
-    opts.optflag("s", "silent", "Suppress laurel's status messages in audit.log");
     opts.optflag("h", "help", "Print short help text and exit");
 
     let matches = opts.parse(&args[1..])?;
@@ -121,13 +120,6 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         },
         None => Config::default(),
     };
-    
-    let is_silent;
-
-    match matches.opt_present("s") {
-        true => is_silent = true,
-        false => is_silent = config.enrich.silent
-    }
 
     let runas_user = match config.user {
         Some(ref username) => User::from_name(username)?
@@ -196,31 +188,25 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     };
 
     if !Uid::effective().is_root() {
-        if let false = is_silent {
-            logger.log(&json!({"warning": "Not dropping privileges -- \
-                                        not running as root"}))
-        }
+        logger.log(&json!({"warning": "Not dropping privileges -- not running as root"}));
     } else if runas_user.uid.is_root() {
-        if let false = is_silent {
-            logger.log(&json!({"warning": "Not dropping privileges -- no user configured"}))
-        }
+        logger.log(&json!({"warning": "Not dropping privileges -- no user configured"}));
     } else if let Err(e) = drop_privileges(&runas_user) {
         logger.log(&json!({"fatal": e.to_string()}));
         return Err(e);
     }
 
     // Initial setup is done at this point.
-    if let false = is_silent {
-        logger.log(&json!({
-            "notice": {
-                "program": &args[0],
-                "action": "start",
-                "euid": Uid::effective().as_raw(),
-                "version": env!("CARGO_PKG_VERSION"),
-                "config": &config
-            }}))
-    }
-    
+
+    logger.log(&json!({
+        "notice": {
+            "program": &args[0],
+            "action": "start",
+            "euid": Uid::effective().as_raw(),
+            "version": env!("CARGO_PKG_VERSION"),
+            "config": &config
+        }}));
+
     let mut coalesce = Coalesce::default();
     coalesce.execve_argv_list = config.transform.execve_argv.contains(&ArrayOrString::Array);
     coalesce.execve_argv_string = config.transform.execve_argv.contains(&ArrayOrString::String);
@@ -256,11 +242,8 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         };
     }
 
-    if let false = is_silent {
-        logger.log(&json!({"notice": { "program": &args[0], "action":
-                                             "stop", "stats": &stats }}))
-    }
-    
+    logger.log(&json!({"notice": { "program": &args[0], "action": "stop", "stats": &stats }}));
+
     Ok(())
 }
 
