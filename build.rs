@@ -39,12 +39,11 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
 
     let buf = template
         .replace("/* @EVENT_CONST@ */",
-                 String::from_iter(
+                 &String::from_iter(
                      constants.iter()
-                         .map(|(name,value)|format!(r#"("{}", {}), "#, name, value)))
-                 .as_str())
+                         .map(|(name,value)|format!(r#"("{}", {}), "#, name, value))))
         .replace("/* @FIELD_TYPES@ */",
-                 String::from_iter(
+                 &String::from_iter(
                      fields.iter()
                          .filter(|(_,typ)| typ == "encoded" || typ.starts_with("numeric"))
                          .map(|(name, typ)| {
@@ -56,13 +55,11 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
                                  "encoded" => format!(r#"("{}", FieldType::Encoded),"#, name),
                                  _ => format!(r#"("{}", FieldType::Invalid),"#, name),
                              }
-                         }))
-                 .as_str())
+                         })))
         .replace("/* @CONSTANTS@ */",
-                 String::from_iter(
+                 &String::from_iter(
                      constants.iter()
-                         .map(|(name,value)|format!("#[allow(dead_code)] pub const {}: MessageType = MessageType({});\n", name, value)))
-                 .as_str())
+                         .map(|(name,value)|format!("#[allow(dead_code)] pub const {}: MessageType = MessageType({});\n", name, value))))
         .into_bytes();
 
     fs::write(&dest_path, &buf)?;

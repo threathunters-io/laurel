@@ -207,14 +207,13 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     // Initial setup is done at this point.
 
     log_info(
-        format!(
+        &format!(
             "Started {} running version {}",
             &args[0],
             env!("CARGO_PKG_VERSION")
         )
-        .as_str(),
     );
-    log_info(format!("Running with EUID {} using config {}", Uid::effective().as_raw(), &config).as_str());
+    log_info(&format!("Running with EUID {} using config {}", Uid::effective().as_raw(), &config));
 
     let mut coalesce = Coalesce::default();
     coalesce.execve_argv_list = config.transform.execve_argv.contains(&ArrayOrString::Array);
@@ -245,18 +244,17 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             Err(e) => {
                 stats.errors += 1;
                 let line = String::from_utf8_lossy(&line);
-                log_err(format!("Error {} processing msg: {}", e.to_string(), &line).as_str());
+                log_err(&format!("Error {} processing msg: {}", e.to_string(), &line));
                 continue
             }
         };
     }
 
     log_info(
-        format!(
+        &format!(
             "Stopped {} processed {} lines {} events with {} errors in total",
             &args[0], &stats.lines, &stats.events, &stats.errors
         )
-        .as_str(),
     );
 
     Ok(())

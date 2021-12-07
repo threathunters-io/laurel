@@ -369,7 +369,7 @@ mod test {
             let mut line = line.unwrap().clone();
             line.push('\n');
             match c.process_line(line.as_bytes().to_vec())
-                .expect(format!("failed to parse {:?}", line).as_str())
+                .expect(&format!("failed to parse {:?}", line))
             {
                 Some(o) => {
                     event = Some(o);
@@ -394,7 +394,7 @@ mod test {
             let mut line = line.unwrap().clone();
             line.push('\n');
             match c.process_line(line.as_bytes().to_vec())
-                .expect(format!("failed to parse {:?}", line).as_str())
+                .expect(&format!("failed to parse {:?}", line))
             {
                 Some(o) => {
                     event = Some(o);
