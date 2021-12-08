@@ -18,6 +18,9 @@ fn measure(bench: &mut Bencher, s: bool) {
 
     bench.iter(|| {
         let mut c = Coalesce::default();
+        c.translate_universal = true;
+        c.translate_userdb = true;
+
         for i in 0 .. 1000 {
             let pid = ppid + 100000 + i;
             let ms = (i / 1000) % 1000;
