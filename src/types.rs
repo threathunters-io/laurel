@@ -17,7 +17,7 @@ use crate::quoted_string::ToQuotedString;
 ///
 /// It consists of a mullisecond-precision timestamp and a sequence
 /// number, thus guaranteeing per-host uniqueness.
-#[derive(Debug,PartialEq,Eq,Hash,Clone,Copy,Default)]
+#[derive(Debug,PartialEq,Eq,PartialOrd,Ord,Hash,Clone,Copy,Default)]
 pub struct EventID {
     pub timestamp: u64,
     pub sequence: u32,

@@ -1,4 +1,4 @@
-use std::collections::{HashMap,HashSet};
+use std::collections::{BTreeMap,HashSet};
 use std::error::Error;
 use std::ops::Range;
 
@@ -86,7 +86,7 @@ impl Serialize for Event {
 #[derive(Debug,Default)]
 pub struct Coalesce {
     /// Events that are being collected/processed
-    inflight: HashMap<(Option<Vec<u8>>, EventID), EventBody>,
+    inflight: BTreeMap<(Option<Vec<u8>>, EventID), EventBody>,
     /// Event IDs that have been recently processed
     done: HashSet<(Option<Vec<u8>>, EventID)>,
     /// Timestamp for next cleanup
