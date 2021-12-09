@@ -12,7 +12,7 @@ keywords = ["linux", "audit", "parser", "log", "json", "security"]
 categories = ["encoding"]
 
 [badges]
-maintencance = { status = "actively-developed" }
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 peg = ">= 0.7"
