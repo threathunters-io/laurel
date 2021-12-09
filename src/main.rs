@@ -243,7 +243,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             Ok(None) => (),
             Err(e) => {
                 stats.errors += 1;
-                let line = String::from_utf8_lossy(&line);
+                let line = String::from_utf8_lossy(&line).replace("\n", "");
                 log_err(&format!("Error {} processing msg: {}", e.to_string(), &line));
                 continue
             }
