@@ -161,7 +161,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
         .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
 
-    let mut logger = match &config.auditlog.file {
+    let logger = match &config.auditlog.file {
         p if p.as_os_str() == "-" => Logger { output: BufWriter::new(Box::new(io::stdout())) },
         p if p.has_root() && p.parent() != None => {
             return Err(format!("invalid file directory={} file={}",
@@ -194,6 +194,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             Logger { output: BufWriter::new(Box::new(rot)) }
         }
     };
+    let logger = std::cell::RefCell::new(logger);
 
     if !Uid::effective().is_root() {
         log_warn("Not dropping privileges -- not running as root");
@@ -215,7 +216,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     );
     log_info(&format!("Running with EUID {} using config {}", Uid::effective().as_raw(), &config));
 
-    let mut coalesce = Coalesce::default();
+    let mut coalesce = Coalesce::new( |e| logger.borrow_mut().log(e) );
     coalesce.execve_argv_list = config.transform.execve_argv.contains(&ArrayOrString::Array);
     coalesce.execve_argv_string = config.transform.execve_argv.contains(&ArrayOrString::String);
     coalesce.execve_env = config.enrich.execve_env.iter()
@@ -223,6 +224,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         .collect();
     coalesce.populate_proc_table()
         .map_err(|e| format!("populate proc table: {}", e))?;
+
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();
 
@@ -236,11 +238,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         }
         stats.lines+=1;
         match coalesce.process_line(line.clone()) {
-            Ok(Some(event)) => {
-                stats.events += 1;
-                logger.log(&event);
-            }
-            Ok(None) => (),
+            Ok(()) => (),
             Err(e) => {
                 stats.errors += 1;
                 let line = String::from_utf8_lossy(&line).replace("\n", "");

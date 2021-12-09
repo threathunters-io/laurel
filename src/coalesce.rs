@@ -48,12 +48,12 @@ impl Serialize for EventValues {
 }
 
 /// The content of an Event, sorted by message types
-#[derive(Debug,Default)]
+#[derive(Clone,Debug,Default)]
 pub struct EventBody {
     values: IndexMap<MessageType,EventValues>,
 }
 
-#[derive(Debug)]
+#[derive(Clone,Debug)]
 pub struct Event {
     node: Option<Vec<u8>>,
     id: EventID,
@@ -83,8 +83,7 @@ impl Serialize for Event {
 }
 
 /// Coalesce collects Audit Records from individual lines and assembles them to Events
-#[derive(Debug,Default)]
-pub struct Coalesce {
+pub struct Coalesce<'a> {
     /// Events that are being collected/processed
     inflight: BTreeMap<(Option<Vec<u8>>, EventID), EventBody>,
     /// Event IDs that have been recently processed
@@ -93,6 +92,8 @@ pub struct Coalesce {
     next_expire: Option<u64>,
     /// process table built from observing process-related events
     processes: ProcTable,
+    /// output function
+    emit_fn: Box<dyn 'a + FnMut(&Event)>,
     /// Generate ARGV and ARGV_STR from EXECVE
     pub execve_argv_list: bool,
     pub execve_argv_string: bool,
@@ -102,7 +103,22 @@ pub struct Coalesce {
 const EXPIRE_PERIOD: u64  = 30_000;
 const EXPIRE_TIMEOUT: u64 = 120_000;
 
-impl Coalesce {
+impl<'a> Coalesce<'a> {
+    /// Creates a `Coalsesce`. `emit_fn` is the function that takes
+    /// completed events.
+    pub fn new<F: 'a + FnMut(&Event)>(emit_fn: F) -> Self {
+        Coalesce {
+            inflight: BTreeMap::new(),
+            done: HashSet::new(),
+            next_expire: None,
+            processes: ProcTable::default(),
+            emit_fn: Box::new(emit_fn),
+            execve_argv_list: true,
+            execve_argv_string: false,
+            execve_env: HashSet::new(),
+        }
+    }
+
     /// Fill shadow process table from system's /proc directory
     pub fn populate_proc_table(&mut self) -> Result<(), Box<dyn Error>> {
         Ok(self.processes = ProcTable::from_proc()?)
@@ -248,18 +264,20 @@ impl Coalesce {
         }
     }
 
+    fn emit_event(&mut self, e: &Event) { (self.emit_fn)(&e) }
+
     /// Ingest a log line and add it to the coalesce object.
     ///
-    /// Simple one-liner events are returned immediately.
+    /// Simple one-liner events are emitted immediately.
     ///
     /// For complex multi-line events (SYSCALL + additional
-    /// information), corresponding records are collected and only the
-    /// Event ID is returned. The entire event is returned only when
-    /// an EOE ("end of event") line for the event is encountered.
+    /// information), corresponding records are collected. The entire
+    /// event is emitted only when an EOE ("end of event") line for
+    /// the event is encountered.
     ///
     /// The line is consumed and serves as backing store for the
     /// EventBody objects.
-    pub fn process_line(&mut self, line: Vec<u8>) -> Result<Option<Event>, Box<dyn Error>> {
+    pub fn process_line(&mut self, line: Vec<u8>) -> Result<(), Box<dyn Error>> {
         let (node, typ, id, rv) = parse(line)?;
         let nid = (node.clone(), id);
         match self.next_expire {
@@ -279,7 +297,6 @@ impl Coalesce {
                 eb.values.insert(typ, EventValues::Single(rv));
                 self.augment_syscall(&mut eb);
                 self.inflight.insert(nid, eb);
-                return Ok(None);
             },
             EOE => {
                 if self.done.contains(&nid) {
@@ -308,7 +325,7 @@ impl Coalesce {
                     }
                     _ => (),
                 };
-                return Ok(Some(Event{node, id, body: eb}));
+                self.emit_event(&Event{node, id, body: eb});
             },
             _ => {
                 if let Some(eb) = self.inflight.get_mut(&nid) {
@@ -324,15 +341,15 @@ impl Coalesce {
                             },
                         }
                     };
-                    Ok(None)
                 } else {
                     self.done.insert(nid);
                     let mut values = IndexMap::new();
                     values.insert(typ, EventValues::Single(rv));
-                    Ok(Some(Event{node, id, body: EventBody{values}}))
+                    self.emit_event(&Event{node, id, body: EventBody{values}});
                 }
             },
-        }
+        };
+        Ok(())
     }
 }
 
@@ -340,61 +357,55 @@ impl Coalesce {
 mod test {
     use super::*;
     use std::io::{BufReader,BufRead};
+    use std::borrow::Borrow;
 
     #[test]
-    fn coalesce() -> Result<(), String> {
-        let mut c = Coalesce { execve_argv_list: true, ..Coalesce::default() };
+    fn coalesce() -> Result<(), Box<dyn Error>> {
+        let mut ec: Option<Event> = None;
 
-        match c.process_line(
-            Vec::from(*include_bytes!("testdata/line-user-acct.txt"))
-        ).unwrap() {
-            None => panic!("failed to emit event body"),
-            Some(eb) => println!("got {:?}", eb),
-        };
+        {
+            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+            c.process_line(Vec::from(*include_bytes!("testdata/line-user-acct.txt")))?;
+        }
+        assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615113648981, sequence: 15220});
 
-        let mut event = None;
-        for line in BufReader::new(include_bytes!("testdata/record-execve.txt").as_ref()).lines() {
-            let mut line = line.unwrap().clone();
-            line.push('\n');
-            match c.process_line(line.as_bytes().to_vec())
-                .expect(&format!("failed to parse {:?}", line))
-            {
-                Some(o) => {
-                    event = Some(o);
-                    break;
-                }
-                None => (),
+        {
+            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+            for line in BufReader::new(include_bytes!("testdata/record-execve.txt").as_ref()).lines() {
+                let mut line = line.unwrap().clone();
+                line.push('\n');
+                c.process_line(line.as_bytes().to_vec())?;
             }
         }
-        match event {
-            None => panic!("failed to emit event bodyr"),
-            Some(eb) => println!("got {:?}", eb),
-        };
+        assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
+
+        {
+            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+            for line in BufReader::new(include_bytes!("testdata/record-execve.txt").as_ref()).lines() {
+                let mut line = line.unwrap().clone();
+                line.push('\n');
+                c.process_line(line.as_bytes().to_vec())?;
+            }
+        }
+        assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
+
         Ok(())
     }
 
     #[test]
-    fn coalesce_long() -> Result<(), String> {
-        let mut c = Coalesce { execve_argv_list: true, ..Coalesce::default() };
+    fn coalesce_long() -> Result<(), Box<dyn Error>> {
+        let mut ec: Option<Event> = None;
 
-        let mut event = None;
-        for line in BufReader::new(include_bytes!("testdata/record-execve-long.txt").as_ref()).lines() {
-            let mut line = line.unwrap().clone();
-            line.push('\n');
-            match c.process_line(line.as_bytes().to_vec())
-                .expect(&format!("failed to parse {:?}", line))
-            {
-                Some(o) => {
-                    event = Some(o);
-                    break;
-                }
-                None => (),
+        {
+            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+            for line in BufReader::new(include_bytes!("testdata/record-execve-long.txt").as_ref()).lines() {
+                let mut line = line.unwrap().clone();
+                line.push('\n');
+                c.process_line(line.as_bytes().to_vec())?;
             }
         }
-        match event {
-            None => panic!("failed to emit event bodyr"),
-            Some(eb) => println!("got {:?}", eb),
-        };
+        assert_eq!(ec.unwrap().id, EventID{ timestamp: 1615150974493, sequence: 21028});
+
         Ok(())
     }
 }

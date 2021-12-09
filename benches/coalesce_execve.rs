@@ -17,7 +17,11 @@ fn measure(bench: &mut Bencher, s: bool) {
     let mut sink = std::io::sink();
 
     bench.iter(|| {
-        let mut c = Coalesce::default();
+        let mut c = if s {
+            Coalesce::new( |msg| { serde_json::to_writer(&mut sink, &msg).unwrap() } )
+        } else {
+            Coalesce::new( |_| {} )
+        };
         for i in 0 .. 1000 {
             let pid = ppid + 100000 + i;
             let ms = (i / 1000) % 1000;
@@ -38,11 +42,7 @@ fn measure(bench: &mut Bencher, s: bool) {
                 format!(r#"node=asdfghjk type=EOE msg=audit(1615114232.{:03}:{:03}): 
 "#, ms, seq),
             ] {
-                if let Some(msg) = c.process_line(Vec::from(line.as_bytes())).unwrap() {
-                    if s {
-                        serde_json::to_writer(&mut sink, &msg).unwrap();
-                    }
-                }
+                c.process_line(Vec::from(line.as_bytes())).unwrap();
             }
         }
     });
