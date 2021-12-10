@@ -111,7 +111,7 @@ impl Coalesce {
     /// Cleans up stale "done" entries
     fn expire_done(&mut self, now: u64) {
         let node_ids = self.done.iter()
-            .filter(|(_, id)| id.timestamp + EXPIRE_TIMEOUT > now)
+            .filter(|(_, id)| id.timestamp + EXPIRE_TIMEOUT < now)
             .cloned()
             .collect::<Vec<_>>();
         for node_id in node_ids {
