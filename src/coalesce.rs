@@ -100,8 +100,9 @@ pub struct Coalesce<'a> {
     pub execve_env: HashSet<Vec<u8>>,
 }
 
-const EXPIRE_PERIOD: u64  = 30_000;
-const EXPIRE_TIMEOUT: u64 = 120_000;
+const EXPIRE_PERIOD: u64  = 1_000;
+const EXPIRE_INFLIGHT_TIMEOUT: u64 = 5_000;
+const EXPIRE_DONE_TIMEOUT: u64 = 120_000;
 
 impl<'a> Coalesce<'a> {
     /// Creates a `Coalsesce`. `emit_fn` is the function that takes
@@ -124,16 +125,29 @@ impl<'a> Coalesce<'a> {
         Ok(self.processes = ProcTable::from_proc()?)
     }
 
-    /// Cleans up stale "done" entries
+    /// Flush out events
+    ///
+    /// Called every EXPIRE_PERIOD ms and when Coalesce is destroyed.
+    fn expire_inflight(&mut self, now: u64) {
+        let node_ids = self.inflight.keys()
+            .filter( |(_, id)| id.timestamp + EXPIRE_INFLIGHT_TIMEOUT < now )
+            .cloned()
+            .collect::<Vec<_>>();
+        for (node, id) in node_ids {
+            if let Some(body) = self.inflight.remove(&(node.clone(), id)) {
+                self.emit_event(&mut Event{node, id, body});
+            }
+        }
+    }
+
     fn expire_done(&mut self, now: u64) {
         let node_ids = self.done.iter()
-            .filter(|(_, id)| id.timestamp + EXPIRE_TIMEOUT < now)
+            .filter(| (_, id)| id.timestamp + EXPIRE_DONE_TIMEOUT < now )
             .cloned()
             .collect::<Vec<_>>();
         for node_id in node_ids {
             self.done.remove(&node_id);
         }
-        self.next_expire = Some(now + EXPIRE_PERIOD);
     }
 
     /// Rewrite EventBody to normal form
@@ -144,7 +158,7 @@ impl<'a> Coalesce<'a> {
     /// - turns PROCTITLE/proctitle into a (abbreviated) ARGV list
     fn normalize_eventbody(&self, eb: &mut EventBody) {
         if let Some(EventValues::Single(rv)) = eb.values.get_mut(&SYSCALL) {
-            let mut new: Vec<(Key, Value)> = Vec::with_capacity(rv.elems.len() - 3);
+            let mut new: Vec<(Key, Value)> = Vec::with_capacity(rv.elems.len());
             let mut argv: Vec<Value> = Vec::with_capacity(4 as usize);
             for item in 0..4 {
                 if let Some(v) = rv.get(format!("a{}", item).as_bytes()) {
@@ -264,7 +278,35 @@ impl<'a> Coalesce<'a> {
         }
     }
 
-    fn emit_event(&mut self, e: &Event) { (self.emit_fn)(&e) }
+    /// Do bookkeeping on event, transform, emit it via the provided
+    /// output function.
+    fn emit_event(&mut self, e: &mut Event) {
+        self.done.insert((e.node.clone(), e.id));
+
+        self.normalize_eventbody(&mut e.body);
+
+        let mut pid = None;
+        if let Some(EventValues::Single(ref syscall)) = e.body.values.get(&SYSCALL) {
+            #[allow(unused_must_use)]
+            if let Some(EventValues::Single(ref execve)) = e.body.values.get(&EXECVE) {
+                self.processes.add_execve(&e.id, &syscall, &execve);
+            }
+            if let Some(v) = syscall.get(b"pid") {
+                if let Value::Number(Number::Dec(p)) = v.value {
+                    pid = Some(*p);
+                }
+            }
+        }
+
+        match (pid, e.body.values.get_mut(&EXECVE)) {
+            (Some(pid), Some(EventValues::Single(ref mut execve))) =>  {
+                self.augment_execve_env(execve, pid);
+            }
+            _ => (),
+        };
+
+        (self.emit_fn)(&e)
+    }
 
     /// Ingest a log line and add it to the coalesce object.
     ///
@@ -280,52 +322,36 @@ impl<'a> Coalesce<'a> {
     pub fn process_line(&mut self, line: Vec<u8>) -> Result<(), Box<dyn Error>> {
         let (node, typ, id, rv) = parse(line)?;
         let nid = (node.clone(), id);
+
+        // clean out state every EXPIRE_PERIOD
         match self.next_expire {
             Some(t) if t < id.timestamp => {
+                self.expire_inflight(id.timestamp);
                 self.expire_done(id.timestamp);
                 self.processes.expire();
+                self.next_expire = Some(id.timestamp + EXPIRE_PERIOD)
             },
             None => self.next_expire = Some(id.timestamp + EXPIRE_PERIOD),
             _ => (),
         };
+
         match typ {
             SYSCALL => {
                 if self.inflight.contains_key(&nid) {
                     return Err(format!("duplicate SYSCALL for id {}", id).into());
                 }
-                let mut eb = EventBody::default();
-                eb.values.insert(typ, EventValues::Single(rv));
-                self.augment_syscall(&mut eb);
-                self.inflight.insert(nid, eb);
+                let mut body = EventBody::default();
+                body.values.insert(typ, EventValues::Single(rv));
+                self.augment_syscall(&mut body);
+                self.inflight.insert(nid, body);
             },
             EOE => {
                 if self.done.contains(&nid) {
-                    return Err(format!("duplicate EOE for id {}", id).into());
+                    return Err(format!("duplicate event id {}", id).into());
                 }
-                self.done.insert(nid.clone());
-                let mut eb = self.inflight.remove(&nid)
-                    .ok_or(format!("Event {} for EOE marker not found", &id))?;
-                self.normalize_eventbody(&mut eb);
-
-                let mut pid = None;
-                if let Some(EventValues::Single(ref syscall)) = eb.values.get(&SYSCALL) {
-                    #[allow(unused_must_use)]
-                    if let Some(EventValues::Single(ref execve)) = eb.values.get(&EXECVE) {
-                        self.processes.add_execve(&id, &syscall, &execve);
-                    }
-                    if let Some(v) = syscall.get(b"pid") {
-                        if let Value::Number(Number::Dec(p)) = v.value {
-                            pid = Some(*p);
-                        }
-                    }
-                };
-                match (pid, eb.values.get_mut(&EXECVE)) {
-                    (Some(pid), Some(EventValues::Single(ref mut execve))) =>  {
-                        self.augment_execve_env(execve, pid);
-                    }
-                    _ => (),
-                };
-                self.emit_event(&Event{node, id, body: eb});
+                let body = self.inflight.remove(&nid)
+                    .ok_or(format!("Event id {} for EOE marker not found", &id))?;
+                self.emit_event(&mut Event{node, id, body});
             },
             _ => {
                 if let Some(eb) = self.inflight.get_mut(&nid) {
@@ -342,15 +368,21 @@ impl<'a> Coalesce<'a> {
                         }
                     };
                 } else {
-                    self.done.insert(nid);
+                    if self.done.contains(&nid) {
+                        return Err(format!("duplicate event id {}", id).into());
+                    }
                     let mut values = IndexMap::new();
                     values.insert(typ, EventValues::Single(rv));
-                    self.emit_event(&Event{node, id, body: EventBody{values}});
+                    self.emit_event(&mut Event{node, id, body: EventBody{values}});
                 }
             },
         };
         Ok(())
     }
+}
+
+impl Drop for Coalesce<'_> {
+    fn drop(&mut self) { self.expire_inflight(u64::MAX) }
 }
 
 #[cfg(test)]
