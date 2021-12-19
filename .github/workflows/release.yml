@@ -31,7 +31,7 @@ jobs:
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
       - name: build tarball
         run: |
-          ln target/x86_64-alpine-linux-musl/release/laurel .
+          ln target/release/laurel .
           tar -czf laurel.tar.gz laurel *.md
       - name: Create release
         id: create_release
