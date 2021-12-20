@@ -116,18 +116,18 @@ fn parse_type(input: &[u8]) -> IResult<&[u8], MessageType> {
         tag("type="),
         alt((
             map_res(
-                delimited(tag("UNKNOWN["),
-                          recognize(many1(is_a("0123456789"))),
-                          tag("]")),
-                |s| str::from_utf8(s).unwrap().
-                    parse::<u32>().
-                    and_then(|n|Ok(MessageType(n)))),
-            map_res(
-                is_not(" \t\r\n"),
+                recognize(many1(alt((alphanumeric1,tag("_"))))),
                 |s| EVENT_IDS.get(s)
                     .ok_or(format!("unknown event id {}",
                                    String::from_utf8_lossy(s)))
-                    .and_then(|n|Ok(MessageType(*n))))
+                    .and_then(|n|Ok(MessageType(*n)))),
+            map_res(
+                delimited(tag("UNKNOWN["),
+                          recognize(many1(is_a("0123456789"))),
+                          tag("]")),
+                |s| str::from_utf8(s).unwrap()
+                    .parse::<u32>()
+                    .and_then(|n|Ok(MessageType(n))))
         )) ) (input)
 }
 
