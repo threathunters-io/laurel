@@ -26,7 +26,7 @@ use laurel::config::{ArrayOrString,Config};
 mod syslog {
     use std::ffi::CString;
     use std::mem::forget;
-    use libc::{openlog, syslog, LOG_CRIT, LOG_DAEMON, LOG_INFO, LOG_PERROR, LOG_WARNING};
+    use libc::{openlog,syslog,LOG_PERROR,LOG_DAEMON,LOG_INFO,LOG_WARNING,LOG_ERR,LOG_CRIT};
 
     pub fn init(progname: &String) {
         let ident = CString::new(progname.as_str()).unwrap();
@@ -48,7 +48,7 @@ mod syslog {
     pub fn log_err(message: &str) {
         let fs = CString::new("%s").unwrap();
         let s = CString::new(message).unwrap();
-        unsafe { syslog(LOG_PERROR | LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
+        unsafe { syslog(LOG_ERR | LOG_DAEMON, fs.as_ptr(), s.as_ptr()) };
     }
     pub fn log_crit(message: &str) {
         let fs = CString::new("%s").unwrap();
