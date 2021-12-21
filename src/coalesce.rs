@@ -639,6 +639,12 @@ mod test {
             process_record(&mut c, include_bytes!("testdata/record-adjntpval.txt").as_ref())?;
         }
 
+        // record does not begin with SYSCALL.
+        {
+            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+            process_record(&mut c, include_bytes!("testdata/record-avc-apparmor.txt").as_ref())?;
+        }
+
         Ok(())
     }
 
