@@ -459,35 +459,6 @@ impl<'a> Coalesce<'a> {
         }
     }
 
-    /// Augment event with information from shadow process table
-    fn augment_syscall(&mut self, eb: &mut EventBody) {
-        let sc = match eb.values.get(&SYSCALL) {
-            Some(EventValues::Single(r)) => r,
-            _ => return,
-        };
-        if let Some(v) = sc.get(b"ppid") {
-            if let Value::Number(Number::Dec(ppid)) = v.value {
-                if let Some(p) = self.processes.get_process(*ppid) {
-                    let mut pi = Record::default();
-                    let vs = p.argv.iter()
-                        .map(|v| Value::Str(pi.put(v), Quote::None))
-                        .collect::<Vec<_>>();
-                    if self.execve_argv_string {
-                        let k = Key::Name(pi.put(b"ARGV_STR"));
-                        pi.elems.push((k, Value::StringifiedList(vs.clone())));
-                    }
-                    if self.execve_argv_list {
-                        let k = Key::Name(pi.put(b"ARGV"));
-                        pi.elems.push((k, Value::List(vs)));
-                    }
-                    let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid)));
-                    pi.elems.push(kv);
-                    eb.values.insert(PARENT_INFO, EventValues::Single(pi));
-                }
-            }
-        }
-    }
-
     /// Do bookkeeping on event, transform, emit it via the provided
     /// output function.
     fn emit_event(&mut self, e: &mut Event) {
@@ -545,50 +516,74 @@ impl<'a> Coalesce<'a> {
             _ => (),
         };
 
-        match typ {
-            SYSCALL => {
-                if self.inflight.contains_key(&nid) {
-                    return Err(format!("duplicate SYSCALL for id {}", id).into());
-                }
-                let mut body = EventBody::default();
-                body.values.insert(typ, EventValues::Single(rv));
-                self.augment_syscall(&mut body);
-                self.inflight.insert(nid, body);
-            },
-            EOE => {
-                if self.done.contains(&nid) {
-                    return Err(format!("duplicate event id {}", id).into());
-                }
-                let body = self.inflight.remove(&nid)
-                    .ok_or(format!("Event id {} for EOE marker not found", &id))?;
-                self.emit_event(&mut Event{node, id, body});
-            },
-            _ => {
-                if let Some(eb) = self.inflight.get_mut(&nid) {
-                    match eb.values.get_mut(&typ) {
-                        Some(EventValues::Single(v)) => v.extend(rv),
-                        Some(EventValues::Multi(v)) => v.push(rv),
-                        None => match typ {
-                            EXECVE | PROCTITLE | CWD => {
-                                eb.values.insert(typ, EventValues::Single(rv));
-                            },
-                            _ => {
-                                eb.values.insert(typ, EventValues::Multi(vec!(rv)));
-                            },
+        if typ == EOE {
+            if self.done.contains(&nid) {
+                return Err(format!("duplicate event id {}", id).into());
+            }
+            let body = self.inflight.remove(&nid)
+                .ok_or(format!("Event id {} for EOE marker not found", &id))?;
+            self.emit_event(&mut Event{node, id, body});
+        } else if typ.is_multipart() {
+            // kernel-level messages
+            if !self.inflight.contains_key(&nid) {
+                self.inflight.insert(nid.clone(), EventBody::default());
+            }
+            let body = self.inflight.get_mut(&nid).unwrap();
+            match body.values.get_mut(&typ) {
+                Some(EventValues::Single(v)) => v.extend(rv),
+                Some(EventValues::Multi(v)) => v.push(rv),
+                None => match typ {
+                    SYSCALL => {
+                        let pi = get_parent_info(&mut self.processes, &rv, self.execve_argv_list, self.execve_argv_string);
+                        body.values.insert(typ, EventValues::Single(rv));
+                        if let Some(pi) = pi {
+                            body.values.insert(PARENT_INFO, EventValues::Single(pi));
                         }
-                    };
-                } else {
-                    if self.done.contains(&nid) {
-                        return Err(format!("duplicate event id {}", id).into());
-                    }
-                    let mut values = IndexMap::new();
-                    values.insert(typ, EventValues::Single(rv));
-                    self.emit_event(&mut Event{node, id, body: EventBody{values}});
+                    },
+                    EXECVE | PROCTITLE | CWD => {
+                        body.values.insert(typ, EventValues::Single(rv));
+                    },
+                    _ => {
+                        body.values.insert(typ, EventValues::Multi(vec!(rv)));
+                    },
                 }
-            },
-        };
+            };
+        } else {
+            // user-space messages
+            if self.done.contains(&nid) {
+                return Err(format!("duplicate event id {}", id).into());
+            }
+            let mut values = IndexMap::new();
+            values.insert(typ, EventValues::Single(rv));
+            self.emit_event(&mut Event{node, id, body: EventBody{values}});
+        }
         Ok(())
     }
+}
+
+fn get_parent_info(pt: &mut ProcTable, rv: &Record, do_list: bool, do_string: bool) -> Option<Record> {
+    if let Some(v) = rv.get(b"ppid") {
+        if let Value::Number(Number::Dec(ppid)) = v.value {
+            if let Some(p) = pt.get_process(*ppid) {
+                let mut pi = Record::default();
+                let vs = p.argv.iter()
+                    .map(|v| Value::Str(pi.put(v), Quote::None))
+                    .collect::<Vec<_>>();
+                if do_string {
+                    let k = Key::Name(pi.put(b"ARGV_STR"));
+                    pi.elems.push((k, Value::StringifiedList(vs.clone())));
+                }
+                if do_list {
+                    let k = Key::Name(pi.put(b"ARGV"));
+                    pi.elems.push((k, Value::List(vs)));
+                }
+                let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid)));
+                pi.elems.push(kv);
+                return Some(pi);
+            }
+        }
+    }
+    return None;
 }
 
 impl Drop for Coalesce<'_> {
