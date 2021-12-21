@@ -601,6 +601,15 @@ mod test {
     use std::io::{BufReader,BufRead};
     use std::borrow::Borrow;
 
+    fn process_record(c: &mut Coalesce, text: &[u8]) -> Result<(),Box<dyn Error>> {
+        for line in BufReader::new(text).lines() {
+            let mut line = line.unwrap().clone();
+            line.push('\n');
+            c.process_line(line.as_bytes().to_vec())?;
+        }
+        Ok(())
+    }
+
     #[test]
     fn coalesce() -> Result<(), Box<dyn Error>> {
         let mut ec: Option<Event> = None;
@@ -613,21 +622,13 @@ mod test {
 
         {
             let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            for line in BufReader::new(include_bytes!("testdata/record-execve.txt").as_ref()).lines() {
-                let mut line = line.unwrap().clone();
-                line.push('\n');
-                c.process_line(line.as_bytes().to_vec())?;
-            }
+            process_record(&mut c, include_bytes!("testdata/record-execve.txt").as_ref())?;
         }
         assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
 
         {
             let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            for line in BufReader::new(include_bytes!("testdata/record-execve.txt").as_ref()).lines() {
-                let mut line = line.unwrap().clone();
-                line.push('\n');
-                c.process_line(line.as_bytes().to_vec())?;
-            }
+            process_record(&mut c, include_bytes!("testdata/record-execve.txt").as_ref())?;
         }
         assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
 
@@ -640,11 +641,7 @@ mod test {
 
         {
             let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            for line in BufReader::new(include_bytes!("testdata/record-execve-long.txt").as_ref()).lines() {
-                let mut line = line.unwrap().clone();
-                line.push('\n');
-                c.process_line(line.as_bytes().to_vec())?;
-            }
+            process_record(&mut c, include_bytes!("testdata/record-execve-long.txt").as_ref())?;
         }
         assert_eq!(ec.unwrap().id, EventID{ timestamp: 1615150974493, sequence: 21028});
 
