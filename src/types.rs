@@ -77,6 +77,19 @@ impl Serialize for MessageType {
     }
 }
 
+impl MessageType {
+    /// True for messages that are part of multi-part events from
+    /// kernel-space.
+    ///
+    /// This mimics auparse logic as of version 3.0.6
+    pub fn is_multipart(&self) -> bool {
+        (1300..1406).contains(&self.0) ||
+            (1420..2000).contains(&self.0) ||
+            (2001..2100).contains(&self.0) ||
+            self.0 == 1006
+    }
+}
+
 /// Representation of the key part of key/value pairs in [`Record`]
 #[derive(Debug,PartialEq,Clone)]
 pub enum Key {
