@@ -271,7 +271,7 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
 fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
     alt((
         map_res(
-            delimited(tag("\""), take_while1(is_safe_chr), tag("\"")),
+            delimited(tag("\""), take_while(is_safe_chr), tag("\"")),
             |s| -> Result<_,()> {
                 Ok(PValue::Str(s, Quote::Double))
             }
