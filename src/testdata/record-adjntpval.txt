@@ -1,0 +1,3 @@
+type=TIME_ADJNTPVAL msg=audit(1640024915.264:4237): op=freq old=-37201248256000 new=-37237817344000
+type=SYSCALL msg=audit(1640024915.264:4237): arch=c000003e syscall=159 success=yes exit=0 a0=7ffeaf991370 a1=0 a2=2710 a3=0 items=0 ppid=1 pid=820 auid=4294967295 uid=995 gid=991 euid=995 suid=995 fsuid=995 egid=991 sgid=991 fsgid=991 tty=(none) ses=4294967295 comm="chronyd" exe="/usr/sbin/chronyd" subj=system_u:system_r:chronyd_t:s0 key=(null)ARCH=x86_64 SYSCALL=adjtimex AUID="unset" UID="chrony" GID="chrony" EUID="chrony" SUID="chrony" FSUID="chrony" EGID="chrony" SGID="chrony" FSGID="chrony"
+type=EOE msg=audit(1640024915.264:4237): 
