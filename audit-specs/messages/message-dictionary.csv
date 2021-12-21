@@ -101,7 +101,11 @@ AUDIT_FANOTIFY,1331,KERN,SC,Fanotify access decision
 AUDIT_TIME_INJOFFSET,1332,KERN,SC,Timekeeping offset injected
 AUDIT_TIME_ADJNTPVAL,1333,KERN,SC,NTP value adjustment
 AUDIT_BPF,1334,KERN,SC,BPF load/unload
-AUDIT_EVENT_LISTENER,1335,SC,audit mcast sock join/part
+AUDIT_EVENT_LISTENER,1335,KERN,SC,audit mcast sock join/part
+AUDIT_URINGOP,1336,KERN,SC,io_uring operation
+AUDIT_OPENAT2,1337,KERN,SC,Record showing openat2 how args
+AUDIT_DM_CTRL,1338,KERN,SC,Device Mapper target control
+AUDIT_DM_EVENT,1339,KERN,SC,Device Mapper events
 AUDIT_AVC,1400,KERN,SC,SELinux AVC (Access Vector Cache) denial or grant
 AUDIT_SELINUX_ERR,1401,KERN,SC,Internal SELinux errors
 AUDIT_AVC_PATH,1402,KERN,SC,"dentry, vfsmount pair from AVC"
