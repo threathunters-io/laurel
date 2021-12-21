@@ -1,0 +1,1 @@
+type=DAEMON_END msg=audit(1640080836.094:7063): op=terminate auid=0 pid=27347 subj= res=successAUID="root"

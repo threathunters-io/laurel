@@ -373,6 +373,10 @@ fn parse_unspec_value<'a>(input: &'a[u8], ty: MessageType, name: &[u8]) -> IResu
             delimited(tag("{"), take_while(|c| c != b'}'), tag("}")),
             |s| -> Result<_,()> { Ok(PValue::Str(s, Quote::Braces)) }
         ),
+        map_res(
+            peek(take_while1(is_sep)),
+            |_| -> Result<_,()> { Ok(PValue::Empty) }
+        ),
     )) (input)
 }
 
@@ -693,6 +697,8 @@ mod test {
                        "pid: Num:<3981295>",
                        "comm: Str:<apparmor_parser>",
                    ));
+
+        let (_n, _t, _id, _rv) = parse(Vec::from(include_bytes!("testdata/line-daemon-end.txt").as_ref()))?;
 
         Ok(())
     }
