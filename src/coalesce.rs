@@ -632,6 +632,18 @@ mod test {
         }
         assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
 
+        // record does not begin with SYSCALL.
+        {
+            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+            process_record(&mut c, include_bytes!("testdata/record-login.txt").as_ref())?;
+        }
+
+        // record does not begin with SYSCALL.
+        {
+            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+            process_record(&mut c, include_bytes!("testdata/record-adjntpval.txt").as_ref())?;
+        }
+
         Ok(())
     }
 

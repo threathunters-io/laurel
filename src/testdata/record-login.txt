@@ -1,0 +1,3 @@
+type=LOGIN msg=audit(1640027821.949:151316): pid=72605 uid=0 subj=unconfined old-auid=4294967295 auid=0 tty=(none) old-ses=4294967295 ses=325 res=1UID="root" OLD-AUID="unset" AUID="root"
+type=SYSCALL msg=audit(1640027821.949:151316): arch=c00000b7 syscall=64 success=yes exit=1 a0=7 a1=ffffe505f9e0 a2=1 a3=ffff90795f10 items=0 ppid=519 pid=72605 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=325 comm="cron" exe="/usr/sbin/cron" subj=unconfined key=(null)ARCH=aarch64 SYSCALL=write AUID="root" UID="root" GID="root" EUID="root" SUID="root" FSUID="root" EGID="root" SGID="root" FSGID="root"
+type=EOE msg=audit(1640027821.949:151316): 
