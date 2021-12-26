@@ -1,5 +1,7 @@
 # LAUREL: Linux Audit – Usable, Robust, Easy Logging
 
+[![Build Status](https://github.com/threathunters-io/laurel/actions/workflows/build.yml/badge.svg)](https://github.com/threathunters-io/laurel/actions/workflows/build.yml)
+
 LAUREL is an event post-processing plugin for _auditd(8)_ to improve its usability in modern security monitoring setups.
 
 ## Why?
