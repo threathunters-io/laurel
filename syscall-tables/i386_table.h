@@ -459,4 +459,6 @@ _S(444, "landlock_create_ruleset")
 _S(445, "landlock_add_rule")
 _S(446, "landlock_restrict_self")
 _S(447, "memfd_secret")
+_S(448, "process_mrelease")
+_S(449, "futex_waitv")
 

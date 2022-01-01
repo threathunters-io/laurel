@@ -443,4 +443,6 @@ _S(443, "quotactl_fd")
 _S(444, "landlock_create_ruleset")
 _S(445, "landlock_add_rule")
 _S(446, "landlock_restrict_self")
+_S(448, "process_mrelease")
+_S(449, "futex_waitv")
 
