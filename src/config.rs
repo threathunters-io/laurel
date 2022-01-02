@@ -53,6 +53,14 @@ impl Default for Enrich {
 }
 
 #[derive(Default,Debug,Serialize,Deserialize)]
+pub struct LabelProcess {
+    #[serde(rename="label-keys")]
+    pub label_keys: HashSet<String>,
+    #[serde(rename="propagate-labels")]
+    pub propagate_labels: HashSet<String>,
+}
+
+#[derive(Default,Debug,Serialize,Deserialize)]
 pub struct Filter {}
 
 #[derive(Debug,Serialize,Deserialize)]
@@ -67,6 +75,8 @@ pub struct Config {
     pub translate: Translate,
     #[serde(default)]
     pub enrich: Enrich,
+    #[serde(default,rename="label-process")]
+    pub label_process: LabelProcess,
     #[serde(default)]
     pub filter: Filter,
 }
@@ -86,6 +96,7 @@ impl Default for Config {
             transform: Transform::default(),
             translate: Translate::default(),
             enrich: Enrich::default(),
+            label_process: LabelProcess::default(),
             filter: Filter::default(),
         }
     }

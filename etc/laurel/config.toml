@@ -45,3 +45,12 @@ user-db = false
 
 # List of environment variables to log for every EXECVE event
 execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
+
+[label-process]
+
+# Processes pereforming operations that result in audit records with
+# these attached keys will get all subsequent actions labelled by
+# LAUREL:
+label-keys = [ "software_mgmt" ]
+# Subprocesses inherit these keys from their parent.
+propagate-labels = [ "software_mgmt" ]
