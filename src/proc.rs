@@ -6,7 +6,7 @@ use std::convert::TryInto;
 use std::iter::Iterator;
 use std::path::Path;
 use std::vec::Vec;
-use std::collections::{BTreeMap,BTreeSet};
+use std::collections::{BTreeMap,HashSet};
 
 use lazy_static::lazy_static;
 use nix::unistd::{sysconf,SysconfVar};
@@ -28,7 +28,8 @@ pub struct Process {
     /// parent process id
     pub ppid: u32,
     /// command line
-    pub argv: Vec<Vec<u8>>
+    pub argv: Vec<Vec<u8>>,
+    pub labels: HashSet<Vec<u8>>,
 }
 
 impl Process {
@@ -71,7 +72,8 @@ impl Process {
             (lt.tv_sec() * 1000 + lt.tv_nsec() / 1_000_000) as u64
         };
 
-        Ok(Process{launch_time, ppid, argv})
+        let labels = HashSet::new();
+        Ok(Process{launch_time, ppid, argv, labels})
     }
 
     /// Use a processed EXECVE event to generate a shadow process table entry
@@ -139,7 +141,9 @@ impl ProcTable {
 
     /// Adds a Process to the process table
     pub fn add_process(&mut self, pid: u32, ppid: u32, launch_time: u64, argv: Vec<Vec<u8>>) {
-        self.processes.insert(pid, Process{launch_time, ppid, argv});
+        self.processes.insert(
+            pid,
+            Process{launch_time, ppid, argv, labels: HashSet::new()});
     }
 
     /// Retrieves a process by pid. If the process is not found in the
@@ -171,7 +175,7 @@ impl ProcTable {
     /// It should be possible to run this every few seconds without
     /// incurring load.
     pub fn expire(&mut self) {
-        let mut prune: BTreeSet<u32> = self.processes.keys().cloned().collect();
+        let mut prune: HashSet<u32> = self.processes.keys().cloned().collect();
         for pid in self.processes.keys() {
             if Path::new(&format!("/proc/{}", pid)).is_dir() {
                 let mut pid = *pid;
@@ -184,6 +188,12 @@ impl ProcTable {
             }
         }
         prune.iter().for_each(|pid| { self.processes.remove(&pid); } );
+    }
+
+    pub fn add_label(&mut self, pid: u32, label: &[u8]) {
+        if let Some(p) = self.processes.get_mut(&pid) {
+            p.labels.insert(label.into());
+        }
     }
 }
 

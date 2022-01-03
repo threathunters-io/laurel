@@ -241,6 +241,12 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         .map_err(|e| format!("populate proc table: {}", e))?;
     coalesce.translate_universal = config.translate.universal;
     coalesce.translate_userdb = config.translate.userdb;
+    coalesce.proc_label_keys = config.label_process.label_keys.iter()
+        .map( |s| s.as_bytes().to_vec() )
+        .collect();
+    coalesce.proc_propagate_labels = config.label_process.propagate_labels.iter()
+        .map( |s| s.as_bytes().to_vec() )
+        .collect();
 
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();

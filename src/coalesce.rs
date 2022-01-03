@@ -104,6 +104,9 @@ pub struct Coalesce<'a> {
     pub execve_argv_string: bool,
     pub execve_env: HashSet<Vec<u8>>,
 
+    pub proc_label_keys: HashSet<Vec<u8>>,
+    pub proc_propagate_labels: HashSet<Vec<u8>>,
+
     pub translate_universal: bool,
     pub translate_userdb: bool,
 }
@@ -211,6 +214,8 @@ impl<'a> Coalesce<'a> {
             execve_argv_list: true,
             execve_argv_string: false,
             execve_env: HashSet::new(),
+            proc_label_keys: HashSet::new(),
+            proc_propagate_labels: HashSet::new(),
             translate_universal: false,
             translate_userdb: false,
         }
@@ -286,6 +291,7 @@ impl<'a> Coalesce<'a> {
     fn transform_event(&mut self, ev: &mut Event) {
         let mut pid: Option<u32> = None;
         let mut ppid: Option<u32> = None;
+        let mut key: Option<Vec<u8>> = None;
         for tv in ev.body.iter_mut() {
             match tv {
                 (&SYSCALL, EventValues::Single(rv)) => {
@@ -317,10 +323,13 @@ impl<'a> Coalesce<'a> {
                                     _ => (),
                                 }
                             },
-                            (Key::Name(r), _) => {
+                            (Key::Name(r), v) => {
                                 let name = &rv.raw[r.clone()];
                                 if let (b"ARCH", &Some(_)) = (name, &arch) { continue }
                                 if let (b"SYSCALL", &Some(_)) = (name, &syscall) { continue }
+                                if let (b"key", Value::Str(r, _)) = (name, v) {
+                                    key = Some(rv.raw[r.clone()].into());
+                                }
                             },
                             _ => if let Some((k,v)) = self.translate_userdb(rv, k, v) {
                                 translated.push_back((k,v));
@@ -402,6 +411,8 @@ impl<'a> Coalesce<'a> {
 
                     rv.elems = new;
 
+                    // register process, add propagated labels from
+                    // parent if applicable
                     if let (Some(pid), Some(ppid)) = (pid, ppid) {
                         let argv = argv.iter().filter_map(
                             |v| match v {
@@ -410,6 +421,12 @@ impl<'a> Coalesce<'a> {
                             }
                         ).collect();
                         self.processes.add_process(pid, ppid, ev.id.timestamp, argv);
+
+                        if let Some(parent) = self.processes.get_process(ppid) {
+                            for l in self.proc_propagate_labels.intersection(&parent.labels) {
+                                self.processes.add_label(pid, &l);
+                            }
+                        }
                     }
                 },
                 (&SOCKADDR, EventValues::Multi(rvs)) => {
@@ -476,6 +493,12 @@ impl<'a> Coalesce<'a> {
             }
         }
 
+        if let (Some(pid), Some(key)) = (&pid, &key) {
+            if self.proc_label_keys.contains(key) {
+                self.processes.add_label(*pid, key);
+            }
+        }
+
         // PARENT_INFO
         if let Some(ppid) = ppid {
             if let Some(p) = self.processes.get_process(ppid) {
@@ -492,6 +515,19 @@ impl<'a> Coalesce<'a> {
                 let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid as u64)));
                 pi.elems.push(kv);
                 ev.body.insert(PARENT_INFO, EventValues::Single(pi));
+            }
+        }
+        if let (Some(pid), Some(EventValues::Single(sc))) =
+            (pid, ev.body.get_mut(&SYSCALL))
+        {
+            let labels = self.processes.get_process(pid)
+                .and_then(|p| Some(p.labels))
+                .unwrap_or(HashSet::new());
+            if labels.len() > 0 {
+                let labels = labels.iter()
+                    .map(|l| Value::Str(sc.put(l), Quote::None))
+                    .collect::<Vec<_>>();
+                sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
             }
         }
     }

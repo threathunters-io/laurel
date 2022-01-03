@@ -52,9 +52,9 @@ execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
 
 [label-process]
 
-# Processes pereforming operations that result in audit records with
-# these attached keys will get all subsequent actions labelled by
-# LAUREL:
+# When processes perform operations that result in audit records with
+# these attached keys, LAUREL will attach the key as a label to the
+# process:
 label-keys = [ "software_mgmt" ]
 # Subprocesses inherit these keys from their parent.
 propagate-labels = [ "software_mgmt" ]
