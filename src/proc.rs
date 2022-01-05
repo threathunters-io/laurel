@@ -137,11 +137,9 @@ impl ProcTable {
         Ok(pt)
     }
 
-    /// Adds a process to the table based on a normalized EXECVE message
-    pub fn add_execve(&mut self, id: &EventID, rsyscall: &Record, rexecve: &Record) -> Result<(u32, Process), Box<dyn Error>> {
-        let (pid, process) = Process::parse_execve(id, rsyscall, rexecve)?;
-        self.processes.insert(pid, process.clone());
-        Ok((pid, process))
+    /// Adds a Process to the process table
+    pub fn add_process(&mut self, pid: u32, ppid: u32, launch_time: u64, argv: Vec<Vec<u8>>) {
+        self.processes.insert(pid, Process{launch_time, ppid, argv});
     }
 
     /// Retrieves a process by pid. If the process is not found in the
