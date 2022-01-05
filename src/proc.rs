@@ -26,7 +26,7 @@ pub struct Process {
     /// Unix timestamp with millisecond precision
     pub launch_time: u64,
     /// parent process id
-    pub ppid: u64,
+    pub ppid: u32,
     /// command line
     pub argv: Vec<Vec<u8>>
 }
@@ -34,7 +34,7 @@ pub struct Process {
 impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
     #[allow(dead_code)]
-    pub fn parse_proc(pid: u64) -> Result<Process, Box<dyn Error>> {
+    pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
         let argv = read(format!("/proc/{}/cmdline", pid))
             .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?
             .split(|c| *c == 0)
@@ -53,7 +53,7 @@ impl Process {
             .collect::<Vec<_>>();
 
         // see proc(5), /proc/[pid]/stat (4)
-        let ppid = u64::from_str(String::from_utf8_lossy(stat[1]).as_ref())?;
+        let ppid = u32::from_str(String::from_utf8_lossy(stat[1]).as_ref())?;
         // see proc(5), /proc/[pid]/stat (22)
         let starttime = u64::from_str(String::from_utf8_lossy(stat[19]).as_ref())?;
 
@@ -76,12 +76,12 @@ impl Process {
 
     /// Use a processed EXECVE event to generate a shadow process table entry
     #[allow(dead_code)]
-    pub fn parse_execve(id: &EventID, rsyscall: &Record, rexecve: &Record) -> Result<(u64, Process), Box<dyn Error>> {
+    pub fn parse_execve(id: &EventID, rsyscall: &Record, rexecve: &Record) -> Result<(u32, Process), Box<dyn Error>> {
         let mut p = Process { launch_time: id.timestamp, ..Process::default() };
-        let pid: u64;
+        let pid: u32;
         if let Some(v) = rsyscall.get(b"pid") {
             match v.value {
-                Value::Number(Number::Dec(n)) => pid=*n,
+                Value::Number(Number::Dec(n)) => pid=*n as u32,
                 _ => return Err("pid field is not numeric".into()),
             }
         } else {
@@ -89,7 +89,7 @@ impl Process {
         }
         if let Some(v) = rsyscall.get(b"ppid") {
             match v.value {
-                Value::Number(Number::Dec(n)) => p.ppid = *n,
+                Value::Number(Number::Dec(n)) => p.ppid = *n as u32,
                 _ => return Err("ppid field is not numeric".into()),
             }
         } else {
@@ -112,7 +112,7 @@ impl Process {
 /// from /proc entries.
 #[derive(Debug,Default)]
 pub struct ProcTable {
-    processes: BTreeMap<u64,Process>,
+    processes: BTreeMap<u32,Process>,
 }
 
 impl ProcTable {
@@ -123,7 +123,7 @@ impl ProcTable {
             .map_err(|e| format!("read_dir: /proc: {}", e))?
         {
             if let Ok(entry) = entry {
-                if let Ok(pid) = u64::from_str(entry.file_name()
+                if let Ok(pid) = u32::from_str(entry.file_name()
                                                .to_string_lossy()
                                                .as_ref())
                 {
@@ -138,7 +138,7 @@ impl ProcTable {
     }
 
     /// Adds a process to the table based on a normalized EXECVE message
-    pub fn add_execve(&mut self, id: &EventID, rsyscall: &Record, rexecve: &Record) -> Result<(u64, Process), Box<dyn Error>> {
+    pub fn add_execve(&mut self, id: &EventID, rsyscall: &Record, rexecve: &Record) -> Result<(u32, Process), Box<dyn Error>> {
         let (pid, process) = Process::parse_execve(id, rsyscall, rexecve)?;
         self.processes.insert(pid, process.clone());
         Ok((pid, process))
@@ -147,7 +147,7 @@ impl ProcTable {
     /// Retrieves a process by pid. If the process is not found in the
     /// shadow process table, an attempt is made to fetch the
     /// information from /proc.
-    pub fn get_process(&mut self, pid: u64) -> Option<Process> {
+    pub fn get_process(&mut self, pid: u32) -> Option<Process> {
         if let Some(p) = self.processes.get(&pid) {
             Some(p.clone())
         } else {
@@ -163,7 +163,7 @@ impl ProcTable {
 
     /// Removes a process from the table
     #[allow(dead_code)]
-    pub fn remove_process(&mut self, pid: u64) {
+    pub fn remove_process(&mut self, pid: u32) {
         self.processes.remove(&pid);
     }
 
@@ -173,7 +173,7 @@ impl ProcTable {
     /// It should be possible to run this every few seconds without
     /// incurring load.
     pub fn expire(&mut self) {
-        let mut prune: BTreeSet<u64> = self.processes.keys().cloned().collect();
+        let mut prune: BTreeSet<u32> = self.processes.keys().cloned().collect();
         for pid in self.processes.keys() {
             if Path::new(&format!("/proc/{}", pid)).is_dir() {
                 let mut pid = *pid;
@@ -190,7 +190,7 @@ impl ProcTable {
 }
 
 /// Returns environment for a given process
-pub fn get_environ<F: Fn(&[u8]) -> bool>(pid: u64, pred: F) -> Result<Vec<(Vec<u8>,Vec<u8>)>, Box<dyn Error>> {
+pub fn get_environ<F: Fn(&[u8]) -> bool>(pid: u32, pred: F) -> Result<Vec<(Vec<u8>,Vec<u8>)>, Box<dyn Error>> {
     let buf = read(format!("/proc/{}/environ", pid))?;
     let mut res = Vec::new();
     for f in buf.split(|c| *c == 0) {

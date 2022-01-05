@@ -448,7 +448,7 @@ impl<'a> Coalesce<'a> {
     }
 
     /// Add environment variables to event body
-    fn augment_execve_env(&mut self, execve: &mut Record, pid: u64) {
+    fn augment_execve_env(&mut self, execve: &mut Record, pid: u32) {
         if self.execve_env.is_empty() {
             return;
         }
@@ -475,7 +475,7 @@ impl<'a> Coalesce<'a> {
             }
             if let Some(v) = syscall.get(b"pid") {
                 if let Value::Number(Number::Dec(p)) = v.value {
-                    pid = Some(*p);
+                    pid = Some(*p as u32);
                 }
             }
         }
@@ -565,7 +565,7 @@ impl<'a> Coalesce<'a> {
 fn get_parent_info(pt: &mut ProcTable, rv: &Record, do_list: bool, do_string: bool) -> Option<Record> {
     if let Some(v) = rv.get(b"ppid") {
         if let Value::Number(Number::Dec(ppid)) = v.value {
-            if let Some(p) = pt.get_process(*ppid) {
+            if let Some(p) = pt.get_process(*ppid as u32) {
                 let mut pi = Record::default();
                 let vs = p.argv.iter()
                     .map(|v| Value::Str(pi.put(v), Quote::None))
@@ -578,7 +578,7 @@ fn get_parent_info(pt: &mut ProcTable, rv: &Record, do_list: bool, do_string: bo
                     let k = Key::Name(pi.put(b"ARGV"));
                     pi.elems.push((k, Value::List(vs)));
                 }
-                let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid)));
+                let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid as u64)));
                 pi.elems.push(kv);
                 return Some(pi);
             }
