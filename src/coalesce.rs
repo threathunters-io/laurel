@@ -49,24 +49,25 @@ impl Serialize for EventValues {
     }
 }
 
-/// The content of an Event, sorted by message types
-#[derive(Clone,Debug,Default)]
-pub struct EventBody {
-    values: IndexMap<MessageType,EventValues>,
-}
 
 #[derive(Clone,Debug)]
 pub struct Event {
     node: Option<Vec<u8>>,
     id: EventID,
-    body: EventBody,
+    body: IndexMap<MessageType,EventValues>,
+}
+
+impl Event {
+    fn new(node: Option<Vec<u8>>, id: EventID) -> Self {
+        Event { node, id, body: IndexMap::with_capacity(5) }
+    }
 }
 
 impl Serialize for Event {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where S: Serializer
     {
-        let mut length = 1 + self.body.values.len();
+        let mut length = 1 + self.body.len();
         if let Some(_) = self.node {
             length += 1
         };
@@ -77,7 +78,7 @@ impl Serialize for Event {
             map.serialize_key("NODE")?;
             map.serialize_value(&node.as_slice().to_quoted_string())?;
         }
-        for (k,v) in &self.body.values {
+        for (k,v) in &self.body {
             map.serialize_entry(&k,&v)?;
         }
         map.end()
@@ -87,7 +88,7 @@ impl Serialize for Event {
 /// Coalesce collects Audit Records from individual lines and assembles them to Events
 pub struct Coalesce<'a> {
     /// Events that are being collected/processed
-    inflight: BTreeMap<(Option<Vec<u8>>, EventID), EventBody>,
+    inflight: BTreeMap<(Option<Vec<u8>>, EventID), Event>,
     /// Event IDs that have been recently processed
     done: HashSet<(Option<Vec<u8>>, EventID)>,
     /// Timestamp for next cleanup
@@ -229,8 +230,8 @@ impl<'a> Coalesce<'a> {
             .cloned()
             .collect::<Vec<_>>();
         for (node, id) in node_ids {
-            if let Some(body) = self.inflight.remove(&(node.clone(), id)) {
-                self.emit_event(&mut Event{node, id, body});
+            if let Some(event) = self.inflight.remove(&(node.clone(), id)) {
+                self.emit_event(event);
             }
         }
     }
@@ -280,8 +281,8 @@ impl<'a> Coalesce<'a> {
     /// - turns EXECVE/a* and EXECVE/a*[*] fields into an ARGV list
     /// - turns PROCTITLE/proctitle into a (abbreviated) ARGV list
     /// - translates *uid, *gid, syscall, arch, sockaddr if configured to do so.
-    fn normalize_eventbody(&mut self, eb: &mut EventBody) {
-        for (typ,ev) in eb.values.iter_mut() {
+    fn transform_event(&mut self, ev: &mut Event) {
+        for (typ,ev) in ev.body.iter_mut() {
             match (typ,ev) {
                 (&SYSCALL, EventValues::Single(rv)) => {
                     rv.raw.reserve(
@@ -461,16 +462,16 @@ impl<'a> Coalesce<'a> {
 
     /// Do bookkeeping on event, transform, emit it via the provided
     /// output function.
-    fn emit_event(&mut self, e: &mut Event) {
-        self.done.insert((e.node.clone(), e.id));
+    fn emit_event(&mut self, mut ev: Event) {
+        self.done.insert((ev.node.clone(), ev.id));
 
-        self.normalize_eventbody(&mut e.body);
+        self.transform_event(&mut ev);
 
         let mut pid = None;
-        if let Some(EventValues::Single(ref syscall)) = e.body.values.get(&SYSCALL) {
+        if let Some(EventValues::Single(ref syscall)) = ev.body.get(&SYSCALL) {
             #[allow(unused_must_use)]
-            if let Some(EventValues::Single(ref execve)) = e.body.values.get(&EXECVE) {
-                self.processes.add_execve(&e.id, &syscall, &execve);
+            if let Some(EventValues::Single(ref execve)) = ev.body.get(&EXECVE) {
+                self.processes.add_execve(&ev.id, &syscall, &execve);
             }
             if let Some(v) = syscall.get(b"pid") {
                 if let Value::Number(Number::Dec(p)) = v.value {
@@ -479,14 +480,14 @@ impl<'a> Coalesce<'a> {
             }
         }
 
-        match (pid, e.body.values.get_mut(&EXECVE)) {
+        match (pid, ev.body.get_mut(&EXECVE)) {
             (Some(pid), Some(EventValues::Single(ref mut execve))) =>  {
                 self.augment_execve_env(execve, pid);
             }
             _ => (),
         };
 
-        (self.emit_fn)(&e)
+        (self.emit_fn)(&ev)
     }
 
     /// Ingest a log line and add it to the coalesce object.
@@ -520,31 +521,31 @@ impl<'a> Coalesce<'a> {
             if self.done.contains(&nid) {
                 return Err(format!("duplicate event id {}", id).into());
             }
-            let body = self.inflight.remove(&nid)
+            let ev = self.inflight.remove(&nid)
                 .ok_or(format!("Event id {} for EOE marker not found", &id))?;
-            self.emit_event(&mut Event{node, id, body});
+            self.emit_event(ev);
         } else if typ.is_multipart() {
             // kernel-level messages
             if !self.inflight.contains_key(&nid) {
-                self.inflight.insert(nid.clone(), EventBody::default());
+                self.inflight.insert(nid.clone(), Event::new(node.clone(), id));
             }
-            let body = self.inflight.get_mut(&nid).unwrap();
-            match body.values.get_mut(&typ) {
+            let ev = self.inflight.get_mut(&nid).unwrap();
+            match ev.body.get_mut(&typ) {
                 Some(EventValues::Single(v)) => v.extend(rv),
                 Some(EventValues::Multi(v)) => v.push(rv),
                 None => match typ {
                     SYSCALL => {
                         let pi = get_parent_info(&mut self.processes, &rv, self.execve_argv_list, self.execve_argv_string);
-                        body.values.insert(typ, EventValues::Single(rv));
+                        ev.body.insert(typ, EventValues::Single(rv));
                         if let Some(pi) = pi {
-                            body.values.insert(PARENT_INFO, EventValues::Single(pi));
+                            ev.body.insert(PARENT_INFO, EventValues::Single(pi));
                         }
                     },
                     EXECVE | PROCTITLE | CWD => {
-                        body.values.insert(typ, EventValues::Single(rv));
+                        ev.body.insert(typ, EventValues::Single(rv));
                     },
                     _ => {
-                        body.values.insert(typ, EventValues::Multi(vec!(rv)));
+                        ev.body.insert(typ, EventValues::Multi(vec!(rv)));
                     },
                 }
             };
@@ -553,9 +554,9 @@ impl<'a> Coalesce<'a> {
             if self.done.contains(&nid) {
                 return Err(format!("duplicate event id {}", id).into());
             }
-            let mut values = IndexMap::new();
-            values.insert(typ, EventValues::Single(rv));
-            self.emit_event(&mut Event{node, id, body: EventBody{values}});
+            let mut ev = Event::new(node, id);
+            ev.body.insert(typ, EventValues::Single(rv));
+            self.emit_event(ev);
         }
         Ok(())
     }
