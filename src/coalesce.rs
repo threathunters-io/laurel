@@ -274,16 +274,20 @@ impl<'a> Coalesce<'a> {
         return None;
     }
 
-    /// Rewrite EventBody to normal form
+    /// Rewrite event to normal form
     ///
     /// This function
     /// - turns SYSCALL/a* fields into a single an ARGV list
     /// - turns EXECVE/a* and EXECVE/a*[*] fields into an ARGV list
     /// - turns PROCTITLE/proctitle into a (abbreviated) ARGV list
     /// - translates *uid, *gid, syscall, arch, sockaddr if configured to do so.
+    /// - collects environment variables for EXECVE
+    /// - registers process in shadow process table for EXECVE
     fn transform_event(&mut self, ev: &mut Event) {
-        for (typ,ev) in ev.body.iter_mut() {
-            match (typ,ev) {
+        let mut pid: Option<u32> = None;
+        let mut ppid: Option<u32> = None;
+        for tv in ev.body.iter_mut() {
+            match tv {
                 (&SYSCALL, EventValues::Single(rv)) => {
                     rv.raw.reserve(
                         if self.translate_universal { 16 } else { 0 } +
@@ -294,29 +298,29 @@ impl<'a> Coalesce<'a> {
                     let mut arch = None;
                     let mut syscall = None;
                     for (k,v) in &rv.elems.clone() {
-                        match k {
-                            Key::Arg(_,None) => {
+                        match (k,v) {
+                            (Key::Arg(_,None), _) => {
                                 // FIXME: check argv length
                                 argv.push(v.clone());
                                 continue;
                             },
-                            Key::ArgLen(_) => continue,
-                            Key::Name(r) => {
+                            (Key::ArgLen(_), _) => continue,
+                            (Key::Name(r), Value::Number(n)) => {
                                 let name = &rv.raw[r.clone()];
-                                match name {
-                                    b"arch" if self.translate_universal => {
-                                        if let Value::Number(Number::Hex(n)) = v {
-                                            arch = Some((r.clone(), n.clone()));
-                                        }
-                                    },
-                                    b"syscall" if self.translate_universal => {
-                                        if let Value::Number(Number::Dec(n)) = v {
-                                            syscall = Some((r.clone(), n.clone()));
-                                        }
-                                    },
-                                    b"ARCH"|b"SYSCALL" if self.translate_universal => continue,
-                                    _ => ()
+                                match (name, n) {
+                                    (b"arch", Number::Hex(n)) if self.translate_universal =>
+                                        arch = Some((r.clone(), n.clone())),
+                                    (b"syscall", Number::Dec(n)) if self.translate_universal =>
+                                        syscall = Some((r.clone(), n.clone())),
+                                    (b"pid", Number::Dec(n)) => pid = Some(*n as u32),
+                                    (b"ppid", Number::Dec(n)) => ppid = Some(*n as u32),
+                                    _ => (),
                                 }
+                            },
+                            (Key::Name(r), _) => {
+                                let name = &rv.raw[r.clone()];
+                                if let (b"ARCH", &Some(_)) = (name, &arch) { continue }
+                                if let (b"SYSCALL", &Some(_)) = (name, &syscall) { continue }
                             },
                             _ => if let Some((k,v)) = self.translate_userdb(rv, k, v) {
                                 translated.push_back((k,v));
@@ -374,13 +378,39 @@ impl<'a> Coalesce<'a> {
                             _ => new.push((k.key.clone(), v.value.clone())),
                         };
                     }
+
+                    // ARGV
                     if self.execve_argv_list {
                         new.push((Key::Literal("ARGV"), Value::List(argv.clone())));
                     }
+                    // ARGV_STR
                     if self.execve_argv_string {
                         new.push((Key::Literal("ARGV_STR"), Value::StringifiedList(argv.clone())));
                     }
+                    // ENV
+                    match pid {
+                        Some(pid) if !self.execve_env.is_empty() => {
+                            if let Ok(vars) = get_environ(pid, |k| self.execve_env.contains(k) ) {
+                                let map = vars.iter()
+                                    .map(|(k,v)| (rv.put(k), rv.put(v)))
+                                    .collect();
+                                new.push( (Key::Literal("ENV"), Value::Map(map)) );
+                            }
+                        },
+                        _ => (),
+                    };
+
                     rv.elems = new;
+
+                    if let (Some(pid), Some(ppid)) = (pid, ppid) {
+                        let argv = argv.iter().filter_map(
+                            |v| match v {
+                                Value::Str(r,_) => Some(Vec::from(&rv.raw[r.clone()])),
+                                _ => None
+                            }
+                        ).collect();
+                        self.processes.add_process(pid, ppid, ev.id.timestamp, argv);
+                    }
                 },
                 (&SOCKADDR, EventValues::Multi(rvs)) => {
                     for mut rv in rvs {
@@ -445,18 +475,24 @@ impl<'a> Coalesce<'a> {
                 },
             }
         }
-    }
 
-    /// Add environment variables to event body
-    fn augment_execve_env(&mut self, execve: &mut Record, pid: u32) {
-        if self.execve_env.is_empty() {
-            return;
-        }
-        if let Ok(vars) = get_environ(pid, |k| self.execve_env.contains(k) ) {
-            let map = vars.iter()
-                .map(|(k,v)| (execve.put(k), execve.put(v)))
-                .collect();
-            execve.elems.push( (Key::Literal("ENV"), Value::Map(map)) );
+        // PARENT_INFO
+        if let Some(ppid) = ppid {
+            if let Some(p) = self.processes.get_process(ppid) {
+                let mut pi = Record::default();
+                let argv = p.argv.iter()
+                    .map(|v| Value::Str(pi.put(v), Quote::None))
+                    .collect::<Vec<_>>();
+                if self.execve_argv_list {
+                    pi.elems.push((Key::Literal("ARGV"), Value::List(argv.clone())));
+                }
+                if self.execve_argv_string {
+                    pi.elems.push((Key::Literal("ARGV_STR"), Value::StringifiedList(argv.clone())));
+                }
+                let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid as u64)));
+                pi.elems.push(kv);
+                ev.body.insert(PARENT_INFO, EventValues::Single(pi));
+            }
         }
     }
 
@@ -466,26 +502,6 @@ impl<'a> Coalesce<'a> {
         self.done.insert((ev.node.clone(), ev.id));
 
         self.transform_event(&mut ev);
-
-        let mut pid = None;
-        if let Some(EventValues::Single(ref syscall)) = ev.body.get(&SYSCALL) {
-            #[allow(unused_must_use)]
-            if let Some(EventValues::Single(ref execve)) = ev.body.get(&EXECVE) {
-                self.processes.add_execve(&ev.id, &syscall, &execve);
-            }
-            if let Some(v) = syscall.get(b"pid") {
-                if let Value::Number(Number::Dec(p)) = v.value {
-                    pid = Some(*p as u32);
-                }
-            }
-        }
-
-        match (pid, ev.body.get_mut(&EXECVE)) {
-            (Some(pid), Some(EventValues::Single(ref mut execve))) =>  {
-                self.augment_execve_env(execve, pid);
-            }
-            _ => (),
-        };
 
         (self.emit_fn)(&ev)
     }
@@ -535,11 +551,7 @@ impl<'a> Coalesce<'a> {
                 Some(EventValues::Multi(v)) => v.push(rv),
                 None => match typ {
                     SYSCALL => {
-                        let pi = get_parent_info(&mut self.processes, &rv, self.execve_argv_list, self.execve_argv_string);
                         ev.body.insert(typ, EventValues::Single(rv));
-                        if let Some(pi) = pi {
-                            ev.body.insert(PARENT_INFO, EventValues::Single(pi));
-                        }
                     },
                     EXECVE | PROCTITLE | CWD => {
                         ev.body.insert(typ, EventValues::Single(rv));
@@ -560,31 +572,6 @@ impl<'a> Coalesce<'a> {
         }
         Ok(())
     }
-}
-
-fn get_parent_info(pt: &mut ProcTable, rv: &Record, do_list: bool, do_string: bool) -> Option<Record> {
-    if let Some(v) = rv.get(b"ppid") {
-        if let Value::Number(Number::Dec(ppid)) = v.value {
-            if let Some(p) = pt.get_process(*ppid as u32) {
-                let mut pi = Record::default();
-                let vs = p.argv.iter()
-                    .map(|v| Value::Str(pi.put(v), Quote::None))
-                    .collect::<Vec<_>>();
-                if do_string {
-                    let k = Key::Name(pi.put(b"ARGV_STR"));
-                    pi.elems.push((k, Value::StringifiedList(vs.clone())));
-                }
-                if do_list {
-                    let k = Key::Name(pi.put(b"ARGV"));
-                    pi.elems.push((k, Value::List(vs)));
-                }
-                let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid as u64)));
-                pi.elems.push(kv);
-                return Some(pi);
-            }
-        }
-    }
-    return None;
 }
 
 impl Drop for Coalesce<'_> {
