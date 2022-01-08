@@ -1,4 +1,5 @@
-# LAUREL: Linux Audit – Usable, Robust, Easy Logging
+![logo](laurel.svg)
+# Linux Audit – Usable, Robust, Easy Logging
 
 [![Build Status](https://github.com/threathunters-io/laurel/actions/workflows/build.yml/badge.svg)](https://github.com/threathunters-io/laurel/actions/workflows/build.yml)
 
@@ -82,3 +83,5 @@ GNU General Public License, version 3
 
 - Hilko Bengen <<bengen@hilluzination.de>>
 - Sergej Schmidt <<sergej@msgpeek.net>>
+
+The logo was created by Birgit Meyer <<hello@biggi.io>>.
