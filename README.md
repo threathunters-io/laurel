@@ -38,6 +38,38 @@ A good starting point for an audit ruleset is <https://github.com/Neo23x0/auditd
 
 should be removed.
 
+## Adding context to events: Keys and process labels
+
+Audit events can contain a key, a short string that can be used to filter events. _LAUREL_ can be configured to recognize such keys and add them as keys to the process that caused the event. These labels can also be propagated to child processes. This is useful to avoid expensive JOIN-like operations in log analysis to filter out harmless events.
+
+Consider the following rule that set keys for _apt_ and _dpkg_ invocations:
+```
+-w /usr/bin/apt-get -p x -k software_mgmt
+```
+Let's configure _LAUREL_ to turn the `software_mgmt` key into a process label that is propagated to child processes:
+```
+[label-process]
+
+label-keys = [ "software_mgmt" ]
+propagate-labels = [ "software_mgmt" ]
+```
+Together with a ruleset that logs _execve(2)_ and variants, this will cause every event directly caused by `apt-get` and its subprocesses to be labelled `software_mgmt`.
+
+For example, running `sudo apt-get update` on a Debian/bullseye system with a few sources configured, the following subprocesses labelled `software_gmt` can be observed in _LAUREL's_ audit log:
+
+- `apt-get update`
+- `/usr/bin/dpkg --print-foreign-architectures`
+- `/usr/lib/apt/methods/http`
+- `/usr/lib/apt/methods/https`
+- `/usr/lib/apt/methods/https`
+- `/usr/lib/apt/methods/http`
+- `/usr/lib/apt/methods/gpgv`
+- `/usr/lib/apt/methods/gpgv`
+- `/usr/bin/dpkg --print-foreign-architectures`
+- `/usr/bin/dpkg --print-foreign-architectures`
+
+This sort of tracking also works for package installation or removal. If some package's post-installation script is behaving suspiciously, a SIEM analyst will be able to make the connection to the software installation process by inspecting the single event.
+
 ## Installation
 
 See [INSTALL.md](INSTALL.md).
