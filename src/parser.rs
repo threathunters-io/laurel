@@ -283,7 +283,10 @@ fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
             ),
             |s| -> Result<_,()> { Ok(PValue::HexStr(s)) } ),
         map_res(
-            alt((tag("(null)"),tag("?"))),
+            recognize(terminated(
+                alt((tag("(null)"),tag("?"))),
+                peek(take_while1(is_sep)))
+            ),
             |_| -> Result<_,()> { Ok(PValue::Empty) } )
     )) (input)
 }
