@@ -700,6 +700,8 @@ mod test {
 
         let (_n, _t, _id, _rv) = parse(Vec::from(include_bytes!("testdata/line-daemon-end.txt").as_ref()))?;
 
+        let (_n, _t, _id, _rv) = parse(Vec::from(include_bytes!("testdata/line-netfilter.txt").as_ref()))?;
+
         Ok(())
     }
 }

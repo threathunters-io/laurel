@@ -1,0 +1,1 @@
+type=NETFILTER_CFG msg=audit(1643035021.052:428): table=?:0;?:0 family=0 entries=2 op=nft_register_gen pid=1027 subj=unconfined comm="ebtables"
