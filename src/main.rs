@@ -3,8 +3,11 @@
 
 use getopts::Options;
 use std::collections::HashSet;
+use std::time::Duration;
+use std::time::SystemTime;
 use std::env;
 use std::fs;
+use std::ops::AddAssign;
 use std::os::unix::fs::PermissionsExt;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::error::Error;
@@ -62,6 +65,17 @@ use syslog::{log_crit, log_err, log_info, log_warn};
 #[derive(Default,Serialize)]
 struct Stats { lines: u64, events: u64, errors: u64 }
 
+// Overload the += operator.
+impl AddAssign for Stats {
+    fn add_assign(&mut self, other: Self)  {
+        *self = Self {
+            lines: self.lines + other.lines,
+            events: self.events + other.events,
+            errors: self.errors + other.errors
+        };
+    }
+}
+
 /// Assume non-privileged user while retaining selected capabilities:
 ///
 /// - CAP_DAC_READ_SEARCH is required for reading arbitrary files,
@@ -102,6 +116,8 @@ impl Logger {
     }
 }
 
+const LAUREL_VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
 fn run_app() -> Result<(), Box<dyn Error>> {
     let args : Vec<String> = env::args().collect();
 
@@ -139,7 +155,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     };
 
     if matches.opt_present("d") {
-        println!("Laurel {}: Config ok.", env!("CARGO_PKG_VERSION"));
+        println!("Laurel {}: Config ok.", LAUREL_VERSION);
         return Ok(());
     }
 
@@ -211,7 +227,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         &format!(
             "Started {} running version {}",
             &args[0],
-            env!("CARGO_PKG_VERSION")
+            LAUREL_VERSION
         )
     );
     log_info(&format!("Running with EUID {} using config {}", Uid::effective().as_raw(), &config));
@@ -229,9 +245,14 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();
+    let mut overall_stats = Stats::default();
 
     let stdin = io::stdin();
     let mut input = stdin.lock();
+
+    let statusreport_period = config.statusreport_period.unwrap_or(0);
+    let statusreport_period_t:Duration = Duration::new(statusreport_period, 0);
+    let mut statusreport_last_t = SystemTime::now();
 
     loop {
         line.clear();
@@ -248,6 +269,32 @@ fn run_app() -> Result<(), Box<dyn Error>> {
                 continue
             }
         };
+
+        // Output status information about Laurel every "statusreport_period_t" time (configurable)
+        if statusreport_period <= 0 || statusreport_last_t.elapsed()? <= statusreport_period_t {
+            continue;
+        }
+
+        log_info(
+            &format!("Laurel version {}", LAUREL_VERSION)
+        );
+        log_info(
+            &format!(
+            "Parsing stats (until now): processed {} lines {} events with {} errors in total",
+            &stats.lines, &stats.events, &stats.errors
+            )
+        );
+        log_info(
+            &format!("Running with EUID {} using config {}", Uid::effective().as_raw(), &config)
+        );
+        overall_stats += stats;
+        stats = Stats::default();
+        statusreport_last_t = SystemTime::now();
+    }
+
+    // If periodical reports were enabled, stats only contains temporary statistics.
+    if statusreport_period > 0 {
+        stats = overall_stats;
     }
 
     log_info(

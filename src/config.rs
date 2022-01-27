@@ -59,6 +59,8 @@ pub struct Filter {}
 pub struct Config {
     pub user: Option<String>,
     pub directory: Option<PathBuf>,
+    #[serde(rename="statusreport-period")] #[serde(default)]
+    pub statusreport_period: Option<u64>,
     pub auditlog: Logfile,
     pub debuglog: Option<Logfile>,
     #[serde(default)]
@@ -76,6 +78,7 @@ impl Default for Config {
         Config {
             user: None,
             directory: Some(".".into()),
+            statusreport_period: None,
             auditlog: Logfile {
                 file: "audit.log".into(),
                 users: None,
@@ -93,9 +96,10 @@ impl Default for Config {
 
 impl std::fmt::Display for Config {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        write!(fmt, "(user={} directory={} file={} users={} size={} generations={})",
+        write!(fmt, "(user={} directory={} statusreport-period={} file={} users={} size={} generations={})",
                self.user.clone().unwrap_or("n/a".to_string()),
                self.directory.clone().unwrap_or_else(||PathBuf::from(".")).display(),
+               self.statusreport_period.unwrap_or(0),
                self.auditlog.file.to_string_lossy(),
                self.auditlog.users.clone().unwrap_or(vec!["n/a".to_string()]).join(","),
                self.auditlog.size.unwrap_or(0),
@@ -114,6 +118,7 @@ mod test {
         let c: Config = toml::de::from_str(r#"
 user = "somebody"
 directory = "/path/to/somewhere"
+statusreport-period = 86400
 [auditlog]
 file = "somefile"
 read-users = ["splunk"]
@@ -121,6 +126,7 @@ read-users = ["splunk"]
         println!("{:#?}", &c);
         assert_eq!(c.user, Some("somebody".to_string()));
         assert_eq!(c.directory, Some(Path::new("/path/to/somewhere").to_path_buf()));
+        assert_eq!(c.statusreport_period, Some(86400));
         assert_eq!(c.auditlog, Logfile{
             file: Path::new("somefile").to_path_buf(),
             users: Some(vec!["splunk".to_string()]),

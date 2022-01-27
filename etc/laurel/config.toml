@@ -2,6 +2,10 @@
 directory = "/var/log/laurel"
 # Drop privileges from root to this user
 user = "_laurel"
+# The periodical time window in seconds for status information to be printed to Syslog.
+# Status report includes the running version, config and parsing stats.
+# Default is 0 --> no status reports.
+statusreport-period = 0
 
 [auditlog]
 # Base file name for the JSONL-based log file. Set to "-" to log to stdout. In this case 
