@@ -420,7 +420,7 @@ impl<'a> Coalesce<'a> {
                                 _ => None
                             }
                         ).collect();
-                        self.processes.add_process(pid, ppid, ev.id.timestamp, argv);
+                        self.processes.add_process(pid, ppid, ev.id, argv);
 
                         if let Some(parent) = self.processes.get_process(ppid) {
                             for l in self.proc_propagate_labels.intersection(&parent.labels) {

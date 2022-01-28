@@ -30,6 +30,9 @@ pub struct Process {
     /// command line
     pub argv: Vec<Vec<u8>>,
     pub labels: HashSet<Vec<u8>>,
+    /// Event ID containing the event spawning this process entry
+    /// (should be EXECVE).
+    pub event_id: Option<EventID>,
 }
 
 impl Process {
@@ -73,7 +76,7 @@ impl Process {
         };
 
         let labels = HashSet::new();
-        Ok(Process{launch_time, ppid, argv, labels})
+        Ok(Process{launch_time, ppid, argv, labels, event_id: None})
     }
 
     /// Use a processed EXECVE event to generate a shadow process table entry
@@ -140,10 +143,13 @@ impl ProcTable {
     }
 
     /// Adds a Process to the process table
-    pub fn add_process(&mut self, pid: u32, ppid: u32, launch_time: u64, argv: Vec<Vec<u8>>) {
+    pub fn add_process(&mut self, pid: u32, ppid: u32, id: EventID, argv: Vec<Vec<u8>>) {
+        let labels = HashSet::new();
+        let launch_time = id.timestamp;
+        let event_id = Some(id);
         self.processes.insert(
             pid,
-            Process{launch_time, ppid, argv, labels: HashSet::new()});
+            Process{launch_time, ppid, argv, labels, event_id});
     }
 
     /// Retrieves a process by pid. If the process is not found in the
