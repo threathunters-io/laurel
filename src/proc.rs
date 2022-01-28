@@ -1,9 +1,10 @@
 use std::error::Error;
 use std::boxed::Box;
-use std::fs::{read,read_dir};
+use std::fs::{read,read_dir,read_link};
 use std::str::FromStr;
 use std::convert::TryInto;
 use std::iter::Iterator;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::vec::Vec;
 use std::collections::{BTreeMap,HashSet};
@@ -33,6 +34,8 @@ pub struct Process {
     /// Event ID containing the event spawning this process entry
     /// (should be EXECVE).
     pub event_id: Option<EventID>,
+    pub comm: Option<Vec<u8>>,
+    pub exe: Option<Vec<u8>>,
 }
 
 impl Process {
@@ -56,6 +59,15 @@ impl Process {
             .split(|c| *c == b' ')
             .collect::<Vec<_>>();
 
+        let event_id = None;
+        let comm = read(format!("/proc/{}/comm", pid))
+            .map(|mut s| { s.truncate(s.len()-1); s })
+            .ok();
+
+        let exe = read_link(format!("/proc/{}/exe", pid))
+            .map(|p| Vec::from(p.as_os_str().as_bytes()) )
+            .ok();
+
         // see proc(5), /proc/[pid]/stat (4)
         let ppid = u32::from_str(String::from_utf8_lossy(stat[1]).as_ref())?;
         // see proc(5), /proc/[pid]/stat (22)
@@ -76,7 +88,7 @@ impl Process {
         };
 
         let labels = HashSet::new();
-        Ok(Process{launch_time, ppid, argv, labels, event_id: None})
+        Ok(Process{launch_time, ppid, argv, labels, event_id, comm, exe})
     }
 
     /// Use a processed EXECVE event to generate a shadow process table entry
@@ -143,13 +155,13 @@ impl ProcTable {
     }
 
     /// Adds a Process to the process table
-    pub fn add_process(&mut self, pid: u32, ppid: u32, id: EventID, argv: Vec<Vec<u8>>) {
+    pub fn add_process(&mut self, pid: u32, ppid: u32, id: EventID, comm: Option<Vec<u8>>, exe: Option<Vec<u8>>, argv: Vec<Vec<u8>>) {
         let labels = HashSet::new();
         let launch_time = id.timestamp;
         let event_id = Some(id);
         self.processes.insert(
             pid,
-            Process{launch_time, ppid, argv, labels, event_id});
+            Process{launch_time, ppid, argv, labels, event_id, comm, exe});
     }
 
     /// Retrieves a process by pid. If the process is not found in the

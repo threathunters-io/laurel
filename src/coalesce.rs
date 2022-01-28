@@ -291,6 +291,8 @@ impl<'a> Coalesce<'a> {
     fn transform_event(&mut self, ev: &mut Event) {
         let mut pid: Option<u32> = None;
         let mut ppid: Option<u32> = None;
+        let mut comm: Option<Vec<u8>> = None;
+        let mut exe: Option<Vec<u8>> = None;
         let mut key: Option<Vec<u8>> = None;
         for tv in ev.body.iter_mut() {
             match tv {
@@ -325,11 +327,25 @@ impl<'a> Coalesce<'a> {
                             },
                             (Key::Name(r), v) => {
                                 let name = &rv.raw[r.clone()];
-                                if let (b"ARCH", &Some(_)) = (name, &arch) { continue }
-                                if let (b"SYSCALL", &Some(_)) = (name, &syscall) { continue }
-                                if let (b"key", Value::Str(r, _)) = (name, v) {
-                                    key = Some(rv.raw[r.clone()].into());
-                                }
+                                match name {
+                                    b"ARCH" =>
+                                        if let &Some(_) = &arch { continue },
+                                    b"SYSCALL" =>
+                                        if let &Some(_) = &syscall { continue },
+                                    b"key" =>
+                                        if let Value::Str(r, _) = v {
+                                            key = Some(rv.raw[r.clone()].into());
+                                        },
+                                    b"comm" =>
+                                        if let Value::Str(r,_) = v {
+                                            comm = Some(rv.raw[r.clone()].into());
+                                        },
+                                    b"exe" =>
+                                        if let Value::Str(r,_) = v {
+                                            exe = Some(rv.raw[r.clone()].into());
+                                        },
+                                    _ => (),
+                                };
                             },
                             _ => if let Some((k,v)) = self.translate_userdb(rv, k, v) {
                                 translated.push_back((k,v));
@@ -420,7 +436,7 @@ impl<'a> Coalesce<'a> {
                                 _ => None
                             }
                         ).collect();
-                        self.processes.add_process(pid, ppid, ev.id, argv);
+                        self.processes.add_process(pid, ppid, ev.id, comm.clone(), exe.clone(), argv);
 
                         if let Some(parent) = self.processes.get_process(ppid) {
                             for l in self.proc_propagate_labels.intersection(&parent.labels) {
@@ -506,6 +522,14 @@ impl<'a> Coalesce<'a> {
                 if let Some(id) = p.event_id {
                     let r = pi.put(&format!("{}", id).as_bytes());
                     pi.elems.push((Key::Literal("ID"), Value::Str(r, Quote::None)));
+                }
+                if let Some(comm) = p.comm {
+                    let r = pi.put(&comm);
+                    pi.elems.push((Key::Literal("comm"), Value::Str(r, Quote::None)));
+                }
+                if let Some(exe) = p.exe {
+                    let r = pi.put(&exe);
+                    pi.elems.push((Key::Literal("exe"), Value::Str(r, Quote::None)));
                 }
                 let argv = p.argv.iter()
                     .map(|v| Value::Str(pi.put(v), Quote::None))
