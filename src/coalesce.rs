@@ -503,6 +503,10 @@ impl<'a> Coalesce<'a> {
         if let Some(ppid) = ppid {
             if let Some(p) = self.processes.get_process(ppid) {
                 let mut pi = Record::default();
+                if let Some(id) = p.event_id {
+                    let r = pi.put(&format!("{}", id).as_bytes());
+                    pi.elems.push((Key::Literal("ID"), Value::Str(r, Quote::None)));
+                }
                 let argv = p.argv.iter()
                     .map(|v| Value::Str(pi.put(v), Quote::None))
                     .collect::<Vec<_>>();
