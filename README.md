@@ -38,7 +38,25 @@ A good starting point for an audit ruleset is <https://github.com/Neo23x0/auditd
 
 should be removed.
 
-## Adding context to events: Keys and process labels
+## Events with context
+
+Every event that is caused by a syscall or filesystem rule is annotated with information about the parent of the process that caused the event. If available, `id` points to the message corresponding to the last `execve` syscall for this process:
+
+``` json
+"PARENT_INFO": {
+  "ID": "1643635026.276:327308",
+  "comm": "sh",
+  "exe": "/usr/bin/dash",
+  "ARGV": [
+    "sh",
+    "-c",
+    "whoami"
+  ],
+  "ppid": 1532
+}
+```
+
+## Adding more context: Keys and process labels
 
 Audit events can contain a key, a short string that can be used to filter events. _LAUREL_ can be configured to recognize such keys and add them as keys to the process that caused the event. These labels can also be propagated to child processes. This is useful to avoid expensive JOIN-like operations in log analysis to filter out harmless events.
 
