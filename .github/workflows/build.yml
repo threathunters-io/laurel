@@ -69,17 +69,28 @@ jobs:
 
       - name: Launch test
         run: |
-          ppid=$$
-          pid=$(($$ + 1000))
+          pid1=$$
+          pid2=$(($$ + 1000))
+          pid3=$(($$ + 2000))
+          now=$(date +%s)
 
           ./target/debug/laurel <<EOF
-          type=SYSCALL msg=audit(1615114232.375:15558): arch=c000003e syscall=59 success=yes exit=0 a0=63b29337fd18 a1=63b293387d58 a2=63b293375640 a3=fffffffffffff000 items=2 ppid=$ppid pid=$pid auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="whoami" exe="/usr/bin/whoami" key=(null)
-          type=EXECVE msg=audit(1615114232.375:15558): argc=1 a0="whoami"
-          type=CWD msg=audit(1615114232.375:15558): cwd="/home/user/tmp"
-          type=PATH msg=audit(1615114232.375:15558): item=0 name="/usr/bin/whoami" inode=261214 dev=ca:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0000000000000000 cap_fi=0000000000000000 cap_fe=0 cap_fver=0
-          type=PATH msg=audit(1615114232.375:15558): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=262146 dev=ca:03 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0000000000000000 cap_fi=0000000000000000 cap_fe=0 cap_fver=0
-          type=PROCTITLE msg=audit(1615114232.375:15558): proctitle="whoami"
-          type=EOE msg=audit(1615114232.375:15558):
+          type=SYSCALL msg=audit($now.276:327308): arch=c000003e syscall=59 success=yes exit=0 a0=5645feb17d20 a1=5645feba4100 a2=5645feb24c30 a3=fffffffffffff286 items=3 ppid=$pid1 pid=$pid2 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="sh" exe="/usr/bin/dash" subj==unconfined key=(null)
+          type=EXECVE msg=audit($now.276:327308): argc=3 a0="sh" a1="-c" a2="whoami"
+          type=CWD msg=audit($now.276:327308): cwd="/home/user/tmp"
+          type=PATH msg=audit($now.276:327308): item=0 name="/usr/bin/sh" inode=393917 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+          type=PATH msg=audit($now.276:327308): item=1 name="/usr/bin/sh" inode=393927 dev=fd:01 mode=0120777 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+          type=PATH msg=audit($now.276:327308): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=404798 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+          type=PROCTITLE msg=audit($now.276:327308): proctitle=7368002D630077686F616D69
+          type=EOE msg=audit($now.276:327308): 
+          type=SYSCALL msg=audit($now.276:327309): arch=c000003e syscall=59 success=yes exit=0 a0=56362955c9c0 a1=56362955c858 a2=56362955c868 a3=8 items=3 ppid=$pid2 pid=$pid3 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="whoami" exe="/usr/bin/whoami" subj==unconfined key=(null)
+          type=EXECVE msg=audit($now.276:327309): argc=1 a0="whoami"
+          type=CWD msg=audit($now.276:327309): cwd="/home/user/tmp"
+          type=PATH msg=audit($now.276:327309): item=0 name="/usr/bin/whoami" inode=393829 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+          type=PATH msg=audit($now.276:327309): item=1 name="/usr/bin/whoami" inode=393829 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+          type=PATH msg=audit($now.276:327309): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=404798 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+          type=PROCTITLE msg=audit($now.276:327309): proctitle="whoami"
+          type=EOE msg=audit($now.276:327309): 
           EOF
 
           jq . < audit.log
