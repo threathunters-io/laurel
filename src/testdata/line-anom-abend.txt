@@ -1,0 +1,1 @@
+type=ANOM_ABEND msg=audit(1633653915.934:123): auid=4294967295 uid=1000 gid=1000 ses=4294967295 pid=1000 comm="ftptls" reason="memory violation" sig=6AUID="unset" UID="some-user" GID="some-group"
