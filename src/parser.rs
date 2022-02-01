@@ -373,6 +373,10 @@ fn parse_unspec_value<'a>(input: &'a[u8], ty: MessageType, name: &[u8]) -> IResu
             |s| -> Result<_,()> { Ok(PValue::Str(s, Quote::Single)) }
         ),
         map_res(
+            delimited(tag("\""), take_while(|c| c != b'"'), tag("\"")),
+            |s| -> Result<_,()> { Ok(PValue::Str(s, Quote::Double)) }
+        ),
+        map_res(
             delimited(tag("{"), take_while(|c| c != b'}'), tag("}")),
             |s| -> Result<_,()> { Ok(PValue::Str(s, Quote::Braces)) }
         ),
