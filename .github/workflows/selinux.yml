@@ -23,11 +23,11 @@ jobs:
 
   build-c8:
     runs-on: ubuntu-latest
-    container: centos:8
+    container: rockylinux:8
     steps:
       - name: Prepare
         run: |
-          yum install -y selinux-policy-devel
+          yum install -y selinux-policy-devel findutils
       - uses: actions/checkout@v2
       - name: Build
         run: |
