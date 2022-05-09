@@ -540,7 +540,7 @@ impl<'a> Coalesce<'a> {
                 if self.execve_argv_string {
                     pi.elems.push((Key::Literal("ARGV_STR"), Value::StringifiedList(argv.clone())));
                 }
-                let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid as u64)));
+                let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid as i64)));
                 pi.elems.push(kv);
                 ev.body.insert(PARENT_INFO, EventValues::Single(pi));
             }

@@ -116,7 +116,7 @@ pub enum Quote { None, Single, Double, Braces }
 #[derive(Clone)]
 pub enum Number {
     Hex(u64),
-    Dec(u64),
+    Dec(i64),
     Oct(u64),
 }
 
@@ -464,7 +464,7 @@ impl Serialize for RValue<'_> {
             },
             Value::Number(n) => {
                 match n {
-                    Number::Dec(n) => s.serialize_u64(*n),
+                    Number::Dec(n) => s.serialize_i64(*n),
                     Number::Hex(n) => s.serialize_str(&format!("0x{:x}", n)),
                     Number::Oct(n) => s.serialize_str(&format!("0o{:o}", n)),
                 }

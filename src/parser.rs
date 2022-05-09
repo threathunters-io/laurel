@@ -299,9 +299,9 @@ fn parse_hex(input: &[u8]) -> IResult<&[u8], PValue> {
             take_while1(is_hex_digit),
             peek(take_while1(is_sep)),
         ),
-        |s| -> Result<_,std::num::ParseIntError> {
-            let s = unsafe { str::from_utf8_unchecked(s) };
-            Ok(PValue::Number(Number::Hex(u64::from_str_radix(s, 16)?)))
+        |digits| -> Result<_,std::num::ParseIntError> {
+            let digits = unsafe { str::from_utf8_unchecked(digits) };
+            Ok(PValue::Number(Number::Hex(u64::from_str_radix(digits, 16)?)))
         }
     ) (input)
 }
@@ -311,12 +311,13 @@ fn parse_hex(input: &[u8]) -> IResult<&[u8], PValue> {
 fn parse_dec(input: &[u8]) -> IResult<&[u8], PValue> {
     map_res(
         terminated(
-            take_while1(is_digit),
+	    pair(opt(tag("-")),take_while1(is_digit)),
             peek(take_while1(is_sep)),
         ),
-        |s| -> Result<_,std::num::ParseIntError> {
-            let s = unsafe { str::from_utf8_unchecked(s) };
-            Ok(PValue::Number(Number::Dec(u64::from_str(s)?)))
+        |(sign,digits)| -> Result<_,std::num::ParseIntError> {
+	    let sign = if let Some(_) = sign { -1 } else { 1 };
+            let digits = unsafe { str::from_utf8_unchecked(digits) };
+            Ok(PValue::Number(Number::Dec(sign * i64::from_str(digits)?)))
         }
     ) (input)
 }
@@ -329,9 +330,9 @@ fn parse_oct(input: &[u8]) -> IResult<&[u8], PValue> {
             take_while1(is_oct_digit),
             peek(take_while1(is_sep)),
         ),
-        |s| -> Result<_,std::num::ParseIntError> {
-            let s = unsafe { str::from_utf8_unchecked(s) };
-            Ok(PValue::Number(Number::Oct(u64::from_str_radix(s, 8)?)))
+        |digits| -> Result<_,std::num::ParseIntError> {
+            let digits = unsafe { str::from_utf8_unchecked(digits) };
+            Ok(PValue::Number(Number::Oct(u64::from_str_radix(digits, 8)?)))
         }
     ) (input)
 }
