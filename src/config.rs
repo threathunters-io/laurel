@@ -12,6 +12,12 @@ pub struct Logfile {
     pub generations: Option<u64>,
 }
 
+#[derive(Clone,Debug,Default,Serialize,Deserialize,PartialEq)]
+pub struct Debug {
+    #[serde(rename="dump-state-period")]
+    pub dump_state_period: Option<u64>,
+}
+
 #[derive(PartialEq,Eq,Debug,Serialize,Deserialize,Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum ArrayOrString { Array, String }
@@ -72,6 +78,8 @@ pub struct Config {
     pub auditlog: Logfile,
     pub debuglog: Option<Logfile>,
     #[serde(default)]
+    pub debug: Debug,
+    #[serde(default)]
     pub transform: Transform,
     #[serde(default)]
     pub translate: Translate,
@@ -96,6 +104,7 @@ impl Default for Config {
                 generations: Some(5),
             },
             debuglog: None,
+	    debug: Debug::default(),
             transform: Transform::default(),
             translate: Translate::default(),
             enrich: Enrich::default(),

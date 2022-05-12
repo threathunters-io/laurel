@@ -19,6 +19,12 @@ generations = 10
 # POSIX ACLs
 read-users = [ "splunk" ]
 
+# [debuglog]
+# file = "debug.log"
+
+# [debug]
+# dump-state-period = 120
+
 [transform]
 
 # "array" (the default) causes EXECVE a0, a1, a2 … arguments to be
