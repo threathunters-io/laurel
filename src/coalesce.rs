@@ -1,11 +1,14 @@
 use std::collections::{BTreeMap,HashSet,VecDeque};
 use std::error::Error;
+use std::io::Write;
 use std::ops::Range;
+use std::time::{SystemTime,UNIX_EPOCH};
 
 use indexmap::IndexMap;
 
 use serde::{Serialize,Serializer};
 use serde::ser::{SerializeSeq,SerializeMap};
+use serde_json::json;
 
 use crate::constants::{ARCH_NAMES,SYSCALL_NAMES,msg_type::*};
 use crate::userdb::UserDB;
@@ -641,6 +644,37 @@ impl<'a> Coalesce<'a> {
         }
         Ok(())
     }
+
+    pub fn dump_state(&self, mut w: &mut dyn Write) -> Result<(), Box<dyn Error>>{
+	serde_json::to_writer(&mut w, &json!({
+	    "ts": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+	    "message": {
+		"type": "dump_state",
+		"inflight": self.inflight.iter().map(
+		    |(k,v)| {
+			if let Some(node) = &k.0 {
+			    (format!("{}::{}", String::from_utf8_lossy(node), k.1), v)
+			} else {
+			    (format!("{}", k.1), v)
+			}
+		    }
+		).collect::<BTreeMap<_,_>>(),
+		"done": self.done.iter().map(
+		    |v| if let Some(node ) = &v.0 {
+			format!("{}::{}", String::from_utf8_lossy(node), v.1)
+		    } else {
+			format!("{}", v.1)
+		    }
+		).collect::<Vec<_>>(),
+		"processes": self.processes,
+		"userdb": self.userdb,
+		"next_expire": self.next_expire,
+	    },
+	}))?;
+	w.write(b"\n")?;
+	w.flush()?;
+	Ok(())
+    }
 }
 
 impl Drop for Coalesce<'_> {
@@ -652,6 +686,19 @@ mod test {
     use super::*;
     use std::io::{BufReader,BufRead};
     use std::borrow::Borrow;
+
+    #[test]
+    fn dump_state() -> Result<(),Box<dyn Error>> {
+	let mut c = Coalesce::new( |_| {} );
+	c.populate_proc_table()?;
+	c.populate_userdb();
+	c.process_line(br#"type=SYSCALL msg=audit(1615114232.375:15558): arch=c000003e syscall=59 success=yes exit=0 a0=63b29337fd18 a1=63b293387d58 a2=63b293375640 a3=fffffffffffff000 items=2 ppid=10883 pid=10884 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="whoami" exe="/usr/bin/whoami" key=(null)
+"#.to_vec())?;
+	let mut buf: Vec<u8> = vec!();
+	c.dump_state(&mut buf)?;
+	println!("{}", String::from_utf8_lossy(&buf));
+	Ok(())
+    }
 
     fn process_record(c: &mut Coalesce, text: &[u8]) -> Result<(),Box<dyn Error>> {
         for line in BufReader::new(text).lines() {

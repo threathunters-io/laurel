@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::ffi::CStr;
 
+use serde::Serialize;
+
 use libc;
 
 fn get_user(uid: u32) -> Option<String> {
@@ -25,7 +27,7 @@ fn get_group(gid: u32) -> Option<String> {
 
 /// Implementation of a credentials store that caches user and group
 /// lookups by uid and gid, respectively.
-#[derive(Debug,Default)]
+#[derive(Debug,Default,Serialize)]
 pub struct UserDB {
     pub users: BTreeMap<u32, (Option<String>, i64)>,
     pub groups: BTreeMap<u32, (Option<String>, i64)>,

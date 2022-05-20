@@ -14,6 +14,9 @@ use nix::unistd::{sysconf,SysconfVar};
 use nix::time::{clock_gettime,ClockId};
 use nix::sys::time::TimeSpec;
 
+use serde::{Serialize,Serializer};
+use serde::ser::SerializeMap;
+
 use crate::types::{EventID,Record,Value,Number};
 
 lazy_static! {
@@ -36,6 +39,29 @@ pub struct Process {
     pub event_id: Option<EventID>,
     pub comm: Option<Vec<u8>>,
     pub exe: Option<Vec<u8>>,
+}
+
+// This is a lossy serializer that is intended to be used for debugging only.
+impl Serialize for Process {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+	let mut map = s.serialize_map(Some(7))?;
+	map.serialize_entry("launch_time", &self.launch_time)?;
+	map.serialize_entry("ppid", &self.ppid)?;
+	map.serialize_entry(
+	    "argv",
+	    &self.argv.iter().map(|v|String::from_utf8_lossy(v)).collect::<Vec<_>>())?;
+	map.serialize_entry(
+	    "labels",
+	    &self.labels.iter().map(|v|String::from_utf8_lossy(v)).collect::<Vec<_>>())?;
+	map.serialize_entry("event_id", &self.event_id)?;
+	map.serialize_entry(
+	    "comm",
+	    &self.comm.clone().map(|v|String::from_utf8_lossy(&v).to_string()))?;
+	map.serialize_entry(
+	    "exe",
+	    &self.exe.clone().map(|v|String::from_utf8_lossy(&v).to_string()))?;
+	map.end()
+    }
 }
 
 impl Process {
@@ -127,7 +153,7 @@ impl Process {
 ///
 /// This process table replica can be fed with EXECVE-based events or
 /// from /proc entries.
-#[derive(Debug,Default)]
+#[derive(Debug,Default,Serialize)]
 pub struct ProcTable {
     processes: BTreeMap<u32,Process>,
 }

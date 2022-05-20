@@ -10,7 +10,7 @@ use std::ops::AddAssign;
 use std::os::unix::fs::PermissionsExt;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path,PathBuf};
 use std::sync::Arc;
 
 use nix::unistd::{chown,setresuid,setresgid,User,Uid};
@@ -23,7 +23,7 @@ use serde_json;
 
 use laurel::coalesce::Coalesce;
 use laurel::rotate::FileRotate;
-use laurel::config::{ArrayOrString,Config};
+use laurel::config::{ArrayOrString,Config,Logfile};
 
 mod syslog {
     use std::ffi::CString;
@@ -113,6 +113,46 @@ impl Logger {
         self.output.write(b"\n").unwrap();
         self.output.flush().unwrap();
     }
+
+    fn new(def: &Logfile, dir: &PathBuf, runas_user: &User) -> Result<Self,Box<dyn Error>> {
+	match &def.file {
+            p if p.as_os_str() == "-" =>
+		Ok(Logger {
+		    output: BufWriter::new(Box::new(io::stdout()))
+		}),
+            p if p.has_root() && p.parent() != None => 
+		Err(format!("invalid file directory={} file={}",
+			    dir.to_string_lossy(), p.to_string_lossy())
+		    .into()),
+            p => {
+		let mut filename = dir.clone();
+		filename.push(&p);
+		// Set permissions on main (active) logfile before
+		// FileRotate is created.
+		if filename.exists() {
+                    chown(&filename, Some(runas_user.uid), Some(runas_user.gid))
+			.map_err(|e| format!("chown: {}: {}", filename.to_string_lossy(), e))?;
+                    fs::set_permissions(&filename, PermissionsExt::from_mode(0o600))
+			.map_err(|e| format!("chmod: {}: {}", filename.to_string_lossy(), e))?;
+		}
+		let mut rot = FileRotate::new(filename);
+		for user in &def.clone().users.unwrap_or(vec!()) {
+                    rot = rot.with_uid(User::from_name(&user)?
+                                       .ok_or_else(||format!("user {} not found", &user))?
+                                       .uid);
+		}
+		if let Some(generations) = &def.generations {
+                    rot = rot.with_generations(*generations);
+		}
+		if let Some(filesize) = &def.size {
+                    rot = rot.with_filesize(*filesize);
+		}
+		Ok(Logger {
+		    output: BufWriter::new(Box::new(rot))
+		})
+            },
+	}
+    }
 }
 
 const LAUREL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -176,40 +216,13 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
         .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
 
-    let logger = match &config.auditlog.file {
-        p if p.as_os_str() == "-" => Logger { output: BufWriter::new(Box::new(io::stdout())) },
-        p if p.has_root() && p.parent() != None => {
-            return Err(format!("invalid file directory={} file={}",
-                               dir.to_string_lossy(), p.to_string_lossy())
-                       .into());
-        },
-        p => {
-            let mut filename = dir.clone();
-            filename.push(&p);
-            // Set permissions on main (active) logfile before
-            // FileRotate is created.
-            if filename.exists() {
-                chown(&filename, Some(runas_user.uid), Some(runas_user.gid))
-                    .map_err(|e| format!("chown: {}: {}", filename.to_string_lossy(), e))?;
-                fs::set_permissions(&filename, PermissionsExt::from_mode(0o600))
-                    .map_err(|e| format!("chmod: {}: {}", filename.to_string_lossy(), e))?;
-            }
-            let mut rot = FileRotate::new(filename);
-            for user in &config.auditlog.clone().users.unwrap_or(vec!()) {
-                rot = rot.with_uid(User::from_name(&user)?
-                                   .ok_or_else(||format!("user {} not found", &user))?
-                                   .uid);
-            }
-            if let Some(generations) = &config.auditlog.generations {
-                rot = rot.with_generations(*generations);
-            }
-            if let Some(filesize) = &config.auditlog.size {
-                rot = rot.with_filesize(*filesize);
-            }
-            Logger { output: BufWriter::new(Box::new(rot)) }
-        }
+    let logger = std::cell::RefCell::new(
+	Logger::new(&config.auditlog, &dir, &runas_user)?);
+    let mut debug_logger = if let Some(l) = &config.debuglog {
+	Some(Logger::new(&l, &dir, &runas_user)?)
+    } else {
+	None
     };
-    let logger = std::cell::RefCell::new(logger);
 
     if !Uid::effective().is_root() {
         log_warn("Not dropping privileges -- not running as root");
@@ -258,9 +271,11 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let stdin = io::stdin();
     let mut input = stdin.lock();
 
-    let statusreport_period = config.statusreport_period.unwrap_or(0);
-    let statusreport_period_t = Duration::new(statusreport_period, 0);
+    let statusreport_period = config.statusreport_period.map(|v| Duration::from_secs(v));
     let mut statusreport_last_t = SystemTime::now();
+
+    let dump_state_period = config.debug.dump_state_period.map(|v| Duration::from_secs(v));
+    let mut dump_state_last_t = SystemTime::now();
 
     loop {
         line.clear();
@@ -279,29 +294,30 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         };
 
         // Output status information about Laurel every "statusreport_period_t" time (configurable)
-        if statusreport_period <= 0 || statusreport_last_t.elapsed()? <= statusreport_period_t {
-            continue;
-        }
+        if let Some(p) = statusreport_period {
+	    if statusreport_last_t.elapsed()? >= p {
+		log_info( &format!("Laurel version {}", LAUREL_VERSION) );
+		log_info( &format!(
+		    "Parsing stats (until now): processed {} lines {} events with {} errors in total",
+		    &stats.lines, &stats.events, &stats.errors ) );
+		log_info( &format!("Running with EUID {} using config {}",
+				   Uid::effective().as_raw(), &config) );
+		overall_stats += stats;
+		stats = Stats::default();
+		statusreport_last_t = SystemTime::now();
+	    }
+	}
 
-        log_info(
-            &format!("Laurel version {}", LAUREL_VERSION)
-        );
-        log_info(
-            &format!(
-                "Parsing stats (until now): processed {} lines {} events with {} errors in total",
-                &stats.lines, &stats.events, &stats.errors
-            )
-        );
-        log_info(
-            &format!("Running with EUID {} using config {}", Uid::effective().as_raw(), &config)
-        );
-        overall_stats += stats;
-        stats = Stats::default();
-        statusreport_last_t = SystemTime::now();
+	if let (Some(dl), Some(p)) = (&mut debug_logger, &dump_state_period) {
+	    if dump_state_last_t.elapsed()? >= *p {
+		coalesce.dump_state(&mut dl.output)?;
+		dump_state_last_t = SystemTime::now();
+	    }
+	}
     }
 
     // If periodical reports were enabled, stats only contains temporary statistics.
-    if statusreport_period > 0 {
+    if let Some(_) = statusreport_period {
         stats = overall_stats;
     }
 
