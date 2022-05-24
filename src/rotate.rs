@@ -85,7 +85,7 @@ impl Write for FileRotate {
         let mut f = self.file.as_ref().unwrap();
         let sz = f.write(buf)?;
         self.offset += sz as u64;
-        if self.offset > self.filesize {
+        if self.offset > self.filesize && self.filesize != 0 {
             f.sync_all()?;
             self.rotate()?;
         }
