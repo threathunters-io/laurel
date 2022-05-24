@@ -113,8 +113,8 @@ impl std::fmt::Display for Config {
                self.statusreport_period.unwrap_or(0),
                self.auditlog.file.to_string_lossy(),
                self.auditlog.users.clone().unwrap_or(vec!["n/a".to_string()]).join(","),
-               self.auditlog.size.unwrap_or(0),
-               self.auditlog.generations.unwrap_or(0)
+               self.auditlog.size.unwrap_or(10*1024*1024),
+               self.auditlog.generations.unwrap_or(5)
         )
     }
 }
