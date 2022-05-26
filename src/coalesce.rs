@@ -234,8 +234,8 @@ impl<'a> Coalesce<'a> {
             .filter( |(_, id)| id.timestamp + EXPIRE_INFLIGHT_TIMEOUT < now )
             .cloned()
             .collect::<Vec<_>>();
-        for (node, id) in node_ids {
-            if let Some(event) = self.inflight.remove(&(node.clone(), id)) {
+        for node_id in node_ids {
+            if let Some(event) = self.inflight.remove(&node_id) {
                 self.emit_event(event);
             }
         }
@@ -317,9 +317,9 @@ impl<'a> Coalesce<'a> {
                                 let name = &rv.raw[r.clone()];
                                 match (name, n) {
                                     (b"arch", Number::Hex(n)) if self.translate_universal =>
-                                        arch = Some((r.clone(), n.clone())),
+                                        arch = Some((r.clone(), *n)),
                                     (b"syscall", Number::Dec(n)) if self.translate_universal =>
-                                        syscall = Some((r.clone(), n.clone())),
+                                        syscall = Some((r.clone(), *n)),
                                     (b"pid", Number::Dec(n)) => pid = Some(*n as u32),
                                     (b"ppid", Number::Dec(n)) => ppid = Some(*n as u32),
                                     _ => (),
