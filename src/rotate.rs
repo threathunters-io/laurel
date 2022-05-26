@@ -32,8 +32,8 @@ impl<'a> FileRotate {
     pub fn new<P: AsRef<OsStr>>(path: P) -> Self {
         FileRotate {
             basename: OsString::from(path.as_ref()),
-            filesize: 10 * 1024 * 1024,
-            generations: 5,
+            filesize: 0,
+            generations: 0,
             uids: vec!(),
             file: None,
             offset: 0,
