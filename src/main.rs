@@ -240,7 +240,10 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     coalesce.populate_proc_table()
         .map_err(|e| format!("populate proc table: {}", e))?;
     coalesce.translate_universal = config.translate.universal;
-    coalesce.translate_userdb = config.translate.userdb;
+    if config.translate.userdb {
+	coalesce.translate_userdb = true;
+	coalesce.populate_userdb();
+    }
     coalesce.proc_label_keys = config.label_process.label_keys.iter()
         .map( |s| s.as_bytes().to_vec() )
         .collect();

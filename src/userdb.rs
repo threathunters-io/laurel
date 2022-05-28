@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::ffi::CStr;
 
 use libc;
@@ -27,24 +27,22 @@ fn get_group(gid: u32) -> Option<String> {
 /// lookups by uid and gid, respectively.
 #[derive(Debug,Default)]
 pub struct UserDB {
-    pub users: HashMap<u32, (Option<String>, i64)>,
-    pub groups: HashMap<u32, (Option<String>, i64)>,
+    pub users: BTreeMap<u32, (Option<String>, i64)>,
+    pub groups: BTreeMap<u32, (Option<String>, i64)>,
 }
 
 fn now() -> i64 { unsafe { libc::time(std::ptr::null_mut()) as i64 } }
 
 impl UserDB {
-    pub fn new() -> Self {
-        let mut c = UserDB {
-            users: HashMap::with_capacity(200),
-            groups: HashMap::with_capacity(200),
-        };
-        // prime cache
-        for id in 0..1023 {
-            c.get_user(id);
-            c.get_group(id);
+    pub fn populate(&mut self) {
+	for id in 0..1023 {
+            if let Some(user) = get_user(id)  {
+		self.users.insert(id, (Some(user), now()));
+	    }
+	    if let Some(group) = get_group(id) {
+		self.groups.insert(id, (Some(group), now()));
+	    }
         }
-        c
     }
     pub fn get_user(&mut self, uid: u32) -> Option<String> {
         match self.users.get(&uid) {

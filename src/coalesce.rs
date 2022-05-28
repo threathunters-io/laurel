@@ -226,6 +226,11 @@ impl<'a> Coalesce<'a> {
         Ok(self.processes = ProcTable::from_proc()?)
     }
 
+    /// Fill userdb
+    pub fn populate_userdb(&mut self) {
+        self.userdb.populate()
+    }
+
     /// Flush out events
     ///
     /// Called every EXPIRE_PERIOD ms and when Coalesce is destroyed.
