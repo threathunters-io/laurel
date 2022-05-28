@@ -218,7 +218,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 
     let logger = std::cell::RefCell::new(
 	Logger::new(&config.auditlog, &dir, &runas_user)?);
-    let mut debug_logger = if let Some(l) = &config.debuglog {
+    let mut debug_logger = if let Some(l) = &config.debug.log {
 	Some(Logger::new(&l, &dir, &runas_user)?)
     } else {
 	None

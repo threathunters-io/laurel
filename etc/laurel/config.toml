@@ -19,11 +19,11 @@ generations = 10
 # POSIX ACLs
 read-users = [ "splunk" ]
 
-# [debuglog]
-# file = "debug.log"
-
 # [debug]
 # dump-state-period = 120
+
+# [debug.log]
+# file = "debug.log"
 
 [transform]
 

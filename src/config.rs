@@ -14,6 +14,7 @@ pub struct Logfile {
 
 #[derive(Clone,Debug,Default,Serialize,Deserialize,PartialEq)]
 pub struct Debug {
+    pub log: Option<Logfile>,
     #[serde(rename="dump-state-period")]
     pub dump_state_period: Option<u64>,
 }
@@ -76,7 +77,6 @@ pub struct Config {
     #[serde(rename="statusreport-period")] #[serde(default)]
     pub statusreport_period: Option<u64>,
     pub auditlog: Logfile,
-    pub debuglog: Option<Logfile>,
     #[serde(default)]
     pub debug: Debug,
     #[serde(default)]
@@ -103,7 +103,6 @@ impl Default for Config {
                 size: Some(10*1024*1024),
                 generations: Some(5),
             },
-            debuglog: None,
 	    debug: Debug::default(),
             transform: Transform::default(),
             translate: Translate::default(),
