@@ -8,8 +8,8 @@
 #include <linux/dn.h>
 #include <linux/if_alg.h>
 #include <linux/if_packet.h>
-#include <linux/if_pppox.h>
-#include <linux/if_xdp.h>
+// #include <linux/if_pppox.h>
+// #include <linux/if_xdp.h>
 #include <linux/in6.h>
 #include <linux/in.h>
 #include <linux/l2tp.h>
