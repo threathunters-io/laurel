@@ -311,11 +311,11 @@ fn parse_hex(input: &[u8]) -> IResult<&[u8], PValue> {
 fn parse_dec(input: &[u8]) -> IResult<&[u8], PValue> {
     map_res(
         terminated(
-	    pair(opt(tag("-")),take_while1(is_digit)),
+            pair(opt(tag("-")),take_while1(is_digit)),
             peek(take_while1(is_sep)),
         ),
         |(sign,digits)| -> Result<_,std::num::ParseIntError> {
-	    let sign = if let Some(_) = sign { -1 } else { 1 };
+            let sign = if let Some(_) = sign { -1 } else { 1 };
             let digits = unsafe { str::from_utf8_unchecked(digits) };
             Ok(PValue::Number(Number::Dec(sign * i64::from_str(digits)?)))
         }

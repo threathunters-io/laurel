@@ -103,7 +103,7 @@ impl Default for Config {
                 size: Some(10*1024*1024),
                 generations: Some(5),
             },
-	    debug: Debug::default(),
+            debug: Debug::default(),
             transform: Transform::default(),
             translate: Translate::default(),
             enrich: Enrich::default(),

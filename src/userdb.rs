@@ -37,13 +37,13 @@ fn now() -> i64 { unsafe { libc::time(std::ptr::null_mut()) as i64 } }
 
 impl UserDB {
     pub fn populate(&mut self) {
-	for id in 0..1023 {
+        for id in 0..1023 {
             if let Some(user) = get_user(id)  {
-		self.users.insert(id, (Some(user), now()));
-	    }
-	    if let Some(group) = get_group(id) {
-		self.groups.insert(id, (Some(group), now()));
-	    }
+                self.users.insert(id, (Some(user), now()));
+            }
+            if let Some(group) = get_group(id) {
+                self.groups.insert(id, (Some(group), now()));
+            }
         }
     }
     pub fn get_user(&mut self, uid: u32) -> Option<String> {

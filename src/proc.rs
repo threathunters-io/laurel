@@ -44,23 +44,23 @@ pub struct Process {
 // This is a lossy serializer that is intended to be used for debugging only.
 impl Serialize for Process {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-	let mut map = s.serialize_map(Some(7))?;
-	map.serialize_entry("launch_time", &self.launch_time)?;
-	map.serialize_entry("ppid", &self.ppid)?;
-	map.serialize_entry(
-	    "argv",
-	    &self.argv.iter().map(|v|String::from_utf8_lossy(v)).collect::<Vec<_>>())?;
-	map.serialize_entry(
-	    "labels",
-	    &self.labels.iter().map(|v|String::from_utf8_lossy(v)).collect::<Vec<_>>())?;
-	map.serialize_entry("event_id", &self.event_id)?;
-	map.serialize_entry(
-	    "comm",
-	    &self.comm.clone().map(|v|String::from_utf8_lossy(&v).to_string()))?;
-	map.serialize_entry(
-	    "exe",
-	    &self.exe.clone().map(|v|String::from_utf8_lossy(&v).to_string()))?;
-	map.end()
+        let mut map = s.serialize_map(Some(7))?;
+        map.serialize_entry("launch_time", &self.launch_time)?;
+        map.serialize_entry("ppid", &self.ppid)?;
+        map.serialize_entry(
+            "argv",
+            &self.argv.iter().map(|v|String::from_utf8_lossy(v)).collect::<Vec<_>>())?;
+        map.serialize_entry(
+            "labels",
+            &self.labels.iter().map(|v|String::from_utf8_lossy(v)).collect::<Vec<_>>())?;
+        map.serialize_entry("event_id", &self.event_id)?;
+        map.serialize_entry(
+            "comm",
+            &self.comm.clone().map(|v|String::from_utf8_lossy(&v).to_string()))?;
+        map.serialize_entry(
+            "exe",
+            &self.exe.clone().map(|v|String::from_utf8_lossy(&v).to_string()))?;
+        map.end()
     }
 }
 
