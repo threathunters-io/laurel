@@ -17,6 +17,7 @@ use crate::types::*;
 use crate::parser::parse;
 use crate::quoted_string::ToQuotedString;
 use crate::sockaddr::SocketAddr;
+use crate::label_matcher::LabelMatcher;
 
 /// Collect records in [`EventBody`] context as single or multiple
 /// instances.
@@ -112,6 +113,8 @@ pub struct Coalesce<'a> {
 
     pub translate_universal: bool,
     pub translate_userdb: bool,
+
+    pub label_exe: Option<&'a LabelMatcher>,
 }
 
 const EXPIRE_PERIOD: u64  = 1_000;
@@ -221,12 +224,15 @@ impl<'a> Coalesce<'a> {
             proc_propagate_labels: HashSet::new(),
             translate_universal: false,
             translate_userdb: false,
+            label_exe: None,
         }
     }
 
     /// Fill shadow process table from system's /proc directory
     pub fn populate_proc_table(&mut self) -> Result<(), Box<dyn Error>> {
-        Ok(self.processes = ProcTable::from_proc()?)
+        self.processes = ProcTable::from_proc(self.label_exe, &self.proc_propagate_labels)?;
+
+        Ok(())
     }
 
     /// Fill userdb
@@ -302,6 +308,7 @@ impl<'a> Coalesce<'a> {
         let mut comm: Option<Vec<u8>> = None;
         let mut exe: Option<Vec<u8>> = None;
         let mut key: Option<Vec<u8>> = None;
+        let mut syscall_is_exec = false;
         for tv in ev.body.iter_mut() {
             match tv {
                 (&SYSCALL, EventValues::Single(rv)) => {
@@ -324,9 +331,9 @@ impl<'a> Coalesce<'a> {
                             (Key::Name(r), Value::Number(n)) => {
                                 let name = &rv.raw[r.clone()];
                                 match (name, n) {
-                                    (b"arch", Number::Hex(n)) if self.translate_universal =>
+                                    (b"arch", Number::Hex(n)) =>
                                         arch = Some((r.clone(), *n)),
-                                    (b"syscall", Number::Dec(n)) if self.translate_universal =>
+                                    (b"syscall", Number::Dec(n)) =>
                                         syscall = Some((r.clone(), *n)),
                                     (b"pid", Number::Dec(n)) => pid = Some(*n as u32),
                                     (b"ppid", Number::Dec(n)) => ppid = Some(*n as u32),
@@ -366,11 +373,18 @@ impl<'a> Coalesce<'a> {
                             if let Some(syscall_name) = SYSCALL_NAMES.get(arch_name)
                                 .and_then(|syscall_tbl| syscall_tbl.get(&(syscall.1 as u32)))
                             {
-                                let v = rv.put(syscall_name);
-                                translated.push_front((Key::NameTranslated(syscall.0), Value::Str(v, Quote::None)));
+                                if self.translate_universal {
+                                    let v = rv.put(syscall_name);
+                                    translated.push_front((Key::NameTranslated(syscall.0), Value::Str(v, Quote::None)));
+                                }
+                                if syscall_name.windows(6).any(|s| s == b"execve") {
+                                    syscall_is_exec = true;
+                                }
                             }
-                            let v = rv.put(arch_name);
-                            translated.push_front((Key::NameTranslated(arch.0), Value::Str(v, Quote::None)));
+                            if self.translate_universal {
+                                let v = rv.put(arch_name);
+                                translated.push_front((Key::NameTranslated(arch.0), Value::Str(v, Quote::None)));
+                            }
                         }
                     }
                     new.push((Key::Literal("ARGV"), Value::List(argv)));
@@ -523,6 +537,14 @@ impl<'a> Coalesce<'a> {
             }
         }
 
+        if let (Some(exe), Some(pid), Some(label_exe), true) =
+            (&exe, &pid, &self.label_exe, syscall_is_exec)
+        {
+            for label in label_exe.matches(&exe) {
+                self.processes.add_label(*pid, label);
+            }
+        }
+
         // PARENT_INFO
         if let Some(ppid) = ppid {
             if let Some(p) = self.processes.get_process(ppid) {
@@ -650,6 +672,7 @@ impl<'a> Coalesce<'a> {
             "ts": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
             "message": {
                 "type": "dump_state",
+                "label_exe": self.label_exe,
                 "inflight": self.inflight.iter().map(
                     |(k,v)| {
                         if let Some(node) = &k.0 {
@@ -706,6 +729,23 @@ mod test {
         c.dump_state(&mut buf)?;
         println!("{}", String::from_utf8_lossy(&buf));
         Ok(())
+    }
+
+    fn strip_enriched<T>(text: T) -> Vec<u8>
+    where T: AsRef<[u8]>,
+    {
+        let mut out = vec!();
+        for line in BufReader::new(text.as_ref()).lines() {
+            let line = line.unwrap().clone();
+            for c in line.as_bytes() {
+                match *c as char {
+                    '\x1d' => break,
+                    _ => out.push(*c),
+                };
+            }
+            out.push('\n' as u8);
+        }
+        out
     }
 
     fn process_record<T>(c: &mut Coalesce, text: T) -> Result<(),Box<dyn Error>>
@@ -784,6 +824,27 @@ mod test {
                     .contains(r#""LABELS":["software_mgmt"]"#),
                     "child process inherits 'software_mgmt' label");
         }
+        
+        Ok(())
+    }
+
+    #[test]
+    fn label_exe() -> Result<(), Box<dyn Error>> {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+        let emitter = | e: &Event | { *ec.borrow_mut() = Some(e.clone()) };
+        let lm = LabelMatcher::new(&[("whoami", "recon")])?;
+
+        let mut c = Coalesce::new(emitter);
+        c.label_exe = Some(&lm);
+        process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
+        drop(c);
+        assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["recon"]"#));
+
+        let mut c = Coalesce::new(emitter);
+        c.label_exe = Some(&lm);
+        process_record(&mut c, strip_enriched(include_bytes!("testdata/record-execve.txt")))?;
+        drop(c);
+        assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["recon"]"#));
         
         Ok(())
     }

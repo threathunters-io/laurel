@@ -250,19 +250,25 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     coalesce.execve_env = config.enrich.execve_env.iter()
         .map( |s| s.as_bytes().to_vec() )
         .collect();
-    coalesce.populate_proc_table()
-        .map_err(|e| format!("populate proc table: {}", e))?;
-    coalesce.translate_universal = config.translate.universal;
-    if config.translate.userdb {
-        coalesce.translate_userdb = true;
-        coalesce.populate_userdb();
-    }
+
+    if let Some(ref label_exe) = config.label_process.label_exe {
+        coalesce.label_exe = Some(label_exe);
+    }   
     coalesce.proc_label_keys = config.label_process.label_keys.iter()
         .map( |s| s.as_bytes().to_vec() )
         .collect();
     coalesce.proc_propagate_labels = config.label_process.propagate_labels.iter()
         .map( |s| s.as_bytes().to_vec() )
         .collect();
+
+    coalesce.populate_proc_table()
+        .map_err(|e| format!("populate proc table: {}", e))?;
+
+    coalesce.translate_universal = config.translate.universal;
+    if config.translate.userdb {
+        coalesce.translate_userdb = true;
+        coalesce.populate_userdb();
+    }
 
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();

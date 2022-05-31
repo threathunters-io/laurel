@@ -58,9 +58,19 @@ execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
 
 [label-process]
 
-# When processes perform operations that result in audit records with
-# these attached keys, LAUREL will attach the key as a label to the
-# process:
+# Audit records that contain certain keys can be reused as a label
+# attached to the process.
+#
+# This is useful in combination with audit rules such as:
+# -w /usr/bin/dpkg -p x -k software_mgmt
 label-keys = [ "software_mgmt" ]
+
+# Labels can be attached to processes that run certain programs.
+# LAUREL matches the program file path (SYSCALL.exe) against regular
+# expressions and attaches labels for matching entries:
+label-exe.'^/opt/.*/bin/java$' = 'java'
+label-exe.'^/usr/lib/jvm/.*/bin/java$' = 'java'
+label-exe.'^/snap/amazon-ssm-agent/\d+/' = 'amazon-ssm-agent'
+
 # Subprocesses inherit these keys from their parent.
-propagate-labels = [ "software_mgmt" ]
+propagate-labels = [ "software_mgmt", "amazon-ssm-agent" ]
