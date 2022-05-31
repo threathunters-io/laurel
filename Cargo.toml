@@ -27,6 +27,7 @@ nix = ">= 0.22"
 caps = ">= 0.5"
 libc = ">= 0.2"
 posix-acl = ">= 1"
+regex = ">= 1.5.0"
 
 [build-dependencies]
 bindgen = ">= 0.56"

@@ -3,6 +3,8 @@ use std::collections::HashSet;
 
 use serde::{Serialize,Deserialize};
 
+use crate::label_matcher::LabelMatcher;
+
 #[derive(Clone,Debug,Serialize,Deserialize,PartialEq)]
 pub struct Logfile {
     pub file: PathBuf,
@@ -63,6 +65,8 @@ impl Default for Enrich {
 pub struct LabelProcess {
     #[serde(rename="label-keys")]
     pub label_keys: HashSet<String>,
+    #[serde(rename="label-exe")]
+    pub label_exe: Option<LabelMatcher>,
     #[serde(rename="propagate-labels")]
     pub propagate_labels: HashSet<String>,
 }

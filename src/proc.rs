@@ -7,7 +7,7 @@ use std::iter::Iterator;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::vec::Vec;
-use std::collections::{BTreeMap,HashSet};
+use std::collections::{BTreeMap,BTreeSet,HashSet};
 
 use lazy_static::lazy_static;
 use nix::unistd::{sysconf,SysconfVar};
@@ -18,6 +18,7 @@ use serde::{Serialize,Serializer};
 use serde::ser::SerializeMap;
 
 use crate::types::{EventID,Record,Value,Number};
+use crate::label_matcher::LabelMatcher;
 
 lazy_static! {
     /// kernel clock ticks per second
@@ -155,12 +156,15 @@ impl Process {
 /// from /proc entries.
 #[derive(Debug,Default,Serialize)]
 pub struct ProcTable {
-    processes: BTreeMap<u32,Process>,
+    pub processes: BTreeMap<u32,Process>,
 }
 
 impl ProcTable {
     /// Constructs process table from /proc entries
-    pub fn from_proc() -> Result<ProcTable,Box<dyn Error>> {
+    ///
+    /// If label_exe and propagate_labels are supplied, Process labels
+    /// based on executable are applied and propagated to children.
+    pub fn from_proc(label_exe: Option<&LabelMatcher>, propagate_labels: &HashSet<Vec<u8>>) -> Result<ProcTable,Box<dyn Error>> {
         let mut pt = ProcTable { processes: BTreeMap::new() };
         for entry in read_dir("/proc")
             .map_err(|e| format!("read_dir: /proc: {}", e))?
@@ -171,12 +175,43 @@ impl ProcTable {
                                                .as_ref())
                 {
                     // /proc/<pid> access is racy. Ignore errors here.
-                    if let Ok(proc) = Process::parse_proc(pid) {
+                    if let Ok(mut proc) = Process::parse_proc(pid) {
+                        if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
+                            proc.labels.extend(label_exe.matches(exe)
+                                               .iter()
+                                               .map( |v| Vec::from(*v)) );
+                        }
                         pt.processes.insert(pid, proc);
                     }
                 }
             }
         }
+
+        if let Some(_) = label_exe {
+            // Collect propagated labels from parent processes
+            for pid in pt.processes.keys().cloned().collect::<Vec<_>>() {
+                let mut collect = BTreeSet::new();
+                let mut ppid = pid;
+                for _ in 1..64 {
+                    if let Some(proc) = pt.get_process(ppid) {
+                        collect.extend(proc.labels
+                                       .intersection(&propagate_labels)
+                                       .cloned());
+                        ppid = proc.ppid;
+                        if ppid <= 1 {
+                            break;
+                        }
+                    } else { 
+                        break;
+                    }
+                }
+                
+                if let Some(proc) = pt.processes.get_mut(&pid) {
+                    proc.labels.extend(collect);
+                }
+            }
+        }
+
         Ok(pt)
     }
 
@@ -261,7 +296,7 @@ mod tests {
     use super::*;
     #[test]
     fn show_processes() -> Result<(),Box<dyn Error>> {
-        let pt = ProcTable::from_proc()?;
+        let pt = ProcTable::from_proc(None, &HashSet::new())?;
         for p in pt.processes {
             println!("{:?}", &p);
         }
