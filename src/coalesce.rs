@@ -685,7 +685,6 @@ impl Drop for Coalesce<'_> {
 mod test {
     use super::*;
     use std::io::{BufReader,BufRead};
-    use std::borrow::Borrow;
 
     #[test]
     fn dump_state() -> Result<(),Box<dyn Error>> {
@@ -700,8 +699,10 @@ mod test {
         Ok(())
     }
 
-    fn process_record(c: &mut Coalesce, text: &[u8]) -> Result<(),Box<dyn Error>> {
-        for line in BufReader::new(text).lines() {
+    fn process_record<T>(c: &mut Coalesce, text: T) -> Result<(),Box<dyn Error>>
+    where T: AsRef<[u8]>,
+    {
+        for line in BufReader::new(text.as_ref()).lines() {
             let mut line = line.unwrap().clone();
             line.push('\n');
             c.process_line(line.as_bytes().to_vec())?;
@@ -713,54 +714,40 @@ mod test {
     fn coalesce() -> Result<(), Box<dyn Error>> {
         let mut ec: Option<Event> = None;
 
-        {
-            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            c.process_line(Vec::from(*include_bytes!("testdata/line-user-acct.txt")))?;
-        }
-        assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615113648981, sequence: 15220});
+        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        process_record(&mut c, include_bytes!("testdata/line-user-acct.txt"))?;
+        drop(c);
+        assert_eq!(ec.clone().unwrap().id, EventID{ timestamp: 1615113648981, sequence: 15220});
 
-        {
-            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            process_record(&mut c, include_bytes!("testdata/record-execve.txt").as_ref())?;
-        }
-        assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
+        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
+        drop(c);
+        assert_eq!(ec.clone().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
 
-        {
-            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            process_record(&mut c, include_bytes!("testdata/record-execve.txt").as_ref())?;
-        }
-        assert_eq!(ec.borrow().as_ref().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
+        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
+        drop(c);
+        assert_eq!(ec.clone().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
 
-        // record does not begin with SYSCALL.
-        {
-            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            process_record(&mut c, include_bytes!("testdata/record-login.txt").as_ref())?;
-        }
+        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        process_record(&mut c, include_bytes!("testdata/record-execve-long.txt"))?;
+        drop(c);
+        assert_eq!(ec.clone().unwrap().id, EventID{ timestamp: 1615150974493, sequence: 21028});
 
         // record does not begin with SYSCALL.
-        {
-            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            process_record(&mut c, include_bytes!("testdata/record-adjntpval.txt").as_ref())?;
-        }
+        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
+        drop(c);
 
         // record does not begin with SYSCALL.
-        {
-            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            process_record(&mut c, include_bytes!("testdata/record-avc-apparmor.txt").as_ref())?;
-        }
+        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        process_record(&mut c, include_bytes!("testdata/record-adjntpval.txt"))?;
+        drop(c);
 
-        Ok(())
-    }
-
-    #[test]
-    fn coalesce_long() -> Result<(), Box<dyn Error>> {
-        let mut ec: Option<Event> = None;
-
-        {
-            let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-            process_record(&mut c, include_bytes!("testdata/record-execve-long.txt").as_ref())?;
-        }
-        assert_eq!(ec.unwrap().id, EventID{ timestamp: 1615150974493, sequence: 21028});
+        // record does not begin with SYSCALL.
+        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        process_record(&mut c, include_bytes!("testdata/record-avc-apparmor.txt"))?;
+        drop(c);
 
         Ok(())
     }

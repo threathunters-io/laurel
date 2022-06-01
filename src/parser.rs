@@ -478,17 +478,23 @@ mod test {
     use super::*;
     use super::msg_type::*;
 
+    fn do_parse<T>(text: T) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record),String>
+    where T: AsRef<[u8]>,
+    {
+        parse(Vec::from(text.as_ref()))
+    }
+
     #[test]
     fn parser() -> Result<(),Box<dyn std::error::Error>> {
         // ensure that constant init works
         assert_eq!(format!("--{}--", EOE), "--EOE--");
         assert_eq!(format!("--{}--", MessageType(9999)), "--UNKNOWN[9999]--");
 
-        let (_n, t, id, _rv) = parse(Vec::from(include_bytes!("testdata/line-eoe.txt").as_ref()))?;
+        let (_, t, id, _rv) = do_parse(include_bytes!("testdata/line-eoe.txt"))?;
         assert_eq!(t, EOE);
         assert_eq!(id, EventID{timestamp: 1615225617302, sequence: 25836});
 
-        let (_n, t, id, rv) = parse(Vec::from(include_bytes!("testdata/line-syscall.txt").as_ref()))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-syscall.txt"))?;
         assert_eq!(t, SYSCALL);
         assert_eq!(id, EventID{timestamp: 1615114232375, sequence: 15558});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
@@ -530,14 +536,14 @@ mod test {
                         "FSGID: Str:<root>",
                    ));
 
-        let (_n, t, id, rv) = parse(Vec::from(include_bytes!("testdata/line-execve.txt").as_ref()))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-execve.txt"))?;
         assert_eq!(t, EXECVE);
         assert_eq!(id, EventID{timestamp: 1614788539386, sequence: 13232});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!("argc: Num:<0>",
                         "a0: Str:<whoami>"));
 
-        let (_n, t, id, rv) = parse(Vec::from(include_bytes!("testdata/line-path.txt").as_ref()))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-path.txt"))?;
         assert_eq!(t, PATH);
         assert_eq!(id, EventID{timestamp: 1614788539386, sequence: 13232});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
@@ -556,7 +562,7 @@ mod test {
                         "cap_fver: Num:<0x0>",
                    ));
 
-        let (_n, t, id, rv) = parse(Vec::from(include_bytes!("testdata/line-path-enriched.txt").as_ref()))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-path-enriched.txt"))?;
         assert_eq!(t, PATH);
         assert_eq!(id, EventID{timestamp: 1615113648978, sequence: 15219});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
@@ -577,7 +583,7 @@ mod test {
                         "OGID: Str:<root>",
                    ));
 
-        let (_n, t, id, rv) = parse(Vec::from(include_bytes!("testdata/line-user-acct.txt").as_ref()))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-user-acct.txt"))?;
         assert_eq!(t, USER_ACCT);
         assert_eq!(id, EventID{timestamp: 1615113648981, sequence: 15220});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
@@ -590,11 +596,11 @@ mod test {
                         "AUID: Str:<user>",
                    ));
 
-        let (_n, t, id, _rv) = parse(Vec::from(include_bytes!("testdata/line-unknown.txt").as_ref()))?;
+        let (_, t, id, _) = do_parse(include_bytes!("testdata/line-unknown.txt"))?;
         assert_eq!(t, BPF);
         assert_eq!(id, EventID{timestamp: 1626883065201, sequence: 216697});
 
-        let (_n, t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-avc-denied.txt").as_ref()))?;
+        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-avc-denied.txt"))?;
         assert_eq!(t, AVC);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
@@ -608,7 +614,7 @@ mod test {
                        "denied: List:<setuid>",
                    ));
 
-        let (_n, t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-avc-granted.txt").as_ref()))?;
+        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-avc-granted.txt"))?;
         assert_eq!(t, AVC);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
@@ -620,7 +626,7 @@ mod test {
                        "granted: List:<setsecparam>",
                    ));
 
-        let (_n, t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-netlabel.txt").as_ref()))?;
+        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-netlabel.txt"))?;
         assert_eq!(t, MAC_UNLBL_ALLOW);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
@@ -633,7 +639,7 @@ mod test {
                        "netlabel: Empty",
                    ));
 
-        let (_n, _t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-broken-subj1.txt").as_ref()))?;
+        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-subj1.txt"))?;
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!("arch: Num:<0xc000003e>",
                         "syscall: Num:<59>",
@@ -663,7 +669,7 @@ mod test {
                         "key: Empty",
                    ));
 
-        let (_n, _t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-broken-subj2.txt").as_ref()))?;
+        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-subj2.txt"))?;
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
                        "arch: Num:<0xc000003e>",
@@ -694,7 +700,7 @@ mod test {
                        "key: Empty",
                    ));
 
-        let (_n, _t, _id, rv) = parse(Vec::from(include_bytes!("testdata/line-broken-avc-info.txt").as_ref()))?;
+        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-avc-info.txt"))?;
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
                        "apparmor: Str:<STATUS>",
@@ -706,11 +712,9 @@ mod test {
                        "comm: Str:<apparmor_parser>",
                    ));
 
-        let (_n, _t, _id, _rv) = parse(Vec::from(include_bytes!("testdata/line-daemon-end.txt").as_ref()))?;
-
-        let (_n, _t, _id, _rv) = parse(Vec::from(include_bytes!("testdata/line-netfilter.txt").as_ref()))?;
-
-        let (_n, _t, _id, _rv) = parse(Vec::from(include_bytes!("testdata/line-anom-abend.txt").as_ref()))?;
+        do_parse(include_bytes!("testdata/line-daemon-end.txt"))?;
+        do_parse(include_bytes!("testdata/line-netfilter.txt"))?;
+        do_parse(include_bytes!("testdata/line-anom-abend.txt"))?;
 
         Ok(())
     }
