@@ -274,18 +274,28 @@ impl<'a> Coalesce<'a> {
         match k {
             Key::NameUID(r) => {
                 if let Value::Number(Number::Dec(d)) = v {
-                    if let Some(user) = self.userdb.get_user(*d as u32) {
-                        return Some((Key::NameTranslated(r.clone()),
-                                     Value::Str(rv.put(user.as_bytes()), Quote::None)));
-                    }
+                    let translated = if *d == 0xffffffff {
+                        "unset".to_string()
+                    } else if let Some(user) = self.userdb.get_user(*d as u32) {
+                        user.to_string()
+                    } else {
+                        format!("unknown({})", d)
+                    };
+                    return Some((Key::NameTranslated(r.clone()),
+                                 Value::Str(rv.put(translated.as_bytes()), Quote::Double)));
                 }
             },
             Key::NameGID(r) => {
                 if let Value::Number(Number::Dec(d)) = v {
-                    if let Some(group) = self.userdb.get_group(*d as u32) {
-                        return Some((Key::NameTranslated(r.clone()),
-                                     Value::Str(rv.put(group.as_bytes()), Quote::None)));
-                    }
+                    let translated = if *d == 0xffffffff {
+                        "unset".to_string()
+                    } else if let Some(group) = self.userdb.get_group(*d as u32) {
+                        group.to_string()
+                    } else {
+                        format!("unknown({})", d)
+                    };
+                    return Some((Key::NameTranslated(r.clone()),
+                                 Value::Str(rv.put(translated.as_bytes()), Quote::Double)));
                 }
             },
             _ => (),
@@ -803,7 +813,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn translate_uids() {
         let ec = Rc::new(RefCell::new(None));
 
