@@ -753,18 +753,18 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "expected 7 fields")]
+    #[should_panic(expected = "expected 12 fields")]
     fn duplicate_uids() {
         let mut ec: Option<Event> = None;
 
         let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
         c.translate_userdb = true;
-        process_record(&mut c, include_bytes!("testdata/line-user-acct.txt")).unwrap();
+        process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
         drop(c);
-        if let EventValues::Single(records) = &ec.clone().unwrap().body[&USER_ACCT] {
-            // Check for: pid, uid, auid, ses, msg, UID, AUID
-            let l = records.elems.len();
-            assert!(l == 7, "expected 7 fields, got {}", l);
+        if let EventValues::Multi(records) = &ec.clone().unwrap().body[&LOGIN] {
+            // Check for: pid uid subj old-auid auid tty old-ses ses res UID OLD-AUID AUID
+            let l = records[0].elems.len();
+            assert!(l == 12, "expected 12 fields, got {}: {:?}", l, records[0].into_iter().collect::<Vec<_>>());
         } else {
             panic!("expected EventValues::Single");
         }
