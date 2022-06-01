@@ -751,4 +751,22 @@ mod test {
 
         Ok(())
     }
+
+    #[test]
+    #[should_panic(expected = "expected 7 fields")]
+    fn duplicate_uids() {
+        let mut ec: Option<Event> = None;
+
+        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        c.translate_userdb = true;
+        process_record(&mut c, include_bytes!("testdata/line-user-acct.txt")).unwrap();
+        drop(c);
+        if let EventValues::Single(records) = &ec.clone().unwrap().body[&USER_ACCT] {
+            // Check for: pid, uid, auid, ses, msg, UID, AUID
+            let l = records.elems.len();
+            assert!(l == 7, "expected 7 fields, got {}", l);
+        } else {
+            panic!("expected EventValues::Single");
+        }
+    }
 }
