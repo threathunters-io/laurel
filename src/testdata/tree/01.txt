@@ -1,0 +1,7 @@
+type=SYSCALL msg=audit(1654180383.046:299897): arch=c000003e syscall=59 success=yes exit=0 a0=564c986288a0 a1=564c9862df30 a2=7ffc8fdcce50 a3=564c9862e7e0 items=3 ppid=722676 pid=722677 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts14 ses=3 comm="dpkg" exe="/usr/bin/dpkg" subj==unconfined key="pkg_mgmt"ARCH=x86_64 SYSCALL=execve AUID="user" UID="root" GID="root" EUID="root" SUID="root" FSUID="root" EGID="root" SGID="root" FSGID="root"
+type=EXECVE msg=audit(1654180383.046:299897): argc=2 a0="/usr/bin/dpkg" a1="--print-foreign-architectures"
+type=CWD msg=audit(1654180383.046:299897): cwd="/"
+type=PATH msg=audit(1654180383.046:299897): item=0 name="/usr/bin/dpkg" inode=394866 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0OUID="root" OGID="root"
+type=PATH msg=audit(1654180383.046:299897): item=1 name="/usr/bin/dpkg" inode=394866 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0OUID="root" OGID="root"
+type=PATH msg=audit(1654180383.046:299897): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=398319 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0OUID="root" OGID="root"
+type=EOE msg=audit(1654180383.046:299897): 

@@ -1,0 +1,7 @@
+type=SYSCALL msg=audit(1654180385.638:300341): arch=c000003e syscall=59 success=yes exit=0 a0=564c98851150 a1=7ffc8fdcb770 a2=7ffc8fdcce50 a3=7f067bd80ac0 items=3 ppid=722676 pid=723197 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts14 ses=3 comm="store" exe="/usr/lib/apt/methods/store" subj==unconfined key=(null)ARCH=x86_64 SYSCALL=execve AUID="user" UID="root" GID="root" EUID="root" SUID="root" FSUID="root" EGID="root" SGID="root" FSGID="root"
+type=EXECVE msg=audit(1654180385.638:300341): argc=1 a0="/usr/lib/apt/methods/store"
+type=CWD msg=audit(1654180385.638:300341): cwd="/"
+type=PATH msg=audit(1654180385.638:300341): item=0 name="/usr/lib/apt/methods/store" inode=394277 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0OUID="root" OGID="root"
+type=PATH msg=audit(1654180385.638:300341): item=1 name="/usr/lib/apt/methods/store" inode=394277 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0OUID="root" OGID="root"
+type=PATH msg=audit(1654180385.638:300341): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=398319 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0OUID="root" OGID="root"
+type=EOE msg=audit(1654180385.638:300341):

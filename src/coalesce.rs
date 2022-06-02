@@ -687,6 +687,13 @@ mod test {
     use std::cell::RefCell;
     use std::io::{BufReader,BufRead};
     use std::rc::Rc;
+    use serde_json;
+
+    fn event_to_json(e: &Event) -> String {
+        let mut out = vec!();
+        serde_json::to_writer(&mut out, e).unwrap();
+        String::from_utf8_lossy(&out).to_string()
+    }
 
     #[test]
     fn dump_state() -> Result<(),Box<dyn Error>> {
@@ -753,5 +760,31 @@ mod test {
         } else {
             panic!("expected EventValues::Single");
         };
+    }
+
+    #[test]
+    fn key_label() -> Result<(), Box<dyn Error>> {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new( |e| {
+            *ec.borrow_mut() = Some(e.clone());
+        } );
+        c.proc_label_keys.insert(Vec::from(&b"software_mgmt"[..]));
+        c.proc_propagate_labels.insert(Vec::from(&b"software_mgmt"[..]));
+        process_record(&mut c, include_bytes!("testdata/tree/00.txt"))?;
+        {
+            assert!(event_to_json(ec.borrow().as_ref().unwrap())
+                    .contains(r#""LABELS":["software_mgmt"]"#),
+                    "process gets 'software_mgmt' label from key");
+        }
+
+        process_record(&mut c, include_bytes!("testdata/tree/01.txt"))?;
+        {
+            assert!(event_to_json(ec.borrow().as_ref().unwrap())
+                    .contains(r#""LABELS":["software_mgmt"]"#),
+                    "child process inherits 'software_mgmt' label");
+        }
+        
+        Ok(())
     }
 }
