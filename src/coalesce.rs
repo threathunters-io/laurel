@@ -684,7 +684,9 @@ impl Drop for Coalesce<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::cell::RefCell;
     use std::io::{BufReader,BufRead};
+    use std::rc::Rc;
 
     #[test]
     fn dump_state() -> Result<(),Box<dyn Error>> {
@@ -712,42 +714,26 @@ mod test {
 
     #[test]
     fn coalesce() -> Result<(), Box<dyn Error>> {
-        let mut ec: Option<Event> = None;
+        let ec: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(Vec::new()));
+        let mut c = Coalesce::new(|e: &Event| { ec.borrow_mut().push(e.clone()); } );
 
-        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
         process_record(&mut c, include_bytes!("testdata/line-user-acct.txt"))?;
-        drop(c);
-        assert_eq!(ec.clone().unwrap().id, EventID{ timestamp: 1615113648981, sequence: 15220});
+        assert_eq!(ec.borrow().last().unwrap().id, EventID{ timestamp: 1615113648981, sequence: 15220});
 
-        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        if let Ok(_) = process_record(&mut c, include_bytes!("testdata/line-user-acct.txt")) {
+            panic!("failed to detect duplicate entries");
+        };
+
         process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
-        drop(c);
-        assert_eq!(ec.clone().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
+        assert_eq!(ec.borrow().last().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
 
-        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
-        process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
-        drop(c);
-        assert_eq!(ec.clone().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
-
-        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
         process_record(&mut c, include_bytes!("testdata/record-execve-long.txt"))?;
-        drop(c);
-        assert_eq!(ec.clone().unwrap().id, EventID{ timestamp: 1615150974493, sequence: 21028});
+        assert_eq!(ec.borrow().last().unwrap().id, EventID{ timestamp: 1615150974493, sequence: 21028});
 
-        // record does not begin with SYSCALL.
-        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        // recordds do not begin with SYSCALL.
         process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
-        drop(c);
-
-        // record does not begin with SYSCALL.
-        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
         process_record(&mut c, include_bytes!("testdata/record-adjntpval.txt"))?;
-        drop(c);
-
-        // record does not begin with SYSCALL.
-        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
         process_record(&mut c, include_bytes!("testdata/record-avc-apparmor.txt"))?;
-        drop(c);
 
         Ok(())
     }
@@ -755,18 +741,17 @@ mod test {
     #[test]
     #[should_panic(expected = "expected 12 fields")]
     fn duplicate_uids() {
-        let mut ec: Option<Event> = None;
+        let ec = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new( |e| { ec = Some(e.clone()) } );
+        let mut c = Coalesce::new( |e: &Event| { *ec.borrow_mut() = Some(e.clone()) } );
         c.translate_userdb = true;
         process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
-        drop(c);
-        if let EventValues::Multi(records) = &ec.clone().unwrap().body[&LOGIN] {
+        if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
             // Check for: pid uid subj old-auid auid tty old-ses ses res UID OLD-AUID AUID
             let l = records[0].elems.len();
             assert!(l == 12, "expected 12 fields, got {}: {:?}", l, records[0].into_iter().collect::<Vec<_>>());
         } else {
             panic!("expected EventValues::Single");
-        }
+        };
     }
 }
