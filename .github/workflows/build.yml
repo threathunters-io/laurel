@@ -52,6 +52,9 @@ jobs:
                   acl-static musl-dev linux-headers \
                   binutils file jq
       - uses: actions/checkout@v2
+      - name: Tweak build dependencies
+        run: |
+          cargo update --package bindgen --precise '0.59.2'
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build
