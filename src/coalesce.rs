@@ -561,15 +561,6 @@ impl<'a> Coalesce<'a> {
                     let r = pi.put(&exe);
                     pi.elems.push((Key::Literal("exe"), Value::Str(r, Quote::None)));
                 }
-                let argv = p.argv.iter()
-                    .map(|v| Value::Str(pi.put(v), Quote::None))
-                    .collect::<Vec<_>>();
-                if self.execve_argv_list {
-                    pi.elems.push((Key::Literal("ARGV"), Value::List(argv.clone())));
-                }
-                if self.execve_argv_string {
-                    pi.elems.push((Key::Literal("ARGV_STR"), Value::StringifiedList(argv.clone())));
-                }
                 let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid as i64)));
                 pi.elems.push(kv);
                 ev.body.insert(PARENT_INFO, EventValues::Single(pi));
