@@ -798,7 +798,33 @@ mod test {
             let l = records[0].elems.len();
             assert!(l == 12, "expected 12 fields, got {}: {:?}", l, records[0].into_iter().collect::<Vec<_>>());
         } else {
-            panic!("expected EventValues::Single");
+            panic!("expected EventValues::Multi");
+        };
+    }
+
+    #[test]
+    #[should_panic]
+    fn translate_uids() {
+        let ec = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new( |e: &Event| { *ec.borrow_mut() = Some(e.clone()) } );
+        c.translate_userdb = true;
+        process_record(&mut c, strip_enriched(include_bytes!("testdata/record-login.txt"))).unwrap();
+        if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
+            let mut uid = false;
+            let mut old_auid = false;
+            let mut auid = false;
+            // UID="root" OLD-AUID="unset" AUID="root"
+            for (k,v) in &records[0] {
+                if &k == "UID" && &v == "root" { uid = true; }
+                if &k == "OLD-AUID" && &v == "unset" { old_auid = true; }
+                if &k == "AUID" && &v == "root" { auid = true; }
+            }
+            assert!(uid);
+            assert!(old_auid);
+            assert!(auid);
+        } else {
+            panic!("expected EventValues::Multi");
         };
     }
 
