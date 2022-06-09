@@ -481,6 +481,21 @@ impl Serialize for RValue<'_> {
     }
 }
 
+impl PartialEq<str> for RValue<'_> {
+    fn eq(&self, other: &str) -> bool {
+        self == other.as_bytes()
+    }
+}
+
+impl PartialEq<[u8]> for RValue<'_> {
+    fn eq(&self, other: &[u8]) -> bool {
+        if let Ok(v) = (*self).try_into() as Result<Vec<u8>,_> {
+            return v == other;
+        }
+        return false;
+    }
+}
+
 /// The Offset trait provides an implementation for adding offset to Range.
 trait Offset { fn offset(&self, offset: usize) -> Self; }
 
