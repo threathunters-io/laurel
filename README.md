@@ -17,7 +17,7 @@ type=EXECVE msg=audit(1626611363.720:348501): argc=3 a0="perl" a1="-e" a2=757365
 ```
 This happens at the source. The generated event even contains useful information about the spawning process:
 ```
-"PARENT_INFO":{"ID":"1643635026.276:327308","comm":"sh","exe":"/usr/bin/dash","ARGV":["bash"],"ppid":3190631}
+"PARENT_INFO":{"ID":"1643635026.276:327308","comm":"sh","exe":"/usr/bin/dash","ppid":3190631}
 ```
 
 ## Description
@@ -47,11 +47,6 @@ Every event that is caused by a syscall or filesystem rule is annotated with inf
   "ID": "1643635026.276:327308",
   "comm": "sh",
   "exe": "/usr/bin/dash",
-  "ARGV": [
-    "sh",
-    "-c",
-    "whoami"
-  ],
   "ppid": 1532
 }
 ```
