@@ -26,6 +26,10 @@ jobs:
               exit 1
           fi
           echo ::set-output "name=version::$version_git"
+      - name: Tweak build dependencies
+        run: |
+          cargo update --package bindgen --precise 0.59.2
+          cargo update --package indexmap --precise 1.8.2
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
