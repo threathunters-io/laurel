@@ -354,9 +354,13 @@ impl<'a> Coalesce<'a> {
                                 let name = &rv.raw[r.clone()];
                                 match name {
                                     b"ARCH" =>
-                                        if let &Some(_) = &arch { continue },
+                                        if let (true, &Some(_)) = (self.translate_universal, &arch) {
+                                            continue
+                                        },
                                     b"SYSCALL" =>
-                                        if let &Some(_) = &syscall { continue },
+                                        if let (true, &Some(_)) = (self.translate_universal, &syscall) {
+                                            continue
+                                        },
                                     b"key" =>
                                         if let Value::Str(r, _) = v {
                                             key = Some(rv.raw[r.clone()].into());
@@ -804,7 +808,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn keep_enriched_syscalls() {
         let ec = Rc::new(RefCell::new(None));
 
