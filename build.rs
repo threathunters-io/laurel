@@ -108,7 +108,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
         .rust_target(bindgen::RustTarget::Stable_1_47)
         .allowlist_type("^sockaddr_.*")
         .allowlist_var("^AF_.*")
-	.layout_tests(false)
+        .layout_tests(false)
         .rustfmt_bindings(false)
         .generate()
         .expect("unable to generate bindings")
