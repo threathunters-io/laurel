@@ -804,6 +804,19 @@ mod test {
     }
 
     #[test]
+    #[should_panic]
+    fn keep_enriched_syscalls() {
+        let ec = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new( |e: &Event| { *ec.borrow_mut() = Some(e.clone()) } );
+        process_record(&mut c, include_bytes!("testdata/record-execve.txt")).unwrap();
+        assert!(event_to_json(ec.borrow().as_ref().unwrap())
+                .contains(r#""ARCH":"x86_64""#));
+        assert!(event_to_json(ec.borrow().as_ref().unwrap())
+                .contains(r#""SYSCALL":"execve""#));
+    }
+
+    #[test]
     fn translate_uids() {
         let ec = Rc::new(RefCell::new(None));
 
