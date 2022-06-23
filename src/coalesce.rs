@@ -836,9 +836,9 @@ mod test {
                 if &k == "OLD-AUID" && &v == "unset" { old_auid = true; }
                 if &k == "AUID" && &v == "root" { auid = true; }
             }
-            assert!(uid);
-            assert!(old_auid);
-            assert!(auid);
+            assert!(uid, "missing UID: {:?}", records[0].into_iter().collect::<Vec<_>>());
+            assert!(old_auid, "missing OLD-AUID: {:?}", records[0].into_iter().collect::<Vec<_>>());
+            assert!(auid, "missing AUID: {:?}", records[0].into_iter().collect::<Vec<_>>());
         } else {
             panic!("expected EventValues::Multi");
         };
