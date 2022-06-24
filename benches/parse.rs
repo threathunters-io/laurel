@@ -12,7 +12,7 @@ fn measure(bench: &mut Bencher, line: &[u8]) {
     let line = line.to_vec();
     bench.iter(|| {
         for _ in 0..1000 {
-            laurel::parser::parse(line.clone()).unwrap();
+            laurel::parser::parse(line.clone(), false).unwrap();
         }
     });
 }
