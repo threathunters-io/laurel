@@ -692,7 +692,8 @@ impl<'a> Coalesce<'a> {
     /// The line is consumed and serves as backing store for the
     /// EventBody objects.
     pub fn process_line(&mut self, line: Vec<u8>) -> Result<(), Box<dyn Error>> {
-        let (node, typ, id, rv) = parse(line)?;
+        let skip_enriched = self.settings.translate_universal && self.settings.translate_userdb;
+        let (node, typ, id, rv) = parse(line, skip_enriched)?;
         let nid = (node.clone(), id);
 
         // clean out state every EXPIRE_PERIOD
@@ -894,12 +895,12 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "expected 12 fields")]
     fn duplicate_uids() {
         let ec = Rc::new(RefCell::new(None));
 
         let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
         c.settings.translate_userdb = true;
+        c.settings.translate_universal = true;
         process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
         if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
             // Check for: pid uid subj old-auid auid tty old-ses ses res UID OLD-AUID AUID
@@ -931,6 +932,7 @@ mod test {
 
         let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
         c.settings.translate_userdb = true;
+        c.settings.translate_universal = true;
         process_record(
             &mut c,
             strip_enriched(include_bytes!("testdata/record-login.txt")),

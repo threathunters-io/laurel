@@ -10,8 +10,16 @@ use nom::{
 };
 
 /// Parse a single log line as produced by _auditd(8)_
+///
+/// If `skip_enriched` is set and _auditd_ has been configured to
+/// produce `log_format=ENRICHED` logs, i.e. to resolve uid, gid,
+/// syscall, arch, sockaddr fields, those resolved values are dropped
+/// by the parser.
 #[allow(clippy::type_complexity)]
-pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record), String> {
+pub fn parse(
+    mut raw: Vec<u8>,
+    skip_enriched: bool,
+) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record), String> {
     let (rest, (nd, ty, id)) = parse_header(&raw).map_err(|e| {
         format!(
             "cannot parse header: {}",
@@ -19,7 +27,7 @@ pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID,
         )
     })?;
 
-    let (rest, body) = parse_body(rest, ty).map_err(|e| {
+    let (rest, body) = parse_body(&rest, ty, skip_enriched).map_err(|e| {
         format!(
             "cannot parse body: {}",
             e.map_input(String::from_utf8_lossy)
@@ -180,7 +188,11 @@ enum PValue<'a> {
 /// Recognize the body: Multiple key/value pairs, with special cases
 /// for some irregular messages
 #[inline(always)]
-fn parse_body(input: &[u8], ty: MessageType) -> IResult<&[u8], Vec<(PKey, PValue)>> {
+fn parse_body(
+    input: &[u8],
+    ty: MessageType,
+    skip_enriched: bool,
+) -> IResult<&[u8], Vec<(PKey, PValue)>> {
     let (input, special) = opt(alt((
         map_res(
             tuple((
@@ -198,12 +210,22 @@ fn parse_body(input: &[u8], ty: MessageType) -> IResult<&[u8], Vec<(PKey, PValue
         ),
     )))(input)?;
 
-    let (input, mut kv) = terminated(
-        separated_list0(take_while1(|c| c == b' ' || c == b'\x1d'), |input| {
-            parse_kv(input, ty)
-        }),
-        newline,
-    )(input)?;
+    let (input, mut kv) = if skip_enriched {
+        terminated(
+            separated_list0(tag(b" "), |input| parse_kv(input, ty)),
+            alt((
+                value((), tuple((tag("\x1d"), many1(none_of("\n")), tag("\n")))),
+                value((), tag("\n")),
+            )),
+        )(input)?
+    } else {
+        terminated(
+            separated_list0(take_while1(|c| c == b' ' || c == b'\x1d'), |input| {
+                parse_kv(input, ty)
+            }),
+            newline,
+        )(input)?
+    };
 
     if let Some(s) = special {
         kv.push(s)
@@ -481,7 +503,7 @@ mod test {
     where
         T: AsRef<[u8]>,
     {
-        parse(Vec::from(text.as_ref()))
+        parse(Vec::from(text.as_ref()), false)
     }
 
     #[test]
