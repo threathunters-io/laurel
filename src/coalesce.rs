@@ -303,6 +303,15 @@ impl<'a> Coalesce<'a> {
         return None;
     }
 
+    fn drop_key(&self, rv: &Record, r: &Range<usize>) -> bool {
+        let buf = &rv.raw[r.clone()];
+
+        self.translate_userdb && (
+            buf.ends_with(b"UID") ||
+            buf.ends_with(b"GID")
+        )
+    }
+
     /// Rewrite event to normal form
     ///
     /// This function
@@ -373,7 +382,11 @@ impl<'a> Coalesce<'a> {
                                         if let Value::Str(r,_) = v {
                                             exe = Some(rv.raw[r.clone()].into());
                                         },
-                                    _ => (),
+                                    _ => {
+                                        if self.drop_key(&rv, &r) {
+                                            continue;
+                                        }
+                                    },
                                 };
                             },
                             _ => if let Some((k,v)) = self.translate_userdb(rv, k, v) {
@@ -523,23 +536,47 @@ impl<'a> Coalesce<'a> {
                     }
                 },
                 (_, EventValues::Single(rv)) => {
+                    let mut new = Vec::new();
                     let mut translated = Vec::new();
                     for (k,v) in &rv.elems.clone() {
-                        if let Some((k,v)) = self.translate_userdb(rv, k, v) {
-                            translated.push((k,v));
+                        match (k,v) {
+                            (Key::Name(r), _) => {
+                                if self.drop_key(&rv, &r) {
+                                    continue;
+                                }
+                            },
+                            _ => {
+                                if let Some((k,v)) = self.translate_userdb(rv, k, v) {
+                                    translated.push((k,v));
+                                }
+                            }
                         }
+                        new.push((k.clone(),v.clone()));
                     }
-                    rv.elems.extend(translated);
+                    new.extend(translated);
+                    rv.elems = new;
                 },
                 (_, EventValues::Multi(rvs)) => {
                     for rv in rvs {
+                        let mut new = Vec::new();
                         let mut translated = Vec::new();
                         for (k,v) in &rv.elems.clone() {
-                            if let Some((k,v)) = self.translate_userdb(rv, k, v) {
-                                translated.push((k,v));
+                            match (k,v) {
+                                (Key::Name(r), _) => {
+                                    if self.drop_key(&rv, &r) {
+                                        continue;
+                                    }
+                                },
+                                _ => {
+                                    if let Some((k,v)) = self.translate_userdb(rv, k, v) {
+                                        translated.push((k,v));
+                                    }
+                                }
                             }
+                            new.push((k.clone(),v.clone()));
                         }
-                        rv.elems.extend(translated);
+                        new.extend(translated);
+                        rv.elems = new;
                     }
                 },
             }
@@ -791,7 +828,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "expected 12 fields")]
     fn duplicate_uids() {
         let ec = Rc::new(RefCell::new(None));
 
@@ -826,6 +862,23 @@ mod test {
         let mut c = Coalesce::new( |e: &Event| { *ec.borrow_mut() = Some(e.clone()) } );
         c.translate_userdb = true;
         process_record(&mut c, strip_enriched(include_bytes!("testdata/record-login.txt"))).unwrap();
+
+        if let EventValues::Single(record) = &ec.borrow().as_ref().unwrap().body[&SYSCALL] {
+            let mut uids = 0;
+            let mut gids = 0;
+            for (k,v) in record {
+                if k.to_string().ends_with("UID") {
+                    uids+=1;
+                    assert!(&v == "root", "Got {}={:?}, expected root", k,v);
+                }
+                if k.to_string().ends_with("GID") {
+                    gids+=1;
+                    assert!(&v == "root", "Got {}={:?}, expected root", k,v);
+                }
+            }
+            assert!(uids == 5 && gids == 4, "Got {] uids/{} gids, expected 5/4" );
+        }
+        
         if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
             let mut uid = false;
             let mut old_auid = false;
