@@ -835,6 +835,23 @@ mod test {
         let mut c = Coalesce::new( |e: &Event| { *ec.borrow_mut() = Some(e.clone()) } );
         c.translate_userdb = true;
         process_record(&mut c, strip_enriched(include_bytes!("testdata/record-login.txt"))).unwrap();
+
+        if let EventValues::Single(record) = &ec.borrow().as_ref().unwrap().body[&SYSCALL] {
+            let mut uids = 0;
+            let mut gids = 0;
+            for (k,v) in record {
+                if k.to_string().ends_with("UID") {
+                    uids+=1;
+                    assert!(&v == "root", "Got {}={:?}, expected root", k,v);
+                }
+                if k.to_string().ends_with("GID") {
+                    gids+=1;
+                    assert!(&v == "root", "Got {}={:?}, expected root", k,v);
+                }
+            }
+            assert!(uids == 5 && gids == 4, "Got {] uids/{} gids, expected 5/4" );
+        }
+        
         if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
             let mut uid = false;
             let mut old_auid = false;
