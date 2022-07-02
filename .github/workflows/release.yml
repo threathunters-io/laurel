@@ -3,57 +3,109 @@ on:
     tags:
       - "v*"
 
-jobs:
-  build:
+# jobs:
+#   build-musl:
+#     runs-on: ubuntu-latest
+#     container: alpine:3.14
+#     steps:
+#       - name: Prepare
+#         run: |
+#           apk add git ca-certificates \
+#                   rust cargo \
+#                   clang \
+#                   acl-static musl-dev linux-headers \
+#                   jq
+#       - uses: actions/checkout@v2
+#       - name: Get Version
+#         id: version
+#         run: |
+#           version_git="${GITHUB_REF/refs\/tags\//}"
+#           version_cargo="v$(cargo read-manifest | jq -r '.version')"
+#           if [ "$version_git" != "$version_cargo" ]; then
+#               echo "git != cargo: $version_git != $version_cargo" >&2
+#               exit 1
+#           fi
+#           echo ::set-output "name=version::$version_git"
+#       - name: Tweak build dependencies
+#         run: |
+#           cargo update --package bindgen --precise 0.59.2
+#           cargo update --package indexmap --precise 1.8.2
+#       - name: Build
+#         run: |
+#           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
+#       - name: build tarball
+#         run: |
+#           ln target/release/laurel .
+#           tar -czf laurel.tar.gz laurel *.md
+#       - name: Create release
+#         id: create_release
+#         uses: actions/create-release@v1
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         with:
+#           tag_name: ${{ github.ref }}
+#           release_name: Release ${{ github.ref }}
+#           draft: true
+#           prerelease: false
+#       - name: Upload Release Asset
+#         id: upload-release-asset
+#         uses: actions/upload-release-asset@v1
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         with:
+#           upload_url: ${{ steps.create_release.outputs.upload_url }}
+#           asset_path: laurel.tar.gz
+#           asset_name: laurel-${{ steps.version.outputs.version }}-x86_64-musl.tar.gz
+#           asset_content_type: application/tar
+
+  build-glibc:
     runs-on: ubuntu-latest
-    container: alpine:3.14
+    container: debian:buster-slim
     steps:
       - name: Prepare
         run: |
-          apk add git ca-certificates \
-                  rust cargo \
-                  clang \
-                  acl-static musl-dev linux-headers \
-                  jq
+          apt-get -q update
+          apt-get -qy upgrade
+          apt-get -qy install ca-certificates rustc-mozilla cargo clang libacl1-dev jq
       - uses: actions/checkout@v2
-      - name: Get Version
-        id: version
-        run: |
-          version_git="${GITHUB_REF/refs\/tags\//}"
-          version_cargo="v$(cargo read-manifest | jq -r '.version')"
-          if [ "$version_git" != "$version_cargo" ]; then
-              echo "git != cargo: $version_git != $version_cargo" >&2
-              exit 1
-          fi
-          echo ::set-output "name=version::$version_git"
+      # - name: Get Version
+      #   id: version
+      #   run: |
+      #     version_git="${GITHUB_REF/refs\/tags\//}"
+      #     version_cargo="v$(cargo read-manifest | jq -r '.version')"
+      #     if [ "$version_git" != "$version_cargo" ]; then
+      #         echo "git != cargo: $version_git != $version_cargo" >&2
+      #         exit 1
+      #     fi
+      #     echo ::set-output "name=version::$version_git"
       - name: Tweak build dependencies
         run: |
           cargo update --package bindgen --precise 0.59.2
           cargo update --package indexmap --precise 1.8.2
       - name: Build
         run: |
-          RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
+          cargo build --release
       - name: build tarball
         run: |
           ln target/release/laurel .
           tar -czf laurel.tar.gz laurel *.md
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: true
-          prerelease: false
-      - name: Upload Release Asset
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: laurel.tar.gz
-          asset_name: laurel-${{ steps.version.outputs.version }}-x86_64-musl.tar.gz
-          asset_content_type: application/tar
+      # - name: Create release
+      #   id: create_release
+      #   uses: actions/create-release@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     tag_name: ${{ github.ref }}
+      #     release_name: Release ${{ github.ref }}
+      #     draft: true
+      #     prerelease: false
+      # - name: Upload Release Asset
+      #   id: upload-release-asset
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+      #     asset_path: laurel.tar.gz
+      #     asset_name: laurel-${{ steps.version.outputs.version }}-x86_64-glibc.tar.gz
+      #     asset_content_type: application/tar
