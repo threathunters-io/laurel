@@ -4,39 +4,20 @@ on:
       - "v*"
 
 jobs:
-  build:
+  prep:
     runs-on: ubuntu-latest
-    container: alpine:3.14
     steps:
-      - name: Prepare
-        run: |
-          apk add git ca-certificates \
-                  rust cargo \
-                  clang \
-                  acl-static musl-dev linux-headers \
-                  jq
       - uses: actions/checkout@v2
       - name: Get Version
-        id: version
+        id: get_version
         run: |
-          version_git="${GITHUB_REF/refs\/tags\//}"
+          version_git=$(echo "$GITHUB_REF" | sed -e 's/refs\/tags\///')
           version_cargo="v$(cargo read-manifest | jq -r '.version')"
           if [ "$version_git" != "$version_cargo" ]; then
               echo "git != cargo: $version_git != $version_cargo" >&2
               exit 1
           fi
-          echo ::set-output "name=version::$version_git"
-      - name: Tweak build dependencies
-        run: |
-          cargo update --package bindgen --precise 0.59.2
-          cargo update --package indexmap --precise 1.8.2
-      - name: Build
-        run: |
-          RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
-      - name: build tarball
-        run: |
-          ln target/release/laurel .
-          tar -czf laurel.tar.gz laurel *.md
+          echo ::set-output "name=git_version::$version_git"
       - name: Create release
         id: create_release
         uses: actions/create-release@v1
@@ -47,13 +28,76 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: true
           prerelease: false
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      git_version: ${{ steps.get_version.outputs.git_version }}
+
+  build-musl:
+    needs: prep
+    runs-on: ubuntu-latest
+    container: alpine:3.14
+    steps:
+      - name: Prepare
+        run: |
+          apk add git ca-certificates rust cargo clang acl-static musl-dev linux-headers jq
+      - uses: actions/checkout@v2
+      - name: Tweak build dependencies
+        run: |
+          cargo update --package bindgen --precise 0.59.2
+          cargo update --package indexmap --precise 1.8.2
+      - name: Build
+        run: |
+          RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
+      - name: Build tarball
+        run: |
+          ln target/release/laurel .
+          tar -czf laurel.tar.gz laurel *.md
       - name: Upload Release Asset
-        id: upload-release-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          upload_url: ${{ needs.prep.outputs.upload_url }}
           asset_path: laurel.tar.gz
-          asset_name: laurel-${{ steps.version.outputs.version }}-x86_64-musl.tar.gz
+          asset_name: laurel-${{ needs.prep.outputs.git_version }}-x86_64-musl.tar.gz
+          asset_content_type: application/tar
+
+  build-glibc:
+    needs: prep
+    runs-on: ubuntu-latest
+    container: debian:buster-slim
+    steps:
+      - name: Prepare
+        run: |
+          apt-get -q update
+          apt-get -qy upgrade
+          apt-get -qy install ca-certificates rustc-mozilla cargo clang libacl1-dev jq
+      - uses: actions/checkout@v2
+      - name: Tweak build dependencies
+        run: |
+          cargo update --package bindgen --precise 0.59.2
+          cargo update --package indexmap --precise 1.8.2
+      - name: Build
+        run: |
+          cargo build --release
+      - name: Determine minimum GNU libc version
+        run: |
+          objdump -t target/release/laurel | sed -ne '/@GLIBC_/{s/^.*@GLIBC_//;p;}' | sort -uV
+          min_glibc_version=$(objdump -t target/release/laurel \
+              | sed -ne '/@GLIBC_/{s/^.*@GLIBC_//;p;}' \
+              | sort -uV \
+              | tail -n1)
+          echo Minimum GNU libc version: $min_glibc_version
+      - name: Build tarball
+        run: |
+          ln target/release/laurel .
+          tar -czf laurel.tar.gz laurel *.md
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.prep.outputs.upload_url }}
+          asset_path: laurel.tar.gz
+          asset_name: laurel-${{ needs.prep.outputs.git_version }}-x86_64-glibc.tar.gz
           asset_content_type: application/tar

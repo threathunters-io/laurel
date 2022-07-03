@@ -6,6 +6,8 @@ on:
       - build.rs
       - Cargo.toml
       - .github/workflows/build.yml
+    tags-ignore:
+      - "v*"
   pull_request:
     paths:
       - src/**
@@ -70,6 +72,30 @@ jobs:
               echo "laurel is linked against shared libraries" >&2
               exit 1
           fi
+
+  build_dynamic_glibc:
+    runs-on: ubuntu-latest
+    container: debian:buster-slim
+    steps:
+      - name: Prepare
+        run: |
+          apt-get -q update
+          apt-get -qy upgrade
+          apt-get -qy install ca-certificates rustc-mozilla cargo clang libacl1-dev jq
+      - uses: actions/checkout@v2
+      - name: Tweak build dependencies
+        run: |
+          cargo update --package bindgen --precise 0.59.2
+          cargo update --package indexmap --precise 1.8.2
+      - name: Build
+        run: |
+          cargo build
+      - name: Show binary charcteristics
+        run: |
+          set -x
+          file target/debug/laurel
+          ldd  target/debug/laurel
+          objdump -x target/debug/laurel | grep NEEDED || true
 
       - name: Launch test
         run: |
