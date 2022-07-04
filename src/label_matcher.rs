@@ -26,7 +26,7 @@ impl LabelMatcher {
     }
     // Return the list of tags that are supposed to describe text
     pub fn matches(&self, text: &[u8]) -> Vec<&[u8]> {
-        self.set.matches(&text).iter().map(|i|self.tags[i].as_ref()).collect()
+        self.set.matches(text).iter().map(|i|self.tags[i].as_ref()).collect()
     }
 }
 
@@ -66,7 +66,7 @@ impl<'de> Visitor<'de> for LabelMatcherVisitor {
         while let Some((k,v)) = access.next_entry()? {
             kvs.push((k,v));
         }
-        if kvs.len() == 0 {
+        if kvs.is_empty() {
             Err(de::Error::custom("empty hash"))
         } else {
             let kvs = kvs.iter().map( |(k,v)| (k.as_ref(),v.as_ref()) ).collect::<Vec<_>>();

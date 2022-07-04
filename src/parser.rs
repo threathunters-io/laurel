@@ -20,10 +20,10 @@ pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID,
     let (rest, (nd, ty, id)) = parse_header(&raw)
         .map_err(|_| "cannot parse header".to_string())?;
 
-    let (rest, body) = parse_body(&rest, ty)
+    let (rest, body) = parse_body(rest, ty)
         .map_err(|_| "cannot parse body".to_string())?;
 
-    if rest.len() > 0 {
+    if !rest.is_empty() {
         return Err("garbage at end of message".into());
     }
 
@@ -120,14 +120,12 @@ fn parse_type(input: &[u8]) -> IResult<&[u8], MessageType> {
                 |s| EVENT_IDS.get(s)
                     .ok_or(format!("unknown event id {}",
                                    String::from_utf8_lossy(s)))
-                    .and_then(|n|Ok(MessageType(*n)))),
+                    .map(|n|MessageType(*n))),
             map_res(
                 delimited(tag("UNKNOWN["),
                           recognize(many1(is_a("0123456789"))),
                           tag("]")),
-                |s| str::from_utf8(s).unwrap()
-                    .parse::<u32>()
-                    .and_then(|n|Ok(MessageType(n))))
+                |s| str::from_utf8(s).unwrap().parse::<u32>().map(MessageType))
         )) ) (input)
 }
 
@@ -202,7 +200,7 @@ fn parse_body(input: &[u8], ty: MessageType) -> IResult<&[u8], Vec<(PKey,PValue)
         ),
         newline) (input)?;
 
-    special.map( |s| kv.push(s) );
+    if let Some(s) = special { kv.push(s) }
 
     Ok((input,kv))
 }
@@ -212,7 +210,7 @@ fn parse_body(input: &[u8], ty: MessageType) -> IResult<&[u8], Vec<(PKey,PValue)
 fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
     let (input, key) = match ty {
         // Special case for execve arguments: aX, aX[Y], aX_len
-        msg_type::EXECVE if input.len() > 0 && input[0] == b'a' => terminated(
+        msg_type::EXECVE if !input.is_empty() && input[0] == b'a' => terminated(
             alt((parse_key_a_x_len, parse_key_a_xy, parse_key_a_x, parse_key)),
             tag("=")) (input),
         // SYCALL: Special case for syscall params: aX
@@ -238,9 +236,9 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
                 }) (input)?
         },
         (msg_type::EXECVE, PKey::Arg(_,_)) =>
-            parse_encoded (&input)?,
+            parse_encoded (input)?,
         (msg_type::EXECVE, PKey::ArgLen(_)) =>
-            parse_dec (&input)?,
+            parse_dec (input)?,
         (_, PKey::Name(name)) => {
             match FIELD_TYPES.get(name) {
                 Some(&FieldType::Encoded) =>
@@ -315,7 +313,7 @@ fn parse_dec(input: &[u8]) -> IResult<&[u8], PValue> {
             peek(take_while1(is_sep)),
         ),
         |(sign,digits)| -> Result<_,std::num::ParseIntError> {
-            let sign = if let Some(_) = sign { -1 } else { 1 };
+            let sign = if sign.is_some() { -1 } else { 1 };
             let digits = unsafe { str::from_utf8_unchecked(digits) };
             Ok(PValue::Number(Number::Dec(sign * i64::from_str(digits)?)))
         }

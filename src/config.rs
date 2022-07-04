@@ -120,11 +120,11 @@ impl Default for Config {
 impl std::fmt::Display for Config {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(fmt, "(user={} directory={} statusreport-period={} file={} users={} size={} generations={})",
-               self.user.clone().unwrap_or("n/a".to_string()),
+               self.user.clone().unwrap_or_else(|| "n/a".to_string()),
                self.directory.clone().unwrap_or_else(||PathBuf::from(".")).display(),
                self.statusreport_period.unwrap_or(0),
                self.auditlog.file.to_string_lossy(),
-               self.auditlog.users.clone().unwrap_or(vec!["n/a".to_string()]).join(","),
+               self.auditlog.users.clone().unwrap_or_else(|| vec!["n/a".to_string()]).join(","),
                self.auditlog.size.unwrap_or(0),
                self.auditlog.generations.unwrap_or(0)
         )

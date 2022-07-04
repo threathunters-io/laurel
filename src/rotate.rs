@@ -54,7 +54,7 @@ impl<'a> FileRotate {
             };
             let mut new = self.basename.clone();
             new.push(format!(".{}", suffix + 1));
-            if let Ok(_) = fs::metadata(&old) {
+            if fs::metadata(&old).is_ok() {
                 fs::rename(old, new)?;
             }
         }
@@ -79,7 +79,7 @@ impl<'a> FileRotate {
 
 impl Write for FileRotate {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        if let None = self.file {
+        if self.file.is_none() {
             self.open()?;
         }
         let mut f = self.file.as_ref().unwrap();

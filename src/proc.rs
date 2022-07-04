@@ -167,27 +167,25 @@ impl ProcTable {
     pub fn from_proc(label_exe: Option<&LabelMatcher>, propagate_labels: &HashSet<Vec<u8>>) -> Result<ProcTable,Box<dyn Error>> {
         let mut pt = ProcTable { processes: BTreeMap::new() };
         for entry in read_dir("/proc")
-            .map_err(|e| format!("read_dir: /proc: {}", e))?
+            .map_err(|e| format!("read_dir: /proc: {}", e))?.flatten()
         {
-            if let Ok(entry) = entry {
-                if let Ok(pid) = u32::from_str(entry.file_name()
-                                               .to_string_lossy()
-                                               .as_ref())
-                {
-                    // /proc/<pid> access is racy. Ignore errors here.
-                    if let Ok(mut proc) = Process::parse_proc(pid) {
-                        if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
-                            proc.labels.extend(label_exe.matches(exe)
-                                               .iter()
-                                               .map( |v| Vec::from(*v)) );
-                        }
-                        pt.processes.insert(pid, proc);
+            if let Ok(pid) = u32::from_str(entry.file_name()
+                                           .to_string_lossy()
+                                           .as_ref())
+            {
+                // /proc/<pid> access is racy. Ignore errors here.
+                if let Ok(mut proc) = Process::parse_proc(pid) {
+                    if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
+                        proc.labels.extend(label_exe.matches(exe)
+                                           .iter()
+                                           .map( |v| Vec::from(*v)) );
                     }
+                    pt.processes.insert(pid, proc);
                 }
             }
         }
 
-        if let Some(_) = label_exe {
+        if label_exe.is_some() {
             // Collect propagated labels from parent processes
             for pid in pt.processes.keys().cloned().collect::<Vec<_>>() {
                 let mut collect = BTreeSet::new();
@@ -195,7 +193,7 @@ impl ProcTable {
                 for _ in 1..64 {
                     if let Some(proc) = pt.get_process(ppid) {
                         collect.extend(proc.labels
-                                       .intersection(&propagate_labels)
+                                       .intersection(propagate_labels)
                                        .cloned());
                         ppid = proc.ppid;
                         if ppid <= 1 {
@@ -266,7 +264,7 @@ impl ProcTable {
                 }
             }
         }
-        prune.iter().for_each(|pid| { self.processes.remove(&pid); } );
+        prune.iter().for_each(|pid| { self.processes.remove(pid); } );
     }
 
     pub fn add_label(&mut self, pid: u32, label: &[u8]) {
