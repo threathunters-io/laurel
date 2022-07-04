@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+#![allow(clippy::missing_safety_doc)]
 include!(concat!(env!("OUT_DIR"), "/sockaddr.rs"));
 
 use std::error::Error;
@@ -79,7 +80,7 @@ fn get_sock<T>(buf: &[u8]) -> Result<&T, String> {
         Err("buffer too short".into())
     } else {
         let sa = unsafe { &* transmute::<_,*const T>(&buf[0] as *const _) };
-        Ok(&sa)
+        Ok(sa)
     }
 }
 
@@ -109,8 +110,8 @@ impl SocketAddr {
             AF_AX25 => {
                 let sa = get_sock::<sockaddr_ax25>(buf)?;
                 let mut call = [0u8; 7];
-                for i in 0..7 {
-                    call[i] = sa.sax25_call.ax25_call[i] as u8;
+                for (i, v) in sa.sax25_call.ax25_call.iter().enumerate() {
+                    call[i] = *v as u8;
                 }
                 Ok(SocketAddr::AX25(SocketAddrAX25{call}))
             },
@@ -134,8 +135,8 @@ impl SocketAddr {
             AF_X25 => {
                 let sa = get_sock::<sockaddr_x25>(buf)?;
                 let mut address = [0u8; 16];
-                for i in 0..16 {
-                    address[i] = sa.sx25_addr.x25_addr[i] as u8;
+                for (i, v) in sa.sx25_addr.x25_addr.iter().enumerate() {
+                    address[i] = *v as u8;
                 }
                 Ok(SocketAddr::X25(SocketAddrX25{address}))
             },

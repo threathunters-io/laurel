@@ -10,7 +10,7 @@ use std::ops::AddAssign;
 use std::os::unix::fs::PermissionsExt;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::error::Error;
-use std::path::{Path,PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use nix::unistd::{chown,setresuid,setresgid,User,Uid};
@@ -19,7 +19,6 @@ use caps::{Capability, CapSet};
 use caps::securebits::set_keepcaps;
 
 use serde::Serialize;
-use serde_json;
 
 use laurel::coalesce::Coalesce;
 use laurel::rotate::FileRotate;
@@ -30,8 +29,8 @@ mod syslog {
     use std::mem::forget;
     use libc::{openlog,syslog,LOG_PERROR,LOG_DAEMON,LOG_INFO,LOG_WARNING,LOG_ERR,LOG_CRIT};
 
-    pub fn init(progname: &String) {
-        let ident = CString::new(progname.as_str()).unwrap();
+    pub fn init(progname: &str) {
+        let ident = CString::new(progname).unwrap();
         unsafe { openlog(ident.as_ptr(), LOG_PERROR, LOG_DAEMON) };
         // The libc syslog code stores the pointer to ident, it must
         // not be dropped.
@@ -89,15 +88,15 @@ fn drop_privileges(runas_user: &User) -> Result<(),Box<dyn Error>> {
     let gid = runas_user.gid;
 
     setresgid(gid, gid, gid)
-        .map_err(|e|format!("setresgid({}): {}", uid, e.to_string()))?;
+        .map_err(|e|format!("setresgid({}): {}", uid, e))?;
     setresuid(uid, uid, uid)
-        .map_err(|e|format!("setresuid({}): {}", gid, e.to_string()))?;
+        .map_err(|e|format!("setresuid({}): {}", gid, e))?;
 
     let mut capabilities = HashSet::new();
     capabilities.insert(Capability::CAP_SYS_PTRACE);
     capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
     caps::set(None, CapSet::Effective, &capabilities)
-        .map_err(|e|format!("set capabilities: {}", e.to_string()))?;
+        .map_err(|e|format!("set capabilities: {}", e))?;
 
     set_keepcaps(false)?;
     Ok(())
@@ -110,11 +109,11 @@ struct Logger {
 impl Logger {
     fn log<S: Serialize>(&mut self, message: S) {
         serde_json::to_writer(&mut self.output, &message).unwrap();
-        self.output.write(b"\n").unwrap();
+        self.output.write_all(b"\n").unwrap();
         self.output.flush().unwrap();
     }
 
-    fn new(def: &Logfile, dir: &PathBuf, runas_user: &User) -> Result<Self,Box<dyn Error>> {
+    fn new(def: &Logfile, dir: &Path, runas_user: &User) -> Result<Self,Box<dyn Error>> {
         match &def.file {
             p if p.as_os_str() == "-" =>
                 Ok(Logger {
@@ -125,7 +124,7 @@ impl Logger {
                             dir.to_string_lossy(), p.to_string_lossy())
                     .into()),
             p => {
-                let mut filename = dir.clone();
+                let mut filename = dir.to_path_buf();
                 filename.push(&p);
                 // Set permissions on main (active) logfile before
                 // FileRotate is created.
@@ -136,8 +135,8 @@ impl Logger {
                         .map_err(|e| format!("chmod: {}: {}", filename.to_string_lossy(), e))?;
                 }
                 let mut rot = FileRotate::new(filename);
-                for user in &def.clone().users.unwrap_or(vec!()) {
-                    rot = rot.with_uid(User::from_name(&user)?
+                for user in &def.clone().users.unwrap_or_default() {
+                    rot = rot.with_uid(User::from_name(user)?
                                        .ok_or_else(||format!("user {} not found", &user))?
                                        .uid);
                 }
@@ -198,7 +197,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let dir = config.directory.clone().unwrap_or(Path::new(".").to_path_buf());
+    let dir = config.directory.clone().unwrap_or_else(||Path::new(".").to_path_buf());
     if dir.exists() {
         if !dir.is_dir() {
             return Err(format!("{} is not a directory", dir.to_string_lossy()).into());
@@ -219,7 +218,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let logger = std::cell::RefCell::new(
         Logger::new(&config.auditlog, &dir, &runas_user)?);
     let mut debug_logger = if let Some(l) = &config.debug.log {
-        Some(Logger::new(&l, &dir, &runas_user)?)
+        Some(Logger::new(l, &dir, &runas_user)?)
     } else {
         None
     };
@@ -277,10 +276,10 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let stdin = io::stdin();
     let mut input = stdin.lock();
 
-    let statusreport_period = config.statusreport_period.map(|v| Duration::from_secs(v));
+    let statusreport_period = config.statusreport_period.map(Duration::from_secs);
     let mut statusreport_last_t = SystemTime::now();
 
-    let dump_state_period = config.debug.dump_state_period.map(|v| Duration::from_secs(v));
+    let dump_state_period = config.debug.dump_state_period.map(Duration::from_secs);
     let mut dump_state_last_t = SystemTime::now();
 
     loop {
@@ -293,8 +292,8 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             Ok(()) => (),
             Err(e) => {
                 stats.errors += 1;
-                let line = String::from_utf8_lossy(&line).replace("\n", "");
-                log_err(&format!("Error {} processing msg: {}", e.to_string(), &line));
+                let line = String::from_utf8_lossy(&line).replace('\n', "");
+                log_err(&format!("Error {} processing msg: {}", e, &line));
                 continue
             }
         };
@@ -323,9 +322,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     }
 
     // If periodical reports were enabled, stats only contains temporary statistics.
-    if let Some(_) = statusreport_period {
-        stats = overall_stats;
-    }
+    if statusreport_period.is_some() { stats = overall_stats; }
 
     log_info(
         &format!(
@@ -341,13 +338,12 @@ pub fn main() {
     let progname = Arc::new(env::args().next().unwrap_or_else(||"laurel".to_string()));
     syslog::init(&progname);
     {
-        let progname = progname.clone();
         std::panic::set_hook(Box::new(move |panic_info| {
             let payload = panic_info.payload();
             let message = if let Some(s) = payload.downcast_ref::<&str>() {
                 s
             } else if let Some(s) = payload.downcast_ref::<String>() {
-                &s
+                s
             } else {
                 "(unknown error)"
             };

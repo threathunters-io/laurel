@@ -71,10 +71,7 @@ impl Serialize for Event {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where S: Serializer
     {
-        let mut length = 1 + self.body.len();
-        if let Some(_) = self.node {
-            length += 1
-        };
+        let length = self.body.len() + if self.node.is_some() { 2 } else { 1 };
         let mut map = s.serialize_map(Some(length))?;
         map.serialize_key("ID")?;
         map.serialize_value(&self.id)?;
@@ -203,7 +200,7 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
                     rv.put(format!("{}", sa.port).as_bytes())));
         },
     }
-    return Value::Map(m);
+    Value::Map(m)
 }
 
 impl<'a> Coalesce<'a> {
@@ -277,7 +274,7 @@ impl<'a> Coalesce<'a> {
                     let translated = if *d == 0xffffffff {
                         "unset".to_string()
                     } else if let Some(user) = self.userdb.get_user(*d as u32) {
-                        user.to_string()
+                        user
                     } else {
                         format!("unknown({})", d)
                     };
@@ -290,7 +287,7 @@ impl<'a> Coalesce<'a> {
                     let translated = if *d == 0xffffffff {
                         "unset".to_string()
                     } else if let Some(group) = self.userdb.get_group(*d as u32) {
-                        group.to_string()
+                        group
                     } else {
                         format!("unknown({})", d)
                     };
@@ -300,7 +297,7 @@ impl<'a> Coalesce<'a> {
             },
             _ => (),
         };
-        return None;
+        None
     }
 
     /// Rewrite event to normal form
@@ -354,11 +351,11 @@ impl<'a> Coalesce<'a> {
                                 let name = &rv.raw[r.clone()];
                                 match name {
                                     b"ARCH" =>
-                                        if let (true, &Some(_)) = (self.translate_universal, &arch) {
+                                        if self.translate_universal && arch.is_some() {
                                             continue
                                         },
                                     b"SYSCALL" =>
-                                        if let (true, &Some(_)) = (self.translate_universal, &syscall) {
+                                        if self.translate_universal && syscall.is_some() {
                                             continue
                                         },
                                     b"key" =>
@@ -476,7 +473,7 @@ impl<'a> Coalesce<'a> {
 
                         if let Some(parent) = self.processes.get_process(ppid) {
                             for l in self.proc_propagate_labels.intersection(&parent.labels) {
-                                self.processes.add_label(pid, &l);
+                                self.processes.add_label(pid, l);
                             }
                         }
                     }
@@ -491,7 +488,7 @@ impl<'a> Coalesce<'a> {
                                 match name {
                                     b"saddr" if self.translate_universal => {
                                         if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
-                                            translated.push((Key::NameTranslated(kr.clone()), translate_socketaddr(&mut rv, sa)));
+                                            translated.push((Key::NameTranslated(kr.clone()), translate_socketaddr(rv, sa)));
                                             continue;
                                         }
                                     },
@@ -554,7 +551,7 @@ impl<'a> Coalesce<'a> {
         if let (Some(exe), Some(pid), Some(label_exe), true) =
             (&exe, &pid, &self.label_exe, syscall_is_exec)
         {
-            for label in label_exe.matches(&exe) {
+            for label in label_exe.matches(exe) {
                 self.processes.add_label(*pid, label);
             }
         }
@@ -564,7 +561,7 @@ impl<'a> Coalesce<'a> {
             if let Some(p) = self.processes.get_process(ppid) {
                 let mut pi = Record::default();
                 if let Some(id) = p.event_id {
-                    let r = pi.put(&format!("{}", id).as_bytes());
+                    let r = pi.put(format!("{}", id).as_bytes());
                     pi.elems.push((Key::Literal("ID"), Value::Str(r, Quote::None)));
                 }
                 if let Some(comm) = p.comm {
@@ -584,9 +581,8 @@ impl<'a> Coalesce<'a> {
             (pid, ev.body.get_mut(&SYSCALL))
         {
             let labels = self.processes.get_process(pid)
-                .and_then(|p| Some(p.labels))
-                .unwrap_or(HashSet::new());
-            if labels.len() > 0 {
+                .map(|p| p.labels).unwrap_or_default();
+            if !labels.is_empty() {
                 let labels = labels.iter()
                     .map(|l| Value::Str(sc.put(l), Quote::None))
                     .collect::<Vec<_>>();
@@ -642,7 +638,7 @@ impl<'a> Coalesce<'a> {
         } else if typ.is_multipart() {
             // kernel-level messages
             if !self.inflight.contains_key(&nid) {
-                self.inflight.insert(nid.clone(), Event::new(node.clone(), id));
+                self.inflight.insert(nid.clone(), Event::new(node, id));
             }
             let ev = self.inflight.get_mut(&nid).unwrap();
             match ev.body.get_mut(&typ) {
@@ -699,7 +695,7 @@ impl<'a> Coalesce<'a> {
                 "next_expire": self.next_expire,
             },
         }))?;
-        w.write(b"\n")?;
+        w.write_all(b"\n")?;
         w.flush()?;
         Ok(())
     }

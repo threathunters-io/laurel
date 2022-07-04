@@ -55,7 +55,7 @@ impl ToQuotedString for [u8] {
                 }
             }
         }
-        if let Some(_) = utf8state {
+        if utf8state.is_some() {
             bytes.iter().for_each(|c|sb.push_str(&format!("%{:02x}", c)));
         }
         sb

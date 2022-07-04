@@ -52,7 +52,7 @@ pub struct MessageType(pub u32);
 impl Display for MessageType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match EVENT_NAMES.get(&(self.0)) {
-            Some(name) => write!(f, "{}", name.to_string()),
+            Some(name) => write!(f, "{}", name),
             None => write!(f, "UNKNOWN[{}]", self.0),
         }
     }
@@ -71,7 +71,7 @@ impl Debug for MessageType {
 impl Serialize for MessageType {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match EVENT_NAMES.get(&(self.0)) {
-            Some(name) => s.serialize_str(&name),
+            Some(name) => s.serialize_str(name),
             None => s.serialize_str(&format!("UNKNOWN[{}]", self.0)),
         }
     }
@@ -225,9 +225,7 @@ impl<'a> IntoIterator for &'a Record {
     type Item = (RKey<'a>, RValue<'a>);
     type IntoIter = RecordIterator<'a>;
     fn into_iter(self) -> Self::IntoIter {
-        return RecordIterator {
-            count: 0, r: &self,
-        }
+        RecordIterator { count: 0, r: self }
     }
 }
 
@@ -305,7 +303,7 @@ impl TryFrom<RValue<'_>> for Vec<u8> {
                 s.push(b'}');
                 Ok(s)
             },
-            Value::Str(r,_) => Ok(Vec::from(&v.raw[r.clone()]).into()),
+            Value::Str(r,_) => Ok(Vec::from(&v.raw[r.clone()])),
             Value::Empty => Ok("".into()),
             Value::Segments(ranges) => {
                 let mut sb = Vec::new();
@@ -328,7 +326,7 @@ impl TryFrom<RValue<'_>> for Vec<Vec<u8>> {
             Value::List(values) | Value::StringifiedList(values) => {
                 let mut rv = Vec::with_capacity(values.len());
                 for v in values {
-                    let s = Vec::try_from(RValue{value: &v, raw: &value.raw})?;
+                    let s = Vec::try_from(RValue{value: v, raw: value.raw})?;
                     rv.push(s);
                 }
                 Ok(rv)
@@ -443,7 +441,7 @@ impl Serialize for RValue<'_> {
             Value::List(vs) => {
                 let mut seq = s.serialize_seq(Some(vs.len()))?;
                 for v in vs {
-                    seq.serialize_element(&RValue{raw: &self.raw, value: &v})?;
+                    seq.serialize_element(&RValue{raw: self.raw, value: v})?;
                 }
                 seq.end()
             },
@@ -456,7 +454,7 @@ impl Serialize for RValue<'_> {
                     } else {
                         buf.push(b' ');
                     }
-                    buf.extend(RValue{raw: &self.raw, value: &v}
+                    buf.extend(RValue{raw: self.raw, value: v}
                                .try_into().
                                unwrap_or_else(|_| vec!(b'x')));
                 }
@@ -492,7 +490,7 @@ impl PartialEq<[u8]> for RValue<'_> {
         if let Ok(v) = (*self).try_into() as Result<Vec<u8>,_> {
             return v == other;
         }
-        return false;
+        false
     }
 }
 
