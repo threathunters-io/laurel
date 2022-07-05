@@ -8,9 +8,14 @@ $ cargo build --release
 $ sudo install -m755 target/release/laurel /usr/local/sbin/laurel
 ```
 
-## …or use the provided binary
+## …or use one of the provided binaries
 
-Static Linux/x86_64 binaries are built for tagged releases.
+For tagged releases, two types of binaries are created:
+
+- a statically-linked, [musl-libc](https://musl.libc.org) version, built on Alpine 3.14,
+- a dynamically-linked version based on GNU libc, built on Debian 10.
+
+The static build lacks the ability to perform user and group lookups using the _nsswitch_ facility used on GNU-libc-based systems, therefore it should be avoided on systems where other user/group databases than `/etc/passwd` and `/etc/group` are used (cf. issue #84).
 
 ## Configure, use
 
@@ -34,4 +39,3 @@ Static Linux/x86_64 binaries are built for tagged releases.
 ## Test, Debug
 
 For debugging and other testing purposes, _LAUREL_ can be run without specifying any configuration file. It will not change users and read events from standard input, just as it would when called from _auditd_. Log entries arewritten to `audit.log` in the current working directory.
-
