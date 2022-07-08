@@ -121,85 +121,79 @@ const EXPIRE_DONE_TIMEOUT: u64 = 120_000;
 /// generate translation of SocketAddr enum to a format similar to
 /// what auditd log_format=ENRICHED produces
 fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
-    let mut m = Vec::new();
     let f = rv.put(b"saddr_fam");
-    match sa {
+    let m = match sa {
         SocketAddr::Local(sa) => {
-            m.push((f, rv.put(b"local")));
-            m.push((rv.put(b"path"),
-                    rv.put(&sa.path)));
+            vec![(f, rv.put(b"local")), (rv.put(b"path"), rv.put(&sa.path))]
         },
         SocketAddr::Inet(sa) => {
-            m.push((f, rv.put(b"inet")));
-            m.push((rv.put(b"addr"),
-                    rv.put(format!("{}", sa.ip()).as_bytes())));
-            m.push((rv.put(b"port"),
-                    rv.put(format!("{}", sa.port()).as_bytes())));
+            vec![
+                (f, rv.put(b"inet")),
+                (rv.put(b"addr"), rv.put(format!("{}", sa.ip()).as_bytes())),
+                (rv.put(b"port"), rv.put(format!("{}", sa.port()).as_bytes()))
+            ]
         },
         SocketAddr::AX25(sa) => {
-            m.push((f, rv.put(b"ax25")));
-            m.push((rv.put(b"call"),
-                    rv.put(&sa.call)));
+            vec![
+                (f, rv.put(b"ax25")),
+                (rv.put(b"call"), rv.put(&sa.call)),
+            ]
         },
         SocketAddr::ATMPVC(sa) => {
-            m.push((f, rv.put(b"atmpvc")));
-            m.push((rv.put(b"itf"),
-                    rv.put(format!("{}", sa.itf).as_bytes())));
-            m.push((rv.put(b"vpi"),
-                    rv.put(format!("{}", sa.vpi).as_bytes())));
-            m.push((rv.put(b"vci"),
-                    rv.put(format!("{}", sa.vci).as_bytes())));
+            vec![
+                (f, rv.put(b"atmpvc")),
+                (rv.put(b"itf"), rv.put(format!("{}", sa.itf).as_bytes())),
+                (rv.put(b"vpi"), rv.put(format!("{}", sa.vpi).as_bytes())),
+                (rv.put(b"vci"), rv.put(format!("{}", sa.vci).as_bytes())),
+            ]
         },
         SocketAddr::X25(sa) => {
-            m.push((f, rv.put(b"x25")));
-            m.push((rv.put(b"addr"),
-                    rv.put(&sa.address)));
+            vec![
+                (f, rv.put(b"x25")),
+                (rv.put(b"addr"), rv.put(&sa.address)),
+            ]
         },
         SocketAddr::IPX(sa) => {
-            m.push((f, rv.put(b"ipx")));
-            m.push((rv.put(b"network"),
-                    rv.put(format!("{:08x}", sa.network)
-                           .as_bytes())));
-            m.push((rv.put(b"node"),
-                    rv.put(
-                        format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                                sa.node[0], sa.node[1],
-                                sa.node[2], sa.node[3],
-                                sa.node[4], sa.node[5])
-                            .as_bytes())));
-            m.push((rv.put(b"port"),
-                    rv.put(format!("{}", sa.port).as_bytes())));
-            m.push((rv.put(b"type"),
-                    rv.put(format!("{}", sa.typ).as_bytes())));
+            vec![
+                (f, rv.put(b"ipx")),
+                (rv.put(b"network"), rv.put(format!("{:08x}", sa.network)
+                                            .as_bytes())),
+                (rv.put(b"node"), rv.put(
+                    format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                            sa.node[0], sa.node[1],
+                            sa.node[2], sa.node[3],
+                            sa.node[4], sa.node[5])
+                        .as_bytes())),
+                (rv.put(b"port"), rv.put(format!("{}", sa.port).as_bytes())),
+                (rv.put(b"type"), rv.put(format!("{}", sa.typ).as_bytes())),
+            ]
         },
         SocketAddr::Inet6(sa) => {
-            m.push((f, rv.put(b"inet6")));
-            m.push((rv.put(b"addr"),
-                    rv.put(format!("{}", sa.ip()).as_bytes())));
-            m.push((rv.put(b"port"),
-                    rv.put(format!("{}", sa.port()).as_bytes())));
-            m.push((rv.put(b"flowinfo"),
-                    rv.put(format!("{}", sa.flowinfo())
-                           .as_bytes())));
-            m.push((rv.put(b"scope_id"),
-                    rv.put(format!("{}", sa.scope_id())
-                           .as_bytes())));
+            vec![
+                (f, rv.put(b"inet6")),
+                (rv.put(b"addr"), rv.put(format!("{}", sa.ip()).as_bytes())),
+                (rv.put(b"port"), rv.put(format!("{}", sa.port()).as_bytes())),
+                (rv.put(b"flowinfo"), rv.put(format!("{}", sa.flowinfo())
+                        .as_bytes())),
+                (rv.put(b"scope_id"), rv.put(format!("{}", sa.scope_id())
+                        .as_bytes())),
+            ]
         },
         SocketAddr::Netlink(sa) => {
-            m.push((f, rv.put(b"netlink")));
-            m.push((rv.put(b"pid"),
-                    rv.put(format!("{}", sa.pid).as_bytes())));
-            m.push((rv.put(b"groups"),
-                    rv.put(format!("{}", sa.groups).as_bytes())));
+            vec![
+                (f, rv.put(b"netlink")),
+                (rv.put(b"pid"), rv.put(format!("{}", sa.pid).as_bytes())),
+                (rv.put(b"groups"), rv.put(format!("{}", sa.groups).as_bytes()))
+            ]
         },
         SocketAddr::VM(sa) => {
-            m.push((f, rv.put(b"vsock")));
-            m.push((rv.put(b"cid"),
-                    rv.put(format!("{}", sa.cid).as_bytes())));
-            m.push((rv.put(b"port"),
-                    rv.put(format!("{}", sa.port).as_bytes())));
+            vec![
+                (f, rv.put(b"vsock")),
+                (rv.put(b"cid"), rv.put(format!("{}", sa.cid).as_bytes())),
+                (rv.put(b"port"), rv.put(format!("{}", sa.port).as_bytes())),
+            ]
         },
-    }
+    };
     Value::Map(m)
 }
 
@@ -403,8 +397,8 @@ impl<'a> Coalesce<'a> {
                     rv.elems = new;
                 },
                 (&EXECVE, EventValues::Single(rv)) => {
-                    let mut new: Vec<(Key, Value)> = Vec::new();
-                    let mut argv: Vec<Value> = Vec::new();
+                    let mut new: Vec<(Key, Value)> = Vec::with_capacity(2);
+                    let mut argv: Vec<Value> = Vec::with_capacity(1);
                     for (k, v) in rv.into_iter() {
                         match k.key {
                             Key::ArgLen(_) => continue,
@@ -480,15 +474,15 @@ impl<'a> Coalesce<'a> {
                 },
                 (&SOCKADDR, EventValues::Multi(rvs)) => {
                     for mut rv in rvs {
-                        let mut new = Vec::new();
-                        let mut translated = Vec::new();
+                        let mut new = Vec::with_capacity(rv.elems.len());
+                        let mut translated = None;
                         for (k,v) in &rv.elems.clone() {
                             if let (Key::Name(kr),Value::Str(vr, _)) = (k,v) {
                                 let name = &rv.raw[kr.clone()];
                                 match name {
                                     b"saddr" if self.translate_universal => {
                                         if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
-                                            translated.push((Key::NameTranslated(kr.clone()), translate_socketaddr(rv, sa)));
+                                            translated = Some((Key::NameTranslated(kr.clone()), translate_socketaddr(rv, sa)));
                                             continue;
                                         }
                                     },
@@ -498,7 +492,7 @@ impl<'a> Coalesce<'a> {
                             }
                             new.push((k.clone(),v.clone()));
                         }
-                        new.extend(translated);
+                        if let Some((k,v)) = translated { new.push((k,v)) }
                         rv.elems = new;
                     }
                 },
@@ -520,23 +514,19 @@ impl<'a> Coalesce<'a> {
                     }
                 },
                 (_, EventValues::Single(rv)) => {
-                    let mut translated = Vec::new();
                     for (k,v) in &rv.elems.clone() {
                         if let Some((k,v)) = self.translate_userdb(rv, k, v) {
-                            translated.push((k,v));
+                            rv.elems.push((k,v));
                         }
                     }
-                    rv.elems.extend(translated);
                 },
                 (_, EventValues::Multi(rvs)) => {
                     for rv in rvs {
-                        let mut translated = Vec::new();
                         for (k,v) in &rv.elems.clone() {
                             if let Some((k,v)) = self.translate_userdb(rv, k, v) {
-                                translated.push((k,v));
+                                rv.elems.push((k,v));
                             }
                         }
-                        rv.elems.extend(translated);
                     }
                 },
             }

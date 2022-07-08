@@ -306,7 +306,8 @@ impl TryFrom<RValue<'_>> for Vec<u8> {
             Value::Str(r,_) => Ok(Vec::from(&v.raw[r.clone()])),
             Value::Empty => Ok("".into()),
             Value::Segments(ranges) => {
-                let mut sb = Vec::new();
+                let l = ranges.iter().map(|r| r.len()).sum();
+                let mut sb = Vec::with_capacity(l);
                 for r in ranges {
                     sb.extend(Vec::from(&v.raw[r.clone()]));
                 }
@@ -432,7 +433,8 @@ impl Serialize for RValue<'_> {
                 s.serialize_str(&sb)
             },
             Value::Segments(segs) => {
-                let mut sb = String::new();
+                let l = segs.iter().map(|r| r.len()).sum();
+                let mut sb = String::with_capacity(l);
                 for seg in segs {
                     sb.push_str(&self.raw[seg.clone()].to_quoted_string());
                 }
@@ -446,7 +448,7 @@ impl Serialize for RValue<'_> {
                 seq.end()
             },
             Value::StringifiedList(vs) => {
-                let mut buf: Vec<u8> = Vec::new();
+                let mut buf: Vec<u8> = Vec::with_capacity(vs.len());
                 let mut first = true;
                 for v in vs {
                     if first {
