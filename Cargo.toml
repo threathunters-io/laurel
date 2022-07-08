@@ -40,3 +40,7 @@ gperftools = ">= 0"
 [[bench]]
 name = "coalesce_execve"
 harness = false
+
+[[bench]]
+name = "parse"
+harness = false
