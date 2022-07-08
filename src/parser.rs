@@ -29,45 +29,39 @@ pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID,
 
     let nd = nd.map(|s| s.to_vec() );
 
-    let mut hex_strides = Vec::with_capacity(body.len());
+    let mut hex_strides =
+        Vec::with_capacity(body.iter()
+                           .map(|(_,v)| if let PValue::HexStr(_) = v { true } else { false })
+                           .count());
+    
+    let mut elems = Vec::with_capacity(body.len());
 
-    let elems = body.into_iter()
-        .map(|(k,v)| -> (Key,Value) {
-            (
-                match &k {
-                    PKey::Name(s) => {
-                        let o = raw.offset(s);
-                        Key::Name(o .. o+s.len())
-                    },
-                    PKey::NameUID(s) => {
-                        let o = raw.offset(s);
-                        Key::NameUID(o .. o+s.len())
-                    },
-                    PKey::NameGID(s) => {
-                        let o = raw.offset(s);
-                        Key::NameGID(o .. o+s.len())
-                    },
-                    PKey::Arg(x,y) => Key::Arg(*x,*y),
-                    PKey::ArgLen(x) => Key::ArgLen(*x),
-                },
-                match &v {
-                    PValue::Empty => Value::Empty,
-                    PValue::Number(n) => Value::Number(n.clone()),
-                    PValue::Str(s,q) => Value::Str(to_range(&raw, s), *q),
-                    PValue::List(vs) =>
-                        Value::List(vs.iter()
-                                    .map(|v| Value::Str(to_range(&raw, v), Quote::None))
-                                    .collect::<Vec<_>>()),
-                    PValue::HexStr(s) => {
-                        // Record position of hex string. Conversion happens below.
-                        let o = raw.offset(s);
-                        hex_strides.push(o .. o+s.len());
-                        Value::Str(o .. o+s.len()/2, Quote::None)
-                    },
-                }
-            )
-        })
-        .collect::<Vec<_>>();
+    for (k,v) in body {
+        let k = match &k {
+            PKey::Name(s) => Key::Name(to_range(&raw, s)),
+            PKey::NameUID(s) => Key::NameUID(to_range(&raw, s)),
+            PKey::NameGID(s) => Key::NameGID(to_range(&raw, s)),
+            PKey::Arg(x,y) => Key::Arg(*x,*y),
+            PKey::ArgLen(x) => Key::ArgLen(*x),
+        };
+        let v = match &v {
+            PValue::Empty => Value::Empty,
+            PValue::Number(n) => Value::Number(n.clone()),
+            PValue::Str(s,q) => Value::Str(to_range(&raw, s), *q),
+            PValue::List(vs) => Value::List(
+                vs.iter()
+                    .map(|s| Value::Str(to_range(&raw, s), Quote::None) )
+                    .collect::<Vec<_>>()),
+            PValue::HexStr(s) => {
+                // Record position of hex string. In-place Conversion
+                // happens below.
+                let o = raw.offset(s);
+                hex_strides.push(o .. o+s.len());
+                Value::Str(o .. o+s.len()/2, Quote::None)
+            },
+        };
+        elems.push((k,v));
+    }
 
     for stride in hex_strides {
         for i in 0 .. stride.len()/2 {
