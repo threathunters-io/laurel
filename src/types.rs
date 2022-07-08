@@ -259,12 +259,12 @@ impl Display for RKey<'_> {
             Key::Arg(x, None) => write!(f, "a{}", x),
             Key::ArgLen(x) => write!(f, "a{}_len", x),
             Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
-                // safety: The peg parser guarantees an ASCII-only key.
+                // safety: The parser guarantees an ASCII-only key.
                 let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
                 f.write_str(s)
             },
             Key::NameTranslated(r) => {
-                // safety: The peg parser guarantees an ASCII-only key.
+                // safety: The parser guarantees an ASCII-only key.
                 let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
                 f.write_str(&str::to_ascii_uppercase(s))
             }
