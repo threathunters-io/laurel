@@ -204,7 +204,8 @@ impl Record {
     }
 
     /// Retrieves the first value found for a given key
-    pub fn get(&self, key: &[u8]) -> Option<RValue> {
+    pub fn get<K: AsRef<[u8]>> (&self, key: K) -> Option<RValue> {
+        let key = key.as_ref();
         for (k,v) in self {
             if format!("{}", k).as_bytes() == key {
                 return Some(v)
@@ -214,7 +215,8 @@ impl Record {
     }
 
     /// Add a byte string to a record.
-    pub fn put(&mut self, s: &[u8]) -> Range<usize> {
+    pub fn put<S: AsRef<[u8]>>(&mut self, s: S) -> Range<usize> {
+        let s = s.as_ref();
         let b = self.raw.len();
         self.raw.extend(s);
         b .. b+s.len()

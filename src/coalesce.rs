@@ -124,73 +124,69 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
     let f = rv.put(b"saddr_fam");
     let m = match sa {
         SocketAddr::Local(sa) => {
-            vec![(f, rv.put(b"local")), (rv.put(b"path"), rv.put(&sa.path))]
+            vec![(f, rv.put("local")), (rv.put("path"), rv.put(&sa.path))]
         },
         SocketAddr::Inet(sa) => {
             vec![
-                (f, rv.put(b"inet")),
-                (rv.put(b"addr"), rv.put(format!("{}", sa.ip()).as_bytes())),
-                (rv.put(b"port"), rv.put(format!("{}", sa.port()).as_bytes()))
+                (f, rv.put("inet")),
+                (rv.put("addr"), rv.put(format!("{}", sa.ip()))),
+                (rv.put("port"), rv.put(format!("{}", sa.port())))
             ]
         },
         SocketAddr::AX25(sa) => {
             vec![
-                (f, rv.put(b"ax25")),
-                (rv.put(b"call"), rv.put(&sa.call)),
+                (f, rv.put("ax25")),
+                (rv.put("call"), rv.put(&sa.call)),
             ]
         },
         SocketAddr::ATMPVC(sa) => {
             vec![
-                (f, rv.put(b"atmpvc")),
-                (rv.put(b"itf"), rv.put(format!("{}", sa.itf).as_bytes())),
-                (rv.put(b"vpi"), rv.put(format!("{}", sa.vpi).as_bytes())),
-                (rv.put(b"vci"), rv.put(format!("{}", sa.vci).as_bytes())),
+                (f, rv.put("atmpvc")),
+                (rv.put("itf"), rv.put(format!("{}", sa.itf))),
+                (rv.put("vpi"), rv.put(format!("{}", sa.vpi))),
+                (rv.put("vci"), rv.put(format!("{}", sa.vci))),
             ]
         },
         SocketAddr::X25(sa) => {
             vec![
-                (f, rv.put(b"x25")),
-                (rv.put(b"addr"), rv.put(&sa.address)),
+                (f, rv.put("x25")),
+                (rv.put("addr"), rv.put(&sa.address)),
             ]
         },
         SocketAddr::IPX(sa) => {
             vec![
-                (f, rv.put(b"ipx")),
-                (rv.put(b"network"), rv.put(format!("{:08x}", sa.network)
-                                            .as_bytes())),
-                (rv.put(b"node"), rv.put(
+                (f, rv.put("ipx")),
+                (rv.put("network"), rv.put(format!("{:08x}", sa.network))),
+                (rv.put("node"), rv.put(
                     format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
                             sa.node[0], sa.node[1],
                             sa.node[2], sa.node[3],
-                            sa.node[4], sa.node[5])
-                        .as_bytes())),
-                (rv.put(b"port"), rv.put(format!("{}", sa.port).as_bytes())),
-                (rv.put(b"type"), rv.put(format!("{}", sa.typ).as_bytes())),
+                            sa.node[4], sa.node[5]))),
+                (rv.put("port"), rv.put(format!("{}", sa.port))),
+                (rv.put("type"), rv.put(format!("{}", sa.typ))),
             ]
         },
         SocketAddr::Inet6(sa) => {
             vec![
-                (f, rv.put(b"inet6")),
-                (rv.put(b"addr"), rv.put(format!("{}", sa.ip()).as_bytes())),
-                (rv.put(b"port"), rv.put(format!("{}", sa.port()).as_bytes())),
-                (rv.put(b"flowinfo"), rv.put(format!("{}", sa.flowinfo())
-                        .as_bytes())),
-                (rv.put(b"scope_id"), rv.put(format!("{}", sa.scope_id())
-                        .as_bytes())),
+                (f, rv.put("inet6")),
+                (rv.put("addr"), rv.put(format!("{}", sa.ip()))),
+                (rv.put("port"), rv.put(format!("{}", sa.port()))),
+                (rv.put("flowinfo"), rv.put(format!("{}", sa.flowinfo()))),
+                (rv.put("scope_id"), rv.put(format!("{}", sa.scope_id()))),
             ]
         },
         SocketAddr::Netlink(sa) => {
             vec![
-                (f, rv.put(b"netlink")),
-                (rv.put(b"pid"), rv.put(format!("{}", sa.pid).as_bytes())),
-                (rv.put(b"groups"), rv.put(format!("{}", sa.groups).as_bytes()))
+                (f, rv.put("netlink")),
+                (rv.put("pid"), rv.put(format!("{}", sa.pid))),
+                (rv.put("groups"), rv.put(format!("{}", sa.groups)))
             ]
         },
         SocketAddr::VM(sa) => {
             vec![
-                (f, rv.put(b"vsock")),
-                (rv.put(b"cid"), rv.put(format!("{}", sa.cid).as_bytes())),
-                (rv.put(b"port"), rv.put(format!("{}", sa.port).as_bytes())),
+                (f, rv.put("vsock")),
+                (rv.put("cid"), rv.put(format!("{}", sa.cid))),
+                (rv.put("port"), rv.put(format!("{}", sa.port))),
             ]
         },
     };
@@ -273,7 +269,7 @@ impl<'a> Coalesce<'a> {
                         format!("unknown({})", d)
                     };
                     return Some((Key::NameTranslated(r.clone()),
-                                 Value::Str(rv.put(translated.as_bytes()), Quote::Double)));
+                                 Value::Str(rv.put(translated), Quote::Double)));
                 }
             },
             Key::NameGID(r) => {
@@ -286,7 +282,7 @@ impl<'a> Coalesce<'a> {
                         format!("unknown({})", d)
                     };
                     return Some((Key::NameTranslated(r.clone()),
-                                 Value::Str(rv.put(translated.as_bytes()), Quote::Double)));
+                                 Value::Str(rv.put(translated), Quote::Double)));
                 }
             },
             _ => (),
@@ -551,7 +547,7 @@ impl<'a> Coalesce<'a> {
             if let Some(p) = self.processes.get_process(ppid) {
                 let mut pi = Record::default();
                 if let Some(id) = p.event_id {
-                    let r = pi.put(format!("{}", id).as_bytes());
+                    let r = pi.put(format!("{}", id));
                     pi.elems.push((Key::Literal("ID"), Value::Str(r, Quote::None)));
                 }
                 if let Some(comm) = p.comm {
