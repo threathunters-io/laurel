@@ -6,18 +6,28 @@ pub(crate) trait ToQuotedString {
     fn to_quoted_string(&self) -> String;
 }
 
+const HEXDIGITS: &[u8;16] = b"0123456789abcdef";
+
+fn push_byte_quoted(sb: &mut Vec<u8>, byte: u8) {
+    let byte = byte as usize;
+    // safety: We have created a 3 byte ASCII string, i.e. valid Unicode.
+    sb.extend(&[b'%', HEXDIGITS[byte >> 4], HEXDIGITS[byte & 15]] );
+}
+
 impl ToQuotedString for [u8] {
     fn to_quoted_string(self: &[u8]) -> String {
-        let mut sb = String::with_capacity(self.len());
+        let mut sb: Vec<u8> = Vec::with_capacity(self.len());
+        // Are we currently inside a UTF-8 multibyte sequence?
         let mut utf8state: Option<u8> = None;
         let mut bytes = Vec::with_capacity(3);
         for c in self {
             loop {
                 match utf8state {
                     None => {
-                        let l: u8 =
+                        let len: u8 =
                             if *c >= 32 && *c < 127 && *c != b'%' && *c != b'+' {
-                                sb.push(*c as char);
+                                // simple byte, psuh as-is.
+                                sb.push(*c);
                                 break;
                             } else if *c & 0b11100000 == 0b11000000 {
                                 1
@@ -26,39 +36,44 @@ impl ToQuotedString for [u8] {
                             } else if *c & 0b11111000 == 0b11110000 {
                                 3
                             } else {
-                                sb.push_str(&format!("%{:02x}", *c));
+                                // simple non-representable byte
+                                push_byte_quoted(&mut sb, *c);
                                 break;
                             };
                         bytes.clear();
                         bytes.push(*c);
-                        utf8state = Some(l);
+                        utf8state = Some(len);
                         break;
                     },
-                    Some(ref mut l) => {
+                    Some(ref mut len) => {
                         if *c & 0b11000000 == 0b10000000 {
                             bytes.push(*c);
-                            *l -= 1;
-                            if *l == 0 {
+                            *len -= 1;
+                            if *len == 0 {
                                 match str::from_utf8(&bytes) {
-                                    Ok(s) => sb.push_str(s),
-                                    _ => bytes.iter().for_each(|c|sb.push_str(&format!("%{:02x}", c))),
+                                    Ok(s) => sb.extend(s.bytes()),
+                                    _ => bytes.iter().for_each(|c|push_byte_quoted(&mut sb, *c)),
                                 }
                                 utf8state = None;
                             }
                             break;
                         } else {
-                            bytes.iter().for_each(|c|sb.push_str(&format!("%{:02x}", c)));
+                            // incomplete UTF-8 multi-byte sequence,
+                            // output collected bytes.
+                            bytes.iter().for_each(|c|push_byte_quoted(&mut sb, *c));
                             utf8state = None;
-                            continue;
                         }
                     }
                 }
             }
         }
         if utf8state.is_some() {
-            bytes.iter().for_each(|c|sb.push_str(&format!("%{:02x}", c)));
+            bytes.iter().for_each(|c|push_byte_quoted(&mut sb, *c));
         }
-        sb
+        // safety: We have verified that individual bytes and byte
+        // sequences that were added were valid UTF-8 characters or
+        // character sequences.
+        unsafe { String::from_utf8_unchecked(sb) }
     }
 }
 
