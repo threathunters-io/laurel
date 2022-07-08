@@ -272,7 +272,7 @@ impl Display for RKey<'_> {
             Key::NameTranslated(r) => {
                 // safety: The peg parser guarantees an ASCII-only key.
                 let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
-                f.write_str(&str::to_uppercase(s))
+                f.write_str(&str::to_ascii_uppercase(s))
             }
             Key::Literal(s) => f.write_str(s),
         }
