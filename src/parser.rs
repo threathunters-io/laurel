@@ -110,14 +110,14 @@ fn parse_type(input: &[u8]) -> IResult<&[u8], MessageType> {
         tag("type="),
         alt((
             map_res(
-                recognize(many1(alt((alphanumeric1,tag("_"))))),
+                recognize(many1_count(alt((alphanumeric1,tag("_"))))),
                 |s| EVENT_IDS.get(s)
                     .ok_or(format!("unknown event id {}",
                                    String::from_utf8_lossy(s)))
                     .map(|n|MessageType(*n))),
             map_res(
                 delimited(tag("UNKNOWN["),
-                          recognize(many1(is_a("0123456789"))),
+                          is_a("0123456789"),
                           tag("]")),
                 |s| str::from_utf8(s).unwrap().parse::<u32>().map(MessageType))
         )) ) (input)
@@ -269,15 +269,15 @@ fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
             }
         ),
         map_res(
-            recognize(terminated(
-                many1_count(take_while_m_n(2, 2, is_hex_digit)),
-                peek(take_while1(is_sep)))
+            terminated(
+                recognize(many1_count(take_while_m_n(2, 2, is_hex_digit))),
+                peek(take_while1(is_sep))
             ),
             |s| -> Result<_,()> { Ok(PValue::HexStr(s)) } ),
         map_res(
-            recognize(terminated(
+            terminated(
                 alt((tag("(null)"),tag("?"))),
-                peek(take_while1(is_sep)))
+                peek(take_while1(is_sep))
             ),
             |_| -> Result<_,()> { Ok(PValue::Empty) } )
     )) (input)
@@ -384,7 +384,7 @@ fn parse_unspec_value<'a>(input: &'a[u8], ty: MessageType, name: &[u8]) -> IResu
 #[inline(always)]
 fn parse_key(input: &[u8]) -> IResult<&[u8], PKey> {
     map_res(
-        recognize(pair(alpha1, many0(alt((alphanumeric1,is_a("-_")))))),
+        recognize(pair(alpha1, many0_count(alt((alphanumeric1,is_a("-_")))))),
         |s: &[u8]| -> Result<_,()> {
             if s.ends_with(b"uid") {
                 Ok(PKey::NameUID(s))
@@ -441,7 +441,7 @@ fn parse_identifier(input: &[u8]) -> IResult<&[u8], &[u8]> {
     recognize(
         pair(
             alt((alpha1, tag("_"))),
-            many0(alt((alphanumeric1,tag("_"))))
+            many0_count(alt((alphanumeric1,tag("_"))))
         )
     ) (input)
 }
