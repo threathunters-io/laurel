@@ -477,16 +477,16 @@ mod test {
     }
 
     #[test]
-    fn parser() -> Result<(),Box<dyn std::error::Error>> {
+    fn parser() {
         // ensure that constant init works
         assert_eq!(format!("--{}--", EOE), "--EOE--");
         assert_eq!(format!("--{}--", MessageType(9999)), "--UNKNOWN[9999]--");
 
-        let (_, t, id, _rv) = do_parse(include_bytes!("testdata/line-eoe.txt"))?;
+        let (_, t, id, _rv) = do_parse(include_bytes!("testdata/line-eoe.txt")).unwrap();
         assert_eq!(t, EOE);
         assert_eq!(id, EventID{timestamp: 1615225617302, sequence: 25836});
 
-        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-syscall.txt"))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-syscall.txt")).unwrap();
         assert_eq!(t, SYSCALL);
         assert_eq!(id, EventID{timestamp: 1615114232375, sequence: 15558});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
@@ -528,14 +528,14 @@ mod test {
                         "FSGID: Str:<root>",
                    ));
 
-        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-execve.txt"))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-execve.txt")).unwrap();
         assert_eq!(t, EXECVE);
         assert_eq!(id, EventID{timestamp: 1614788539386, sequence: 13232});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!("argc: Num:<0>",
                         "a0: Str:<whoami>"));
 
-        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-path.txt"))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-path.txt")).unwrap();
         assert_eq!(t, PATH);
         assert_eq!(id, EventID{timestamp: 1614788539386, sequence: 13232});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
@@ -554,7 +554,7 @@ mod test {
                         "cap_fver: Num:<0x0>",
                    ));
 
-        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-path-enriched.txt"))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-path-enriched.txt")).unwrap();
         assert_eq!(t, PATH);
         assert_eq!(id, EventID{timestamp: 1615113648978, sequence: 15219});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
@@ -575,7 +575,7 @@ mod test {
                         "OGID: Str:<root>",
                    ));
 
-        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-user-acct.txt"))?;
+        let (_, t, id, rv) = do_parse(include_bytes!("testdata/line-user-acct.txt")).unwrap();
         assert_eq!(t, USER_ACCT);
         assert_eq!(id, EventID{timestamp: 1615113648981, sequence: 15220});
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
@@ -588,11 +588,11 @@ mod test {
                         "AUID: Str:<user>",
                    ));
 
-        let (_, t, id, _) = do_parse(include_bytes!("testdata/line-unknown.txt"))?;
+        let (_, t, id, _) = do_parse(include_bytes!("testdata/line-unknown.txt")).unwrap();
         assert_eq!(t, BPF);
         assert_eq!(id, EventID{timestamp: 1626883065201, sequence: 216697});
 
-        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-avc-denied.txt"))?;
+        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-avc-denied.txt")).unwrap();
         assert_eq!(t, AVC);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
@@ -606,7 +606,7 @@ mod test {
                        "denied: List:<setuid>",
                    ));
 
-        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-avc-granted.txt"))?;
+        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-avc-granted.txt")).unwrap();
         assert_eq!(t, AVC);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
@@ -618,7 +618,7 @@ mod test {
                        "granted: List:<setsecparam>",
                    ));
 
-        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-netlabel.txt"))?;
+        let (_, t, _, rv) = do_parse(include_bytes!("testdata/line-netlabel.txt")).unwrap();
         assert_eq!(t, MAC_UNLBL_ALLOW);
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
@@ -631,7 +631,7 @@ mod test {
                        "netlabel: Empty",
                    ));
 
-        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-subj1.txt"))?;
+        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-subj1.txt")).unwrap();
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!("arch: Num:<0xc000003e>",
                         "syscall: Num:<59>",
@@ -661,7 +661,7 @@ mod test {
                         "key: Empty",
                    ));
 
-        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-subj2.txt"))?;
+        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-subj2.txt")).unwrap();
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
                        "arch: Num:<0xc000003e>",
@@ -692,7 +692,7 @@ mod test {
                        "key: Empty",
                    ));
 
-        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-avc-info.txt"))?;
+        let (_,_,_, rv) = do_parse(include_bytes!("testdata/line-broken-avc-info.txt")).unwrap();
         assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
                    vec!(
                        "apparmor: Str:<STATUS>",
@@ -704,10 +704,8 @@ mod test {
                        "comm: Str:<apparmor_parser>",
                    ));
 
-        do_parse(include_bytes!("testdata/line-daemon-end.txt"))?;
-        do_parse(include_bytes!("testdata/line-netfilter.txt"))?;
-        do_parse(include_bytes!("testdata/line-anom-abend.txt"))?;
-
-        Ok(())
+        do_parse(include_bytes!("testdata/line-daemon-end.txt")).unwrap();
+        do_parse(include_bytes!("testdata/line-netfilter.txt")).unwrap();
+        do_parse(include_bytes!("testdata/line-anom-abend.txt")).unwrap();
     }
 }
