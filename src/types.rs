@@ -17,7 +17,7 @@ use crate::quoted_string::ToQuotedString;
 ///
 /// It consists of a mullisecond-precision timestamp and a sequence
 /// number, thus guaranteeing per-host uniqueness.
-#[derive(Debug,PartialEq,Eq,PartialOrd,Ord,Hash,Clone,Copy,Default,Serialize)]
+#[derive(Debug,PartialEq,Eq,PartialOrd,Ord,Hash,Clone,Copy,Default)]
 pub struct EventID {
     pub timestamp: u64,
     pub sequence: u32,
@@ -26,6 +26,12 @@ pub struct EventID {
 impl Display for EventID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}.{:03}:{}", self.timestamp/1000, self.timestamp%1000, self.sequence)
+    }
+}
+
+impl Serialize for EventID {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
+        s.serialize_str(&format!("{}", self))
     }
 }
 
