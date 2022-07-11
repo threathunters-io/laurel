@@ -18,13 +18,13 @@ use nom::{IResult,
 /// Parse a single log line as produced by _auditd(8)_
 pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record),String> {
     let (rest, (nd, ty, id)) = parse_header(&raw)
-        .map_err(|_| "cannot parse header".to_string())?;
+        .map_err(|e| format!("cannot parse header: {}", e.map_input(String::from_utf8_lossy)))?;
 
     let (rest, body) = parse_body(rest, ty)
-        .map_err(|_| "cannot parse body".to_string())?;
+        .map_err(|e| format!("cannot parse body: {}", e.map_input(String::from_utf8_lossy)))?;
 
     if !rest.is_empty() {
-        return Err("garbage at end of message".into());
+        return Err(format!("garbage at end of message: {}", String::from_utf8_lossy(&rest)));
     }
 
     let nd = nd.map(|s| s.to_vec() );
