@@ -7,7 +7,7 @@ use std::convert::{TryFrom,TryInto};
 use std::str;
 
 use serde::{Serialize,Serializer};
-use serde::ser::{SerializeSeq,SerializeMap};
+use serde::ser::SerializeMap;
 
 use crate::constants::*;
 use crate::quoted_string::ToQuotedString;
@@ -31,7 +31,8 @@ impl Display for EventID {
 
 impl Serialize for EventID {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
-        s.serialize_str(&format!("{}", self))
+        s.collect_str(&format_args!(
+            "{}.{:03}:{}", self.timestamp/1000, self.timestamp%1000, self.sequence))
     }
 }
 
@@ -71,8 +72,8 @@ impl Debug for MessageType {
 impl Serialize for MessageType {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match EVENT_NAMES.get(&(self.0)) {
-            Some(name) => s.serialize_str(name),
-            None => s.serialize_str(&format!("UNKNOWN[{}]", self.0)),
+            Some(name) => s.collect_str(name),
+            None => s.collect_str(&format_args!("UNKNOWN[{}]", self.0)),
         }
     }
 }
@@ -172,12 +173,7 @@ impl Debug for Record {
 
 impl Serialize for Record {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
-        let mut map = s.serialize_map(Some(self.elems.len()))?;
-        for (k,v) in self {
-            map.serialize_key(&k.to_string())?;
-            map.serialize_value(&v)?;
-        }
-        map.end()
+        s.collect_map(self)
     }
 }
 
@@ -275,6 +271,30 @@ impl Display for RKey<'_> {
                 f.write_str(&str::to_ascii_uppercase(s))
             }
             Key::Literal(s) => f.write_str(s),
+        }
+    }
+}
+
+impl Serialize for RKey<'_> {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok,S::Error> {
+        match &self.key {
+            Key::Arg(x, Some(y)) => s.collect_str(&format_args!("a{}[{}]", x, y)),
+            Key::Arg(x, None) => s.collect_str(&format_args!("a{}", x)),
+            Key::ArgLen(x) => s.collect_str(&format_args!("a{}_len", x)),
+            Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
+                // safety: The parser guarantees an ASCII-only key.
+                s.collect_str(unsafe {
+                    str::from_utf8_unchecked(&self.raw[r.clone()])
+                })
+            },
+            Key::NameTranslated(r) => {
+                // safety: The parser guarantees an ASCII-only key.
+                s.collect_str(&str::to_ascii_uppercase(
+                    unsafe {
+                        str::from_utf8_unchecked(&self.raw[r.clone()])
+                    }))
+            },
+            Key::Literal(l) => s.collect_str(l),
         }
     }
 }
@@ -428,11 +448,10 @@ impl Serialize for RValue<'_> {
         match self.value {
             Value::Empty => s.serialize_none(),
             Value::Str(r,q) => {
-                let mut sb = String::with_capacity(r.len());
-                if let Quote::Braces = q { sb.push('{') };
-                sb.push_str(&self.raw[r.clone()].to_quoted_string());
-                if let Quote::Braces = q { sb.push('}') };
-                s.serialize_str(&sb)
+                let (q1,q2) = if let Quote::Braces = q { ("{","}") } else { ("","") };
+                s.collect_str(&format_args!(
+                    "{}{}{}",
+                    q1, &self.raw[r.clone()].to_quoted_string(), q2))
             },
             Value::Segments(segs) => {
                 let l = segs.iter().map(|r| r.len()).sum();
@@ -440,14 +459,10 @@ impl Serialize for RValue<'_> {
                 for seg in segs {
                     sb.push_str(&self.raw[seg.clone()].to_quoted_string());
                 }
-                s.serialize_str(&sb)
+                s.collect_str(&sb)
             },
             Value::List(vs) => {
-                let mut seq = s.serialize_seq(Some(vs.len()))?;
-                for v in vs {
-                    seq.serialize_element(&RValue{raw: self.raw, value: v})?;
-                }
-                seq.end()
+                s.collect_seq(vs.into_iter().map(|v| RValue{raw: self.raw, value: v} ) )
             },
             Value::StringifiedList(vs) => {
                 let mut buf: Vec<u8> = Vec::with_capacity(vs.len());
@@ -467,8 +482,8 @@ impl Serialize for RValue<'_> {
             Value::Number(n) => {
                 match n {
                     Number::Dec(n) => s.serialize_i64(*n),
-                    Number::Hex(n) => s.serialize_str(&format!("0x{:x}", n)),
-                    Number::Oct(n) => s.serialize_str(&format!("0o{:o}", n)),
+                    Number::Hex(n) => s.collect_str(&format_args!("0x{:x}", n)),
+                    Number::Oct(n) => s.collect_str(&format_args!("0o{:o}", n)),
                 }
             }
             Value::Map(vs) => {

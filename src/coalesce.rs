@@ -7,7 +7,7 @@ use std::time::{SystemTime,UNIX_EPOCH};
 use indexmap::IndexMap;
 
 use serde::{Serialize,Serializer};
-use serde::ser::{SerializeSeq,SerializeMap};
+use serde::ser::SerializeMap;
 use serde_json::json;
 
 use crate::constants::{ARCH_NAMES,SYSCALL_NAMES,msg_type::*};
@@ -37,18 +37,11 @@ pub enum EventValues {
 }
 
 impl Serialize for EventValues {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error>
     {
         match self {
-            EventValues::Single(rv) => rv.serialize(serializer),
-            EventValues::Multi(rvs) => {
-                let mut seq = serializer.serialize_seq(Some(rvs.len()))?;
-                for rv in rvs {
-                    seq.serialize_element(rv)?;
-                }
-                seq.end()
-            }
+            EventValues::Single(rv) => rv.serialize(s),
+            EventValues::Multi(rvs) => s.collect_seq(rvs),
         }
     }
 }
