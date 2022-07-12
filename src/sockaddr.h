@@ -1,5 +1,3 @@
-#include <sys/socket.h>
-
 #include <linux/atalk.h>
 #include <linux/atm.h>
 #include <linux/ax25.h>
