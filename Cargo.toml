@@ -11,6 +11,7 @@ repository = "https://github.com/threathunters-io/laurel"
 license = "GPL-3.0-or-later"
 keywords = ["linux", "audit", "parser", "log", "json"]
 categories = ["encoding"]
+rust-version = "1.52"
 
 [badges]
 maintenance = { status = "actively-developed" }
