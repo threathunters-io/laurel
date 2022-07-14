@@ -107,3 +107,11 @@ lazy_static! {
         hm
     };
 }
+
+pub fn initialize() {
+    lazy_static::initialize(&EVENT_IDS);
+    lazy_static::initialize(&EVENT_NAMES);
+    lazy_static::initialize(&FIELD_TYPES);
+    lazy_static::initialize(&SYSCALL_NAMES);
+    lazy_static::initialize(&ARCH_IDS);
+}

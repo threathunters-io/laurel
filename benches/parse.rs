@@ -30,6 +30,8 @@ fn parse_execve_short(bench: &mut Bencher) {
 benchmark_group!(b, parse_syscall, parse_execve_short);
 
 fn main() {
+    laurel::constants::initialize();
+
     let test_opts = bencher::TestOpts::default();
     // if let Some(arg) = std::env::args().skip(1).find(|arg| *arg != "--bench") {
     //     test_opts.filter = Some(arg);

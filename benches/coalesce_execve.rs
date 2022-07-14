@@ -58,6 +58,8 @@ fn parse_serialize(bench: &mut Bencher) { measure(bench, true) }
 benchmark_group!(b, parse_only, parse_serialize);
 
 fn main() {
+    laurel::constants::initialize();
+
     PROFILER.lock().unwrap().start(format!("{}.prof", std::env::args().next().unwrap())).unwrap();
     let test_opts = bencher::TestOpts::default();
     // if let Some(arg) = std::env::args().skip(1).find(|arg| *arg != "--bench") {
