@@ -462,7 +462,7 @@ impl Serialize for RValue<'_> {
                 s.collect_str(&sb)
             },
             Value::List(vs) => {
-                s.collect_seq(vs.into_iter().map(|v| RValue{raw: self.raw, value: v} ) )
+                s.collect_seq(vs.iter().map(|v| RValue{raw: self.raw, value: v} ) )
             },
             Value::StringifiedList(vs) => {
                 let mut buf: Vec<u8> = Vec::with_capacity(vs.len());

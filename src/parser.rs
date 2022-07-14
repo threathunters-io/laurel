@@ -24,14 +24,14 @@ pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID,
         .map_err(|e| format!("cannot parse body: {}", e.map_input(String::from_utf8_lossy)))?;
 
     if !rest.is_empty() {
-        return Err(format!("garbage at end of message: {}", String::from_utf8_lossy(&rest)));
+        return Err(format!("garbage at end of message: {}", String::from_utf8_lossy(rest)));
     }
 
     let nd = nd.map(|s| s.to_vec() );
 
     let mut hex_strides =
         Vec::with_capacity(body.iter()
-                           .map(|(_,v)| if let PValue::HexStr(_) = v { true } else { false })
+                           .filter(|(_,v)| matches!(v, PValue::HexStr(_)))
                            .count());
     
     let mut elems = Vec::with_capacity(body.len());
