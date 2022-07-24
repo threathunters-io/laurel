@@ -7,7 +7,7 @@ use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LabelMatcher {
     set: RegexSet,
     tags: Vec<Vec<u8>>,

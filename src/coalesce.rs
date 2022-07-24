@@ -84,6 +84,40 @@ impl Serialize for Event {
     }
 }
 
+pub struct Settings<'a> {
+    /// Generate ARGV and ARGV_STR from EXECVE
+    pub execve_argv_list: bool,
+    pub execve_argv_string: bool,
+
+    pub execve_env: HashSet<Vec<u8>>,
+
+    pub proc_label_keys: HashSet<Vec<u8>>,
+    pub proc_propagate_labels: HashSet<Vec<u8>>,
+
+    pub translate_universal: bool,
+    pub translate_userdb: bool,
+
+    pub label_exe: Option<&'a LabelMatcher>,
+
+    pub filter_keys: HashSet<Vec<u8>>,
+}
+
+impl Default for Settings<'_> {
+    fn default() -> Self {
+        Settings {
+            execve_argv_list: true,
+            execve_argv_string: false,
+            execve_env: HashSet::new(),
+            proc_label_keys: HashSet::new(),
+            proc_propagate_labels: HashSet::new(),
+            translate_universal: false,
+            translate_userdb: false,
+            label_exe: None,
+            filter_keys: HashSet::new(),
+        }
+    }
+}
+
 /// Coalesce collects Audit Records from individual lines and assembles them to Events
 pub struct Coalesce<'a> {
     /// Events that are being collected/processed
@@ -98,20 +132,8 @@ pub struct Coalesce<'a> {
     emit_fn: Box<dyn 'a + FnMut(&Event)>,
     /// creadential cache
     userdb: UserDB,
-    /// Generate ARGV and ARGV_STR from EXECVE
-    pub execve_argv_list: bool,
-    pub execve_argv_string: bool,
-    pub execve_env: HashSet<Vec<u8>>,
 
-    pub proc_label_keys: HashSet<Vec<u8>>,
-    pub proc_propagate_labels: HashSet<Vec<u8>>,
-
-    pub filter_keys: HashSet<Vec<u8>>,
-
-    pub translate_universal: bool,
-    pub translate_userdb: bool,
-
-    pub label_exe: Option<&'a LabelMatcher>,
+    pub settings: Settings<'a>,
 }
 
 const EXPIRE_PERIOD: u64 = 1_000;
@@ -200,28 +222,21 @@ impl<'a> Coalesce<'a> {
             processes: ProcTable::default(),
             emit_fn: Box::new(emit_fn),
             userdb: UserDB::default(),
-            execve_argv_list: true,
-            execve_argv_string: false,
-            execve_env: HashSet::new(),
-            proc_label_keys: HashSet::new(),
-            proc_propagate_labels: HashSet::new(),
-            filter_keys: HashSet::new(),
-            translate_universal: false,
-            translate_userdb: false,
-            label_exe: None,
+            settings: Settings::default(),
         }
     }
 
-    /// Fill shadow process table from system's /proc directory
-    pub fn populate_proc_table(&mut self) -> Result<(), Box<dyn Error>> {
-        self.processes = ProcTable::from_proc(self.label_exe, &self.proc_propagate_labels)?;
+    pub fn initialize(&mut self) -> Result<(), Box<dyn Error>> {
+        if self.settings.translate_userdb {
+            self.userdb.populate();
+        }
+        self.processes = ProcTable::from_proc(
+            self.settings.label_exe,
+            &self.settings.proc_propagate_labels,
+        )
+        .map_err(|e| format!("populate proc table: {}", e))?;
 
         Ok(())
-    }
-
-    /// Fill userdb
-    pub fn populate_userdb(&mut self) {
-        self.userdb.populate()
     }
 
     /// Flush out events
@@ -258,7 +273,7 @@ impl<'a> Coalesce<'a> {
     /// - ogid=1000 -> OGID="user"
     #[inline(always)]
     fn translate_userdb(&mut self, rv: &mut Record, k: &Key, v: &Value) -> Option<(Key, Value)> {
-        if !self.translate_userdb {
+        if !self.settings.translate_userdb {
             return None;
         }
         match k {
@@ -317,8 +332,15 @@ impl<'a> Coalesce<'a> {
             match tv {
                 (&SYSCALL, EventValues::Single(rv)) => {
                     rv.raw.reserve(
-                        if self.translate_universal { 16 } else { 0 }
-                            + if self.translate_userdb { 72 } else { 0 },
+                        if self.settings.translate_universal {
+                            16
+                        } else {
+                            0
+                        } + if self.settings.translate_userdb {
+                            72
+                        } else {
+                            0
+                        },
                     );
                     let mut new = Vec::with_capacity(rv.elems.len() - 3);
                     let mut translated = VecDeque::with_capacity(11);
@@ -347,12 +369,12 @@ impl<'a> Coalesce<'a> {
                                 let name = &rv.raw[r.clone()];
                                 match name {
                                     b"ARCH" => {
-                                        if self.translate_universal && arch.is_some() {
+                                        if self.settings.translate_universal && arch.is_some() {
                                             continue;
                                         }
                                     }
                                     b"SYSCALL" => {
-                                        if self.translate_universal && syscall.is_some() {
+                                        if self.settings.translate_universal && syscall.is_some() {
                                             continue;
                                         }
                                     }
@@ -388,7 +410,7 @@ impl<'a> Coalesce<'a> {
                                 .get(arch_name)
                                 .and_then(|syscall_tbl| syscall_tbl.get(&(syscall.1 as u32)))
                             {
-                                if self.translate_universal {
+                                if self.settings.translate_universal {
                                     let v = rv.put(syscall_name);
                                     translated.push_front((
                                         Key::NameTranslated(syscall.0),
@@ -399,7 +421,7 @@ impl<'a> Coalesce<'a> {
                                     syscall_is_exec = true;
                                 }
                             }
-                            if self.translate_universal {
+                            if self.settings.translate_universal {
                                 let v = rv.put(arch_name);
                                 translated.push_front((
                                     Key::NameTranslated(arch.0),
@@ -448,11 +470,11 @@ impl<'a> Coalesce<'a> {
                     }
 
                     // ARGV
-                    if self.execve_argv_list {
+                    if self.settings.execve_argv_list {
                         new.push((Key::Literal("ARGV"), Value::List(argv.clone())));
                     }
                     // ARGV_STR
-                    if self.execve_argv_string {
+                    if self.settings.execve_argv_string {
                         new.push((
                             Key::Literal("ARGV_STR"),
                             Value::StringifiedList(argv.clone()),
@@ -460,8 +482,10 @@ impl<'a> Coalesce<'a> {
                     }
                     // ENV
                     match pid {
-                        Some(pid) if !self.execve_env.is_empty() => {
-                            if let Ok(vars) = get_environ(pid, |k| self.execve_env.contains(k)) {
+                        Some(pid) if !self.settings.execve_env.is_empty() => {
+                            if let Ok(vars) =
+                                get_environ(pid, |k| self.settings.execve_env.contains(k))
+                            {
                                 let map =
                                     vars.iter().map(|(k, v)| (rv.put(k), rv.put(v))).collect();
                                 new.push((Key::Literal("ENV"), Value::Map(map)));
@@ -492,7 +516,11 @@ impl<'a> Coalesce<'a> {
                         );
 
                         if let Some(parent) = self.processes.get_process(ppid) {
-                            for l in self.proc_propagate_labels.intersection(&parent.labels) {
+                            for l in self
+                                .settings
+                                .proc_propagate_labels
+                                .intersection(&parent.labels)
+                            {
                                 self.processes.add_label(pid, l);
                             }
                         }
@@ -506,7 +534,7 @@ impl<'a> Coalesce<'a> {
                             if let (Key::Name(kr), Value::Str(vr, _)) = (k, v) {
                                 let name = &rv.raw[kr.clone()];
                                 match name {
-                                    b"saddr" if self.translate_universal => {
+                                    b"saddr" if self.settings.translate_universal => {
                                         if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
                                             translated = Some((
                                                 Key::NameTranslated(kr.clone()),
@@ -515,7 +543,7 @@ impl<'a> Coalesce<'a> {
                                             continue;
                                         }
                                     }
-                                    b"SADDR" if self.translate_universal => continue,
+                                    b"SADDR" if self.settings.translate_universal => continue,
                                     _ => {}
                                 }
                             }
@@ -562,13 +590,13 @@ impl<'a> Coalesce<'a> {
         }
 
         if let (Some(pid), Some(key)) = (&pid, &key) {
-            if self.proc_label_keys.contains(key) {
+            if self.settings.proc_label_keys.contains(key) {
                 self.processes.add_label(*pid, key);
             }
         }
 
         if let (Some(exe), Some(pid), Some(label_exe), true) =
-            (&exe, &pid, &self.label_exe, syscall_is_exec)
+            (&exe, &pid, &self.settings.label_exe, syscall_is_exec)
         {
             for label in label_exe.matches(exe) {
                 self.processes.add_label(*pid, label);
@@ -576,7 +604,7 @@ impl<'a> Coalesce<'a> {
         }
 
         if let Some(key) = &key {
-            if self.filter_keys.contains(key) {
+            if self.settings.filter_keys.contains(key) {
                 ev.filter = true;
             }
         }
@@ -711,7 +739,7 @@ impl<'a> Coalesce<'a> {
                 "ts": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
                 "message": {
                     "type": "dump_state",
-                    "label_exe": self.label_exe,
+                    "label_exe": self.settings.label_exe,
                     "inflight": self.inflight.iter().map(
                         |(k,v)| {
                             if let Some(node) = &k.0 {
@@ -763,8 +791,7 @@ mod test {
     #[test]
     fn dump_state() -> Result<(), Box<dyn Error>> {
         let mut c = Coalesce::new(|_| {});
-        c.populate_proc_table()?;
-        c.populate_userdb();
+        c.initialize()?;
         c.process_line(br#"type=SYSCALL msg=audit(1615114232.375:15558): arch=c000003e syscall=59 success=yes exit=0 a0=63b29337fd18 a1=63b293387d58 a2=63b293375640 a3=fffffffffffff000 items=2 ppid=10883 pid=10884 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="whoami" exe="/usr/bin/whoami" key=(null)
 "#.to_vec())?;
         let mut buf: Vec<u8> = vec![];
@@ -855,7 +882,7 @@ mod test {
         let ec = Rc::new(RefCell::new(None));
 
         let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
-        c.translate_userdb = true;
+        c.settings.translate_userdb = true;
         process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
         if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
             // Check for: pid uid subj old-auid auid tty old-ses ses res UID OLD-AUID AUID
@@ -886,7 +913,7 @@ mod test {
         let ec = Rc::new(RefCell::new(None));
 
         let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
-        c.translate_userdb = true;
+        c.settings.translate_userdb = true;
         process_record(
             &mut c,
             strip_enriched(include_bytes!("testdata/record-login.txt")),
@@ -935,8 +962,11 @@ mod test {
         let mut c = Coalesce::new(|e| {
             *ec.borrow_mut() = Some(e.clone());
         });
-        c.proc_label_keys.insert(Vec::from(&b"software_mgmt"[..]));
-        c.proc_propagate_labels
+        c.settings
+            .proc_label_keys
+            .insert(Vec::from(&b"software_mgmt"[..]));
+        c.settings
+            .proc_propagate_labels
             .insert(Vec::from(&b"software_mgmt"[..]));
         process_record(&mut c, include_bytes!("testdata/tree/00.txt"))?;
         {
@@ -966,13 +996,13 @@ mod test {
         let lm = LabelMatcher::new(&[("whoami", "recon")])?;
 
         let mut c = Coalesce::new(emitter);
-        c.label_exe = Some(&lm);
+        c.settings.label_exe = Some(&lm);
         process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
         drop(c);
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["recon"]"#));
 
         let mut c = Coalesce::new(emitter);
-        c.label_exe = Some(&lm);
+        c.settings.label_exe = Some(&lm);
         process_record(
             &mut c,
             strip_enriched(include_bytes!("testdata/record-execve.txt")),
@@ -989,14 +1019,18 @@ mod test {
         let emitter = |e: &Event| *ec.borrow_mut() = Some(e.clone());
 
         let mut c = Coalesce::new(emitter);
-        c.filter_keys.insert(Vec::from(&b"filter-this"[..]));
-        c.filter_keys.insert(Vec::from(&b"this-too"[..]));
+        c.settings
+            .filter_keys
+            .insert(Vec::from(&b"filter-this"[..]));
+        c.settings.filter_keys.insert(Vec::from(&b"this-too"[..]));
         process_record(&mut c, include_bytes!("testdata/record-syscall-key.txt"))?;
         drop(c);
         assert!(ec.borrow().as_ref().is_none());
 
         let mut c = Coalesce::new(emitter);
-        c.filter_keys.insert(Vec::from(&b"random-filter"[..]));
+        c.settings
+            .filter_keys
+            .insert(Vec::from(&b"random-filter"[..]));
         process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
         drop(c);
         assert!(!ec.borrow().as_ref().is_none());
