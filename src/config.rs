@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::coalesce::Settings;
 use crate::label_matcher::LabelMatcher;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -146,6 +147,42 @@ impl std::fmt::Display for Config {
             self.auditlog.size.unwrap_or(0),
             self.auditlog.generations.unwrap_or(0)
         )
+    }
+}
+
+impl Config {
+    pub fn make_coalesce_settings(&self) -> Settings {
+        Settings {
+            execve_argv_list: self.transform.execve_argv.contains(&ArrayOrString::Array),
+            execve_argv_string: self.transform.execve_argv.contains(&ArrayOrString::String),
+            execve_env: self
+                .enrich
+                .execve_env
+                .iter()
+                .map(|s| s.as_bytes().to_vec())
+                .collect(),
+            proc_label_keys: self
+                .label_process
+                .label_keys
+                .iter()
+                .map(|s| s.as_bytes().to_vec())
+                .collect(),
+            proc_propagate_labels: self
+                .label_process
+                .propagate_labels
+                .iter()
+                .map(|s| s.as_bytes().to_vec())
+                .collect(),
+            translate_universal: self.translate.universal,
+            translate_userdb: self.translate.userdb,
+            label_exe: self.label_process.label_exe.as_ref(),
+            filter_keys: self
+                .filter
+                .filter_keys
+                .iter()
+                .map(|s| s.as_bytes().to_vec())
+                .collect(),
+        }
     }
 }
 
