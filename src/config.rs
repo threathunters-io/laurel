@@ -82,6 +82,11 @@ pub struct Filter {
     pub filter_keys: HashSet<String>,
 }
 
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct OutFormat {
+    pub lumberjack: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub user: Option<String>,
@@ -102,6 +107,8 @@ pub struct Config {
     pub label_process: LabelProcess,
     #[serde(default)]
     pub filter: Filter,
+    #[serde(default)]
+    pub out_format: OutFormat,
 }
 
 impl Default for Config {
@@ -122,6 +129,7 @@ impl Default for Config {
             enrich: Enrich::default(),
             label_process: LabelProcess::default(),
             filter: Filter::default(),
+            out_format: OutFormat::default(),
         }
     }
 }

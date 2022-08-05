@@ -22,6 +22,7 @@ use serde::Serialize;
 
 use laurel::coalesce::Coalesce;
 use laurel::config::{ArrayOrString, Config, Logfile};
+use laurel::lumberjack::LumberjackWriter;
 use laurel::rotate::FileRotate;
 
 mod syslog {
@@ -105,7 +106,7 @@ fn drop_privileges(runas_user: &User) -> Result<(), Box<dyn Error>> {
 }
 
 struct Logger {
-    output: BufWriter<Box<dyn Write>>,
+    output: Box<dyn Write>,
 }
 
 impl Logger {
@@ -115,10 +116,18 @@ impl Logger {
         self.output.flush().unwrap();
     }
 
-    fn new(def: &Logfile, dir: &Path, runas_user: &User) -> Result<Self, Box<dyn Error>> {
+    fn new(
+        def: &Logfile,
+        dir: &Path,
+        runas_user: &User,
+        lumberjack: bool,
+    ) -> Result<Self, Box<dyn Error>> {
         match &def.file {
-            p if p.as_os_str() == "-" => Ok(Logger {
-                output: BufWriter::new(Box::new(io::stdout())),
+            p if p.as_os_str() == "-" && !lumberjack => Ok(Logger {
+                output: Box::new(BufWriter::new(Box::new(io::stdout()))),
+            }),
+            p if p.as_os_str() == "-" && lumberjack => Ok(Logger {
+                output: Box::new(LumberjackWriter::new(Box::new(io::stdout()))),
             }),
             p if p.has_root() && p.parent() != None => Err(format!(
                 "invalid file directory={} file={}",
@@ -151,9 +160,15 @@ impl Logger {
                 if let Some(filesize) = &def.size {
                     rot = rot.with_filesize(*filesize);
                 }
-                Ok(Logger {
-                    output: BufWriter::new(Box::new(rot)),
-                })
+                if lumberjack {
+                    Ok(Logger {
+                        output: Box::new(LumberjackWriter::new(Box::new(rot))),
+                    })
+                } else {
+                    Ok(Logger {
+                        output: Box::new(BufWriter::new(Box::new(rot))),
+                    })
+                }
             }
         }
     }
@@ -224,9 +239,19 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
         .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
 
-    let logger = std::cell::RefCell::new(Logger::new(&config.auditlog, &dir, &runas_user)?);
+    let logger = std::cell::RefCell::new(Logger::new(
+        &config.auditlog,
+        &dir,
+        &runas_user,
+        config.out_format.lumberjack,
+    )?);
     let mut debug_logger = if let Some(l) = &config.debug.log {
-        Some(Logger::new(l, &dir, &runas_user)?)
+        Some(Logger::new(
+            l,
+            &dir,
+            &runas_user,
+            config.out_format.lumberjack,
+        )?)
     } else {
         None
     };
