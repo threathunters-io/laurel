@@ -79,3 +79,10 @@ label-exe.'^/snap/amazon-ssm-agent/\d+/' = 'amazon-ssm-agent'
 # spawned within certain contexts (e.g. system management tools,
 # container runtimes, ssh servers, cron, etc.).
 propagate-labels = [ "software_mgmt", "amazon-ssm-agent" ]
+
+[filter]
+
+# When audit records with attached keys are being generated, 
+# LAUREL will discard these.
+
+#filter-keys = ["filter-this"]
