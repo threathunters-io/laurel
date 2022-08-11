@@ -56,6 +56,8 @@ pub struct Translate {
 pub struct Enrich {
     #[serde(default, rename = "execve-env")]
     pub execve_env: HashSet<String>,
+    #[serde(default)]
+    pub container: bool,
 }
 
 impl Default for Enrich {
@@ -63,7 +65,10 @@ impl Default for Enrich {
         let mut execve_env = HashSet::new();
         execve_env.insert("LD_PRELOAD".into());
         execve_env.insert("LD_LIBRARY_PATH".into());
-        Enrich { execve_env }
+        Enrich {
+            execve_env,
+            container: false,
+        }
     }
 }
 
@@ -161,6 +166,7 @@ impl Config {
                 .iter()
                 .map(|s| s.as_bytes().to_vec())
                 .collect(),
+            enrich_container: self.enrich.container,
             proc_label_keys: self
                 .label_process
                 .label_keys
