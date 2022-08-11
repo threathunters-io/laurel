@@ -881,15 +881,20 @@ mod test {
     fn filter_key() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
         let emitter = | e: &Event | { *ec.borrow_mut() = Some(e.clone()) };
-        
 
         let mut c = Coalesce::new(emitter);
-        
         c.filter_keys.insert(Vec::from(&b"filter-this"[..]));
+        c.filter_keys.insert(Vec::from(&b"this-too"[..]));
         process_record(&mut c, include_bytes!("testdata/record-syscall-key.txt"))?;
         drop(c);
-        
         assert!(ec.borrow().as_ref().is_none());
+        
+        let mut c = Coalesce::new(emitter);
+        c.filter_keys.insert(Vec::from(&b"random-filter"[..]));
+        process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
+        drop(c);
+        assert!(!ec.borrow().as_ref().is_none());
+
         
         Ok(())
     }
