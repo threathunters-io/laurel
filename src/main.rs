@@ -262,6 +262,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 
     coalesce.populate_proc_table()
         .map_err(|e| format!("populate proc table: {}", e))?;
+    coalesce.filter_keys = config.filter.filter_keys.iter()
+        .map( |s| s.as_bytes().to_vec() )
+        .collect();
 
     coalesce.translate_universal = config.translate.universal;
     if config.translate.userdb {
