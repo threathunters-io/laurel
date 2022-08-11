@@ -56,6 +56,9 @@ user-db = false
 # List of environment variables to log for every EXECVE event
 execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
 
+# Add container context to SYSCALL-based events
+container = true
+
 [label-process]
 
 # Audit records that contain certain keys can be reused as a label

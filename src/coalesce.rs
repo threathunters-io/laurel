@@ -90,6 +90,7 @@ pub struct Settings<'a> {
     pub execve_argv_string: bool,
 
     pub execve_env: HashSet<Vec<u8>>,
+    pub enrich_container: bool,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
     pub proc_propagate_labels: HashSet<Vec<u8>>,
@@ -108,6 +109,7 @@ impl Default for Settings<'_> {
             execve_argv_list: true,
             execve_argv_string: false,
             execve_env: HashSet::new(),
+            enrich_container: false,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
             translate_universal: false,
@@ -636,18 +638,25 @@ impl<'a> Coalesce<'a> {
                 ev.body.insert(PARENT_INFO, EventValues::Single(pi));
             }
         }
+
         if let (Some(pid), Some(EventValues::Single(sc))) = (pid, ev.body.get_mut(&SYSCALL)) {
-            let labels = self
-                .processes
-                .get_process(pid)
-                .map(|p| p.labels)
-                .unwrap_or_default();
-            if !labels.is_empty() {
-                let labels = labels
-                    .iter()
-                    .map(|l| Value::Str(sc.put(l), Quote::None))
-                    .collect::<Vec<_>>();
-                sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
+            if let Some(p) = self.processes.get_process(pid) {
+                if !p.labels.is_empty() {
+                    let labels = p
+                        .labels
+                        .iter()
+                        .map(|l| Value::Str(sc.put(l), Quote::None))
+                        .collect::<Vec<_>>();
+                    sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
+                }
+
+                if let (true, Some(c)) = (self.settings.enrich_container, &p.container_info) {
+                    let mut ci = Record::default();
+                    let r = ci.put(&c.id);
+                    ci.elems
+                        .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
+                    ev.body.insert(CONTAINER_INFO, EventValues::Single(ci));
+                }
             }
         }
     }
