@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryInto;
 use std::error::Error;
 use std::fs::{read, read_dir, read_link};
+use std::io::{BufRead, BufReader};
 use std::iter::Iterator;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -27,6 +28,59 @@ lazy_static! {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct ContainerInfo {
+    pub id: Vec<u8>,
+}
+
+fn extract_sha256(buf: &[u8]) -> Option<&[u8]> {
+    if buf.len() < 64 {
+        None
+    } else if buf[buf.len() - 64..].iter().all(u8::is_ascii_hexdigit) {
+        Some(&buf[buf.len() - 64..])
+    } else if buf[..64].iter().all(u8::is_ascii_hexdigit) {
+        Some(&buf[..64])
+    } else {
+        None
+    }
+}
+
+fn parse_proc_pid_cgroup<R>(r: &mut R) -> Result<ContainerInfo, Box<dyn Error>>
+where
+    R: BufRead,
+{
+    for line in r.split(b'\n') {
+        if line.is_err() {
+            continue;
+        }
+        let line = line.unwrap();
+        let dir = line.split(|&c| c == b':').nth(2);
+        if dir.is_none() {
+            continue;
+        }
+        for fragment in dir.unwrap().split(|&c| c == b'/') {
+            let fragment = if fragment.ends_with(&b".scope"[..]) {
+                &fragment[..fragment.len() - 6]
+            } else {
+                fragment
+            };
+            match extract_sha256(fragment) {
+                None => continue,
+                Some(id) => return Ok(ContainerInfo { id: Vec::from(id) }),
+            }
+        }
+    }
+    Err("no sha256 sum found".into())
+}
+
+impl ContainerInfo {
+    fn parse_proc(pid: u32) -> Result<ContainerInfo, Box<dyn Error>> {
+        let buf = read(format!("/proc/{}/cgroup", pid))?;
+        let mut r = BufReader::new(&*buf);
+        parse_proc_pid_cgroup(&mut r)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct Process {
     /// Unix timestamp with millisecond precision
     pub launch_time: u64,
@@ -40,6 +94,7 @@ pub struct Process {
     pub event_id: Option<EventID>,
     pub comm: Option<Vec<u8>>,
     pub exe: Option<Vec<u8>>,
+    pub container_info: Option<ContainerInfo>,
 }
 
 // This is a lossy serializer that is intended to be used for debugging only.
@@ -140,6 +195,8 @@ impl Process {
             (lt.tv_sec() * 1000 + lt.tv_nsec() / 1_000_000) as u64
         };
 
+        let container_info = ContainerInfo::parse_proc(pid).ok();
+
         let labels = HashSet::new();
         Ok(Process {
             launch_time,
@@ -149,6 +206,7 @@ impl Process {
             event_id,
             comm,
             exe,
+            container_info,
         })
     }
 
@@ -267,6 +325,10 @@ impl ProcTable {
         let labels = HashSet::new();
         let launch_time = id.timestamp;
         let event_id = Some(id);
+        let container_info = ContainerInfo::parse_proc(pid)
+            .ok()
+            .or_else(|| self.get_process(ppid)?.container_info);
+
         self.processes.insert(
             pid,
             Process {
@@ -277,6 +339,7 @@ impl ProcTable {
                 event_id,
                 comm,
                 exe,
+                container_info,
             },
         );
     }
@@ -357,11 +420,27 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::BufReader;
     #[test]
     fn show_processes() -> Result<(), Box<dyn Error>> {
         let pt = ProcTable::from_proc(None, &HashSet::new())?;
         for p in pt.processes {
             println!("{:?}", &p);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_cgroup() -> Result<(), Box<dyn Error>> {
+        for line in &[
+            &b"0::/system.slice/docker-47335b04ebb4aefdc353dda62ddd38e5e1e00fc1372f0c8d0138417f0ccb9e6c.scope\n"[..],
+            &b"0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-974a75c8cf45648fcc6e718ba92ee1f2034463674f0d5b0c50f5cab041a4cbd6.scope/container\n"[..]
+        ]
+        {
+            let mut r = BufReader::new(*line);
+            parse_proc_pid_cgroup(&mut r)
+                .map_err(|e| Box::<dyn Error>::from(
+                    format!("{}: {}", String::from_utf8_lossy(line), e)))?;
         }
         Ok(())
     }
