@@ -72,7 +72,10 @@ pub struct LabelProcess {
 }
 
 #[derive(Default,Debug,Serialize,Deserialize)]
-pub struct Filter {}
+pub struct Filter {
+    #[serde(rename="filter-keys")]
+    pub filter_keys: HashSet<String>
+}
 
 #[derive(Debug,Serialize,Deserialize)]
 pub struct Config {

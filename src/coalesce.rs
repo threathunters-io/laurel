@@ -52,11 +52,12 @@ pub struct Event {
     node: Option<Vec<u8>>,
     id: EventID,
     body: IndexMap<MessageType,EventValues>,
+    filter: bool,
 }
 
 impl Event {
     fn new(node: Option<Vec<u8>>, id: EventID) -> Self {
-        Event { node, id, body: IndexMap::with_capacity(5) }
+        Event { node, id, body: IndexMap::with_capacity(5), filter:false }
     }
 }
 
@@ -100,6 +101,8 @@ pub struct Coalesce<'a> {
 
     pub proc_label_keys: HashSet<Vec<u8>>,
     pub proc_propagate_labels: HashSet<Vec<u8>>,
+
+    pub filter_keys: HashSet<Vec<u8>>,
 
     pub translate_universal: bool,
     pub translate_userdb: bool,
@@ -202,6 +205,7 @@ impl<'a> Coalesce<'a> {
             execve_env: HashSet::new(),
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
+            filter_keys: HashSet::new(),
             translate_universal: false,
             translate_userdb: false,
             label_exe: None,
@@ -535,6 +539,12 @@ impl<'a> Coalesce<'a> {
             }
         }
 
+        if let Some(key) = &key{
+            if self.filter_keys.contains(key) {
+                ev.filter=true;
+            }
+        }
+
         // PARENT_INFO
         if let Some(ppid) = ppid {
             if let Some(p) = self.processes.get_process(ppid) {
@@ -576,8 +586,9 @@ impl<'a> Coalesce<'a> {
         self.done.insert((ev.node.clone(), ev.id));
 
         self.transform_event(&mut ev);
-
-        (self.emit_fn)(&ev)
+        if !ev.filter{
+            (self.emit_fn)(&ev)
+        }
     }
 
     /// Ingest a log line and add it to the coalesce object.
@@ -862,6 +873,23 @@ mod test {
         process_record(&mut c, strip_enriched(include_bytes!("testdata/record-execve.txt")))?;
         drop(c);
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["recon"]"#));
+        
+        Ok(())
+    }
+
+    #[test]
+    fn filter_key() -> Result<(), Box<dyn Error>> {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+        let emitter = | e: &Event | { *ec.borrow_mut() = Some(e.clone()) };
+        
+
+        let mut c = Coalesce::new(emitter);
+        
+        c.filter_keys.insert(Vec::from(&b"filter-this"[..]));
+        process_record(&mut c, include_bytes!("testdata/record-syscall-key.txt"))?;
+        drop(c);
+        
+        assert!(ec.borrow().as_ref().is_none());
         
         Ok(())
     }
