@@ -16,6 +16,7 @@ use nom::{IResult,
 };
 
 /// Parse a single log line as produced by _auditd(8)_
+#[allow(clippy::type_complexity)]
 pub fn parse(mut raw: Vec<u8>) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record),String> {
     let (rest, (nd, ty, id)) = parse_header(&raw)
         .map_err(|e| format!("cannot parse header: {}", e.map_input(String::from_utf8_lossy)))?;
@@ -89,6 +90,7 @@ fn to_range(line: &[u8], subset: &[u8]) -> Range<usize> {
 
 /// Recognize the header: node, type, event identifier
 #[inline(always)]
+#[allow(clippy::type_complexity)]
 fn parse_header(input: &[u8]) -> IResult<&[u8], (Option<&[u8]>, MessageType, EventID)> {
     tuple((
         opt(terminated(parse_node, is_a(" "))),
