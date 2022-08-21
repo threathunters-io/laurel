@@ -274,8 +274,12 @@ impl ProcTable {
     }
 }
 
+type Environment = Vec<(Vec<u8>,Vec<u8>)>;
+
 /// Returns environment for a given process
-pub fn get_environ<F: Fn(&[u8]) -> bool>(pid: u32, pred: F) -> Result<Vec<(Vec<u8>,Vec<u8>)>, Box<dyn Error>> {
+pub fn get_environ<F>(pid: u32, pred: F) -> Result<Environment, Box<dyn Error>>
+    where F: Fn(&[u8]) -> bool
+{
     let buf = read(format!("/proc/{}/environ", pid))?;
     let mut res = Vec::new();
     for f in buf.split(|c| *c == 0) {
