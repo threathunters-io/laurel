@@ -17,6 +17,17 @@ on:
       - .github/workflows/build.yml
 
 jobs:
+  check_fmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+
+    - name: check formatting
+      run: cargo fmt --check
+
   build_n_test:
     runs-on: ubuntu-latest
     steps:
