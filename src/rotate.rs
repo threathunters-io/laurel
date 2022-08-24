@@ -1,10 +1,10 @@
-use std::io::{Error,ErrorKind,Result,Seek,SeekFrom,Write};
-use std::fs::{self,File,OpenOptions};
-use std::ffi::{OsString,OsStr};
 use posix_acl::{PosixACL, Qualifier, ACL_READ};
+use std::ffi::{OsStr, OsString};
+use std::fs::{self, File, OpenOptions};
+use std::io::{Error, ErrorKind, Result, Seek, SeekFrom, Write};
 use std::os::unix::io::AsRawFd;
 
-use nix::sys::stat::{fchmod,Mode};
+use nix::sys::stat::{fchmod, Mode};
 use nix::unistd::Uid;
 
 /// A rotating (log) file writer
@@ -34,15 +34,24 @@ impl<'a> FileRotate {
             basename: OsString::from(path.as_ref()),
             filesize: 0,
             generations: 0,
-            uids: vec!(),
+            uids: vec![],
             file: None,
             offset: 0,
         }
     }
 
-    pub fn with_filesize(mut self, p: u64) -> Self { self.filesize = p; self }
-    pub fn with_generations(mut self, p: u64) -> Self { self.generations = p; self }
-    pub fn with_uid(mut self, uid: Uid) -> Self { self.uids.push(uid); self }
+    pub fn with_filesize(mut self, p: u64) -> Self {
+        self.filesize = p;
+        self
+    }
+    pub fn with_generations(mut self, p: u64) -> Self {
+        self.generations = p;
+        self
+    }
+    pub fn with_uid(mut self, uid: Uid) -> Self {
+        self.uids.push(uid);
+        self
+    }
 
     /// Closes the main file and performs a backup file rotation
     pub fn rotate(&mut self) -> Result<()> {
@@ -63,14 +72,18 @@ impl<'a> FileRotate {
     }
 
     fn open(&mut self) -> Result<()> {
-        let mut file = OpenOptions::new().create(true).append(true).open(&self.basename)?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.basename)?;
         fchmod(file.as_raw_fd(), Mode::from_bits(0o600).unwrap())
-            .map_err(|e|Error::new(ErrorKind::Other, e))?;
+            .map_err(|e| Error::new(ErrorKind::Other, e))?;
         let mut acl = PosixACL::new(0o600);
         for uid in &self.uids {
             acl.set(Qualifier::User(uid.as_raw()), ACL_READ);
         }
-        acl.write_acl(&self.basename).map_err(|e|Error::new(e.kind(), e))?;
+        acl.write_acl(&self.basename)
+            .map_err(|e| Error::new(e.kind(), e))?;
         self.offset = file.seek(SeekFrom::End(0))?;
         self.file = Some(file);
         Ok(())

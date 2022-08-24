@@ -1,34 +1,38 @@
-use std::path::PathBuf;
 use std::collections::HashSet;
+use std::path::PathBuf;
 
-use serde::{Serialize,Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::label_matcher::LabelMatcher;
 
-#[derive(Clone,Debug,Serialize,Deserialize,PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Logfile {
     pub file: PathBuf,
-    #[serde(rename="read-users")]
+    #[serde(rename = "read-users")]
     pub users: Option<Vec<String>>,
     pub size: Option<u64>,
     pub generations: Option<u64>,
 }
 
-#[derive(Clone,Debug,Default,Serialize,Deserialize,PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Debug {
     pub log: Option<Logfile>,
-    #[serde(rename="dump-state-period")]
+    #[serde(rename = "dump-state-period")]
     pub dump_state_period: Option<u64>,
 }
 
-#[derive(PartialEq,Eq,Debug,Serialize,Deserialize,Hash)]
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "lowercase")]
-pub enum ArrayOrString { Array, String }
+pub enum ArrayOrString {
+    Array,
+    String,
+}
 
-#[derive(Debug,Serialize,Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Transform {
-    #[serde(rename="execve-argv")] #[serde(default)]
-    pub execve_argv: HashSet<ArrayOrString>
+    #[serde(rename = "execve-argv")]
+    #[serde(default)]
+    pub execve_argv: HashSet<ArrayOrString>,
 }
 
 impl Default for Transform {
@@ -39,17 +43,18 @@ impl Default for Transform {
     }
 }
 
-#[derive(Debug,Default,Serialize,Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Translate {
     pub universal: bool,
-    #[serde(rename="user-db")]
+    #[serde(rename = "user-db")]
     pub userdb: bool,
 }
 
-#[derive(Debug,Serialize,Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Enrich {
-    #[serde(rename="execve-env")] #[serde(default)]
-    pub execve_env: HashSet<String>
+    #[serde(rename = "execve-env")]
+    #[serde(default)]
+    pub execve_env: HashSet<String>,
 }
 
 impl Default for Enrich {
@@ -61,27 +66,28 @@ impl Default for Enrich {
     }
 }
 
-#[derive(Default,Debug,Serialize,Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct LabelProcess {
-    #[serde(rename="label-keys")]
+    #[serde(rename = "label-keys")]
     pub label_keys: HashSet<String>,
-    #[serde(rename="label-exe")]
+    #[serde(rename = "label-exe")]
     pub label_exe: Option<LabelMatcher>,
-    #[serde(rename="propagate-labels")]
+    #[serde(rename = "propagate-labels")]
     pub propagate_labels: HashSet<String>,
 }
 
-#[derive(Default,Debug,Serialize,Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Filter {
-    #[serde(rename="filter-keys")]
-    pub filter_keys: HashSet<String>
+    #[serde(rename = "filter-keys")]
+    pub filter_keys: HashSet<String>,
 }
 
-#[derive(Debug,Serialize,Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub user: Option<String>,
     pub directory: Option<PathBuf>,
-    #[serde(rename="statusreport-period")] #[serde(default)]
+    #[serde(rename = "statusreport-period")]
+    #[serde(default)]
     pub statusreport_period: Option<u64>,
     pub auditlog: Logfile,
     #[serde(default)]
@@ -92,7 +98,7 @@ pub struct Config {
     pub translate: Translate,
     #[serde(default)]
     pub enrich: Enrich,
-    #[serde(default,rename="label-process")]
+    #[serde(default, rename = "label-process")]
     pub label_process: LabelProcess,
     #[serde(default)]
     pub filter: Filter,
@@ -107,7 +113,7 @@ impl Default for Config {
             auditlog: Logfile {
                 file: "audit.log".into(),
                 users: None,
-                size: Some(10*1024*1024),
+                size: Some(10 * 1024 * 1024),
                 generations: Some(5),
             },
             debug: Debug::default(),
@@ -122,14 +128,23 @@ impl Default for Config {
 
 impl std::fmt::Display for Config {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        write!(fmt, "(user={} directory={} statusreport-period={} file={} users={} size={} generations={})",
-               self.user.clone().unwrap_or_else(|| "n/a".to_string()),
-               self.directory.clone().unwrap_or_else(||PathBuf::from(".")).display(),
-               self.statusreport_period.unwrap_or(0),
-               self.auditlog.file.to_string_lossy(),
-               self.auditlog.users.clone().unwrap_or_else(|| vec!["n/a".to_string()]).join(","),
-               self.auditlog.size.unwrap_or(0),
-               self.auditlog.generations.unwrap_or(0)
+        write!(
+            fmt,
+            "(user={} directory={} statusreport-period={} file={} users={} size={} generations={})",
+            self.user.clone().unwrap_or_else(|| "n/a".to_string()),
+            self.directory
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .display(),
+            self.statusreport_period.unwrap_or(0),
+            self.auditlog.file.to_string_lossy(),
+            self.auditlog
+                .users
+                .clone()
+                .unwrap_or_else(|| vec!["n/a".to_string()])
+                .join(","),
+            self.auditlog.size.unwrap_or(0),
+            self.auditlog.generations.unwrap_or(0)
         )
     }
 }
@@ -141,22 +156,32 @@ mod test {
 
     #[test]
     fn simple() {
-        let c: Config = toml::de::from_str(r#"
+        let c: Config = toml::de::from_str(
+            r#"
 user = "somebody"
 directory = "/path/to/somewhere"
 statusreport-period = 86400
 [auditlog]
 file = "somefile"
 read-users = ["splunk"]
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         println!("{:#?}", &c);
         assert_eq!(c.user, Some("somebody".to_string()));
-        assert_eq!(c.directory, Some(Path::new("/path/to/somewhere").to_path_buf()));
+        assert_eq!(
+            c.directory,
+            Some(Path::new("/path/to/somewhere").to_path_buf())
+        );
         assert_eq!(c.statusreport_period, Some(86400));
-        assert_eq!(c.auditlog, Logfile{
-            file: Path::new("somefile").to_path_buf(),
-            users: Some(vec!["splunk".to_string()]),
-            size: None, generations: None,
-        });
+        assert_eq!(
+            c.auditlog,
+            Logfile {
+                file: Path::new("somefile").to_path_buf(),
+                users: Some(vec!["splunk".to_string()]),
+                size: None,
+                generations: None,
+            }
+        );
     }
 }

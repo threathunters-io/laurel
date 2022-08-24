@@ -11,7 +11,7 @@ use gperftools::profiler::PROFILER;
 fn measure(bench: &mut Bencher, line: &[u8]) {
     let line = line.to_vec();
     bench.iter(|| {
-        for _ in 0 .. 1000 {
+        for _ in 0..1000 {
             laurel::parser::parse(line.clone()).unwrap();
         }
     });
@@ -23,8 +23,11 @@ fn parse_syscall(bench: &mut Bencher) {
 }
 
 fn parse_execve_short(bench: &mut Bencher) {
-    measure(bench, &br#"node=asdfghjk type=EXECVE msg=audit(1615114232.123:45678): argc=1 a0="true"
-"#[..])
+    measure(
+        bench,
+        &br#"node=asdfghjk type=EXECVE msg=audit(1615114232.123:45678): argc=1 a0="true"
+"#[..],
+    )
 }
 
 benchmark_group!(b, parse_syscall, parse_execve_short);
@@ -38,8 +41,11 @@ fn main() {
     // }
     let mut benches = Vec::new();
     benches.extend(b());
-    PROFILER.lock().unwrap().start(format!("{}.prof", std::env::args().next().unwrap())).unwrap();
+    PROFILER
+        .lock()
+        .unwrap()
+        .start(format!("{}.prof", std::env::args().next().unwrap()))
+        .unwrap();
     bencher::run_tests_console(&test_opts, benches).unwrap();
     PROFILER.lock().unwrap().stop().unwrap();
 }
-

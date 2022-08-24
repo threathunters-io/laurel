@@ -1,23 +1,23 @@
-use std::collections::{BTreeMap,HashSet,VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::error::Error;
 use std::io::Write;
 use std::ops::Range;
-use std::time::{SystemTime,UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use indexmap::IndexMap;
 
-use serde::{Serialize,Serializer};
 use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 use serde_json::json;
 
-use crate::constants::{ARCH_NAMES,SYSCALL_NAMES,msg_type::*};
-use crate::userdb::UserDB;
-use crate::proc::{ProcTable,get_environ};
-use crate::types::*;
+use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
+use crate::label_matcher::LabelMatcher;
 use crate::parser::parse;
+use crate::proc::{get_environ, ProcTable};
 use crate::quoted_string::ToQuotedString;
 use crate::sockaddr::SocketAddr;
-use crate::label_matcher::LabelMatcher;
+use crate::types::*;
+use crate::userdb::UserDB;
 
 /// Collect records in [`EventBody`] context as single or multiple
 /// instances.
@@ -28,7 +28,7 @@ use crate::label_matcher::LabelMatcher;
 ///
 /// "Multi" records are serialized as list-of-maps (`[ { "key":
 /// "value", … }, { "key": "value", … } … ]`)
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum EventValues {
     // e.g SYSCALL, EXECVE
     Single(Record),
@@ -37,8 +37,7 @@ pub enum EventValues {
 }
 
 impl Serialize for EventValues {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error>
-    {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
             EventValues::Single(rv) => rv.serialize(s),
             EventValues::Multi(rvs) => s.collect_seq(rvs),
@@ -46,24 +45,29 @@ impl Serialize for EventValues {
     }
 }
 
-
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct Event {
     node: Option<Vec<u8>>,
     id: EventID,
-    body: IndexMap<MessageType,EventValues>,
+    body: IndexMap<MessageType, EventValues>,
     filter: bool,
 }
 
 impl Event {
     fn new(node: Option<Vec<u8>>, id: EventID) -> Self {
-        Event { node, id, body: IndexMap::with_capacity(5), filter:false }
+        Event {
+            node,
+            id,
+            body: IndexMap::with_capacity(5),
+            filter: false,
+        }
     }
 }
 
 impl Serialize for Event {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-    where S: Serializer
+    where
+        S: Serializer,
     {
         let length = self.body.len() + if self.node.is_some() { 2 } else { 1 };
         let mut map = s.serialize_map(Some(length))?;
@@ -73,8 +77,8 @@ impl Serialize for Event {
             map.serialize_key("NODE")?;
             map.serialize_value(&node.as_slice().to_quoted_string())?;
         }
-        for (k,v) in &self.body {
-            map.serialize_entry(&k,&v)?;
+        for (k, v) in &self.body {
+            map.serialize_entry(&k, &v)?;
         }
         map.end()
     }
@@ -110,7 +114,7 @@ pub struct Coalesce<'a> {
     pub label_exe: Option<&'a LabelMatcher>,
 }
 
-const EXPIRE_PERIOD: u64  = 1_000;
+const EXPIRE_PERIOD: u64 = 1_000;
 const EXPIRE_INFLIGHT_TIMEOUT: u64 = 5_000;
 const EXPIRE_DONE_TIMEOUT: u64 = 120_000;
 
@@ -121,20 +125,17 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
     let m = match sa {
         SocketAddr::Local(sa) => {
             vec![(f, rv.put("local")), (rv.put("path"), rv.put(&sa.path))]
-        },
+        }
         SocketAddr::Inet(sa) => {
             vec![
                 (f, rv.put("inet")),
                 (rv.put("addr"), rv.put(format!("{}", sa.ip()))),
-                (rv.put("port"), rv.put(format!("{}", sa.port())))
+                (rv.put("port"), rv.put(format!("{}", sa.port()))),
             ]
-        },
+        }
         SocketAddr::AX25(sa) => {
-            vec![
-                (f, rv.put("ax25")),
-                (rv.put("call"), rv.put(&sa.call)),
-            ]
-        },
+            vec![(f, rv.put("ax25")), (rv.put("call"), rv.put(&sa.call))]
+        }
         SocketAddr::ATMPVC(sa) => {
             vec![
                 (f, rv.put("atmpvc")),
@@ -142,26 +143,25 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
                 (rv.put("vpi"), rv.put(format!("{}", sa.vpi))),
                 (rv.put("vci"), rv.put(format!("{}", sa.vci))),
             ]
-        },
+        }
         SocketAddr::X25(sa) => {
-            vec![
-                (f, rv.put("x25")),
-                (rv.put("addr"), rv.put(&sa.address)),
-            ]
-        },
+            vec![(f, rv.put("x25")), (rv.put("addr"), rv.put(&sa.address))]
+        }
         SocketAddr::IPX(sa) => {
             vec![
                 (f, rv.put("ipx")),
                 (rv.put("network"), rv.put(format!("{:08x}", sa.network))),
-                (rv.put("node"), rv.put(
-                    format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                            sa.node[0], sa.node[1],
-                            sa.node[2], sa.node[3],
-                            sa.node[4], sa.node[5]))),
+                (
+                    rv.put("node"),
+                    rv.put(format!(
+                        "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                        sa.node[0], sa.node[1], sa.node[2], sa.node[3], sa.node[4], sa.node[5]
+                    )),
+                ),
                 (rv.put("port"), rv.put(format!("{}", sa.port))),
                 (rv.put("type"), rv.put(format!("{}", sa.typ))),
             ]
-        },
+        }
         SocketAddr::Inet6(sa) => {
             vec![
                 (f, rv.put("inet6")),
@@ -170,21 +170,21 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
                 (rv.put("flowinfo"), rv.put(format!("{}", sa.flowinfo()))),
                 (rv.put("scope_id"), rv.put(format!("{}", sa.scope_id()))),
             ]
-        },
+        }
         SocketAddr::Netlink(sa) => {
             vec![
                 (f, rv.put("netlink")),
                 (rv.put("pid"), rv.put(format!("{}", sa.pid))),
-                (rv.put("groups"), rv.put(format!("{}", sa.groups)))
+                (rv.put("groups"), rv.put(format!("{}", sa.groups))),
             ]
-        },
+        }
         SocketAddr::VM(sa) => {
             vec![
                 (f, rv.put("vsock")),
                 (rv.put("cid"), rv.put(format!("{}", sa.cid))),
                 (rv.put("port"), rv.put(format!("{}", sa.port))),
             ]
-        },
+        }
     };
     Value::Map(m)
 }
@@ -228,8 +228,10 @@ impl<'a> Coalesce<'a> {
     ///
     /// Called every EXPIRE_PERIOD ms and when Coalesce is destroyed.
     fn expire_inflight(&mut self, now: u64) {
-        let node_ids = self.inflight.keys()
-            .filter( |(_, id)| id.timestamp + EXPIRE_INFLIGHT_TIMEOUT < now )
+        let node_ids = self
+            .inflight
+            .keys()
+            .filter(|(_, id)| id.timestamp + EXPIRE_INFLIGHT_TIMEOUT < now)
             .cloned()
             .collect::<Vec<_>>();
         for node_id in node_ids {
@@ -240,8 +242,10 @@ impl<'a> Coalesce<'a> {
     }
 
     fn expire_done(&mut self, now: u64) {
-        let node_ids = self.done.iter()
-            .filter(| (_, id)| id.timestamp + EXPIRE_DONE_TIMEOUT < now )
+        let node_ids = self
+            .done
+            .iter()
+            .filter(|(_, id)| id.timestamp + EXPIRE_DONE_TIMEOUT < now)
             .cloned()
             .collect::<Vec<_>>();
         for node_id in node_ids {
@@ -254,7 +258,9 @@ impl<'a> Coalesce<'a> {
     /// - ogid=1000 -> OGID="user"
     #[inline(always)]
     fn translate_userdb(&mut self, rv: &mut Record, k: &Key, v: &Value) -> Option<(Key, Value)> {
-        if !self.translate_userdb { return None }
+        if !self.translate_userdb {
+            return None;
+        }
         match k {
             Key::NameUID(r) => {
                 if let Value::Number(Number::Dec(d)) = v {
@@ -265,10 +271,12 @@ impl<'a> Coalesce<'a> {
                     } else {
                         format!("unknown({})", d)
                     };
-                    return Some((Key::NameTranslated(r.clone()),
-                                 Value::Str(rv.put(translated), Quote::Double)));
+                    return Some((
+                        Key::NameTranslated(r.clone()),
+                        Value::Str(rv.put(translated), Quote::Double),
+                    ));
                 }
-            },
+            }
             Key::NameGID(r) => {
                 if let Value::Number(Number::Dec(d)) = v {
                     let translated = if *d == 0xffffffff {
@@ -278,10 +286,12 @@ impl<'a> Coalesce<'a> {
                     } else {
                         format!("unknown({})", d)
                     };
-                    return Some((Key::NameTranslated(r.clone()),
-                                 Value::Str(rv.put(translated), Quote::Double)));
+                    return Some((
+                        Key::NameTranslated(r.clone()),
+                        Value::Str(rv.put(translated), Quote::Double),
+                    ));
                 }
-            },
+            }
             _ => (),
         };
         None
@@ -307,73 +317,83 @@ impl<'a> Coalesce<'a> {
             match tv {
                 (&SYSCALL, EventValues::Single(rv)) => {
                     rv.raw.reserve(
-                        if self.translate_universal { 16 } else { 0 } +
-                        if self.translate_userdb { 72 } else { 0 } );
+                        if self.translate_universal { 16 } else { 0 }
+                            + if self.translate_userdb { 72 } else { 0 },
+                    );
                     let mut new = Vec::with_capacity(rv.elems.len() - 3);
                     let mut translated = VecDeque::with_capacity(11);
                     let mut argv = Vec::with_capacity(4);
                     let mut arch = None;
                     let mut syscall = None;
-                    for (k,v) in &rv.elems.clone() {
-                        match (k,v) {
-                            (Key::Arg(_,None), _) => {
+                    for (k, v) in &rv.elems.clone() {
+                        match (k, v) {
+                            (Key::Arg(_, None), _) => {
                                 // FIXME: check argv length
                                 argv.push(v.clone());
                                 continue;
-                            },
+                            }
                             (Key::ArgLen(_), _) => continue,
                             (Key::Name(r), Value::Number(n)) => {
                                 let name = &rv.raw[r.clone()];
                                 match (name, n) {
-                                    (b"arch", Number::Hex(n)) =>
-                                        arch = Some((r.clone(), *n)),
-                                    (b"syscall", Number::Dec(n)) =>
-                                        syscall = Some((r.clone(), *n)),
+                                    (b"arch", Number::Hex(n)) => arch = Some((r.clone(), *n)),
+                                    (b"syscall", Number::Dec(n)) => syscall = Some((r.clone(), *n)),
                                     (b"pid", Number::Dec(n)) => pid = Some(*n as u32),
                                     (b"ppid", Number::Dec(n)) => ppid = Some(*n as u32),
                                     _ => (),
                                 }
-                            },
+                            }
                             (Key::Name(r), v) => {
                                 let name = &rv.raw[r.clone()];
                                 match name {
-                                    b"ARCH" =>
+                                    b"ARCH" => {
                                         if self.translate_universal && arch.is_some() {
-                                            continue
-                                        },
-                                    b"SYSCALL" =>
+                                            continue;
+                                        }
+                                    }
+                                    b"SYSCALL" => {
                                         if self.translate_universal && syscall.is_some() {
-                                            continue
-                                        },
-                                    b"key" =>
+                                            continue;
+                                        }
+                                    }
+                                    b"key" => {
                                         if let Value::Str(r, _) = v {
                                             key = Some(rv.raw[r.clone()].into());
-                                        },
-                                    b"comm" =>
-                                        if let Value::Str(r,_) = v {
+                                        }
+                                    }
+                                    b"comm" => {
+                                        if let Value::Str(r, _) = v {
                                             comm = Some(rv.raw[r.clone()].into());
-                                        },
-                                    b"exe" =>
-                                        if let Value::Str(r,_) = v {
+                                        }
+                                    }
+                                    b"exe" => {
+                                        if let Value::Str(r, _) = v {
                                             exe = Some(rv.raw[r.clone()].into());
-                                        },
+                                        }
+                                    }
                                     _ => (),
                                 };
-                            },
-                            _ => if let Some((k,v)) = self.translate_userdb(rv, k, v) {
-                                translated.push_back((k,v));
-                            },
+                            }
+                            _ => {
+                                if let Some((k, v)) = self.translate_userdb(rv, k, v) {
+                                    translated.push_back((k, v));
+                                }
+                            }
                         };
                         new.push((k.clone(), v.clone()));
                     }
                     if let (Some(arch), Some(syscall)) = (arch, syscall) {
                         if let Some(arch_name) = ARCH_NAMES.get(&(arch.1 as u32)) {
-                            if let Some(syscall_name) = SYSCALL_NAMES.get(arch_name)
+                            if let Some(syscall_name) = SYSCALL_NAMES
+                                .get(arch_name)
                                 .and_then(|syscall_tbl| syscall_tbl.get(&(syscall.1 as u32)))
                             {
                                 if self.translate_universal {
                                     let v = rv.put(syscall_name);
-                                    translated.push_front((Key::NameTranslated(syscall.0), Value::Str(v, Quote::None)));
+                                    translated.push_front((
+                                        Key::NameTranslated(syscall.0),
+                                        Value::Str(v, Quote::None),
+                                    ));
                                 }
                                 if syscall_name.windows(6).any(|s| s == b"execve") {
                                     syscall_is_exec = true;
@@ -381,14 +401,17 @@ impl<'a> Coalesce<'a> {
                             }
                             if self.translate_universal {
                                 let v = rv.put(arch_name);
-                                translated.push_front((Key::NameTranslated(arch.0), Value::Str(v, Quote::None)));
+                                translated.push_front((
+                                    Key::NameTranslated(arch.0),
+                                    Value::Str(v, Quote::None),
+                                ));
                             }
                         }
                     }
                     new.push((Key::Literal("ARGV"), Value::List(argv)));
                     new.extend(translated);
                     rv.elems = new;
-                },
+                }
                 (&EXECVE, EventValues::Single(rv)) => {
                     let mut new: Vec<(Key, Value)> = Vec::with_capacity(2);
                     let mut argv: Vec<Value> = Vec::with_capacity(1);
@@ -398,28 +421,28 @@ impl<'a> Coalesce<'a> {
                             Key::Arg(i, None) => {
                                 let idx = *i as usize;
                                 if argv.len() <= idx {
-                                    argv.resize(idx+1, Value::Empty);
+                                    argv.resize(idx + 1, Value::Empty);
                                 };
                                 argv[idx] = v.value.clone();
-                            },
+                            }
                             Key::Arg(i, Some(f)) => {
                                 let idx = *i as usize;
                                 if argv.len() <= idx {
-                                    argv.resize(idx+1, Value::Empty);
+                                    argv.resize(idx + 1, Value::Empty);
                                     argv[idx] = Value::Segments(Vec::new());
                                 }
                                 if let Some(Value::Segments(l)) = argv.get_mut(idx) {
                                     let frag = *f as usize;
                                     let r = match v.value {
                                         Value::Str(r, _) => r,
-                                        _ => &Range{start: 0, end: 0}, // FIXME
+                                        _ => &Range { start: 0, end: 0 }, // FIXME
                                     };
                                     if l.len() <= frag {
-                                        l.resize(frag+1, 0..0);
+                                        l.resize(frag + 1, 0..0);
                                         l[frag] = r.clone();
                                     }
                                 }
-                            },
+                            }
                             _ => new.push((k.key.clone(), v.value.clone())),
                         };
                     }
@@ -430,18 +453,20 @@ impl<'a> Coalesce<'a> {
                     }
                     // ARGV_STR
                     if self.execve_argv_string {
-                        new.push((Key::Literal("ARGV_STR"), Value::StringifiedList(argv.clone())));
+                        new.push((
+                            Key::Literal("ARGV_STR"),
+                            Value::StringifiedList(argv.clone()),
+                        ));
                     }
                     // ENV
                     match pid {
                         Some(pid) if !self.execve_env.is_empty() => {
-                            if let Ok(vars) = get_environ(pid, |k| self.execve_env.contains(k) ) {
-                                let map = vars.iter()
-                                    .map(|(k,v)| (rv.put(k), rv.put(v)))
-                                    .collect();
-                                new.push( (Key::Literal("ENV"), Value::Map(map)) );
+                            if let Ok(vars) = get_environ(pid, |k| self.execve_env.contains(k)) {
+                                let map =
+                                    vars.iter().map(|(k, v)| (rv.put(k), rv.put(v))).collect();
+                                new.push((Key::Literal("ENV"), Value::Map(map)));
                             }
-                        },
+                        }
                         _ => (),
                     };
 
@@ -450,13 +475,21 @@ impl<'a> Coalesce<'a> {
                     // register process, add propagated labels from
                     // parent if applicable
                     if let (Some(pid), Some(ppid)) = (pid, ppid) {
-                        let argv = argv.iter().filter_map(
-                            |v| match v {
-                                Value::Str(r,_) => Some(Vec::from(&rv.raw[r.clone()])),
-                                _ => None
-                            }
-                        ).collect();
-                        self.processes.add_process(pid, ppid, ev.id, comm.clone(), exe.clone(), argv);
+                        let argv = argv
+                            .iter()
+                            .filter_map(|v| match v {
+                                Value::Str(r, _) => Some(Vec::from(&rv.raw[r.clone()])),
+                                _ => None,
+                            })
+                            .collect();
+                        self.processes.add_process(
+                            pid,
+                            ppid,
+                            ev.id,
+                            comm.clone(),
+                            exe.clone(),
+                            argv,
+                        );
 
                         if let Some(parent) = self.processes.get_process(ppid) {
                             for l in self.proc_propagate_labels.intersection(&parent.labels) {
@@ -464,64 +497,67 @@ impl<'a> Coalesce<'a> {
                             }
                         }
                     }
-                },
+                }
                 (&SOCKADDR, EventValues::Multi(rvs)) => {
                     for mut rv in rvs {
                         let mut new = Vec::with_capacity(rv.elems.len());
                         let mut translated = None;
-                        for (k,v) in &rv.elems.clone() {
-                            if let (Key::Name(kr),Value::Str(vr, _)) = (k,v) {
+                        for (k, v) in &rv.elems.clone() {
+                            if let (Key::Name(kr), Value::Str(vr, _)) = (k, v) {
                                 let name = &rv.raw[kr.clone()];
                                 match name {
                                     b"saddr" if self.translate_universal => {
                                         if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
-                                            translated = Some((Key::NameTranslated(kr.clone()), translate_socketaddr(rv, sa)));
+                                            translated = Some((
+                                                Key::NameTranslated(kr.clone()),
+                                                translate_socketaddr(rv, sa),
+                                            ));
                                             continue;
                                         }
-                                    },
+                                    }
                                     b"SADDR" if self.translate_universal => continue,
-                                    _ => {},
+                                    _ => {}
                                 }
                             }
-                            new.push((k.clone(),v.clone()));
+                            new.push((k.clone(), v.clone()));
                         }
-                        if let Some((k,v)) = translated { new.push((k,v)) }
+                        if let Some((k, v)) = translated {
+                            new.push((k, v))
+                        }
                         rv.elems = new;
                     }
-                },
+                }
                 (&PROCTITLE, EventValues::Single(rv)) => {
                     if let Some(v) = rv.get(b"proctitle") {
                         if let Value::Str(r, _) = v.value {
                             let mut argv: Vec<Value> = Vec::new();
                             let mut prev = r.start;
-                            for i in r.start ..= r.end {
-                                if (i == r.end || rv.raw[i] == 0) &&
-                                    !(prev..i).is_empty()
-                                {
+                            for i in r.start..=r.end {
+                                if (i == r.end || rv.raw[i] == 0) && !(prev..i).is_empty() {
                                     argv.push(Value::Str(prev..i, Quote::None));
-                                    prev = i+1;
+                                    prev = i + 1;
                                 }
                             }
-                            rv.elems = vec!((Key::Literal("ARGV"), Value::List(argv)));
+                            rv.elems = vec![(Key::Literal("ARGV"), Value::List(argv))];
                         }
                     }
-                },
+                }
                 (_, EventValues::Single(rv)) => {
-                    for (k,v) in &rv.elems.clone() {
-                        if let Some((k,v)) = self.translate_userdb(rv, k, v) {
-                            rv.elems.push((k,v));
+                    for (k, v) in &rv.elems.clone() {
+                        if let Some((k, v)) = self.translate_userdb(rv, k, v) {
+                            rv.elems.push((k, v));
                         }
                     }
-                },
+                }
                 (_, EventValues::Multi(rvs)) => {
                     for rv in rvs {
-                        for (k,v) in &rv.elems.clone() {
-                            if let Some((k,v)) = self.translate_userdb(rv, k, v) {
-                                rv.elems.push((k,v));
+                        for (k, v) in &rv.elems.clone() {
+                            if let Some((k, v)) = self.translate_userdb(rv, k, v) {
+                                rv.elems.push((k, v));
                             }
                         }
                     }
-                },
+                }
             }
         }
 
@@ -539,9 +575,9 @@ impl<'a> Coalesce<'a> {
             }
         }
 
-        if let Some(key) = &key{
+        if let Some(key) = &key {
             if self.filter_keys.contains(key) {
-                ev.filter=true;
+                ev.filter = true;
             }
         }
 
@@ -551,28 +587,36 @@ impl<'a> Coalesce<'a> {
                 let mut pi = Record::default();
                 if let Some(id) = p.event_id {
                     let r = pi.put(format!("{}", id));
-                    pi.elems.push((Key::Literal("ID"), Value::Str(r, Quote::None)));
+                    pi.elems
+                        .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
                 }
                 if let Some(comm) = p.comm {
                     let r = pi.put(&comm);
-                    pi.elems.push((Key::Literal("comm"), Value::Str(r, Quote::None)));
+                    pi.elems
+                        .push((Key::Literal("comm"), Value::Str(r, Quote::None)));
                 }
                 if let Some(exe) = p.exe {
                     let r = pi.put(&exe);
-                    pi.elems.push((Key::Literal("exe"), Value::Str(r, Quote::None)));
+                    pi.elems
+                        .push((Key::Literal("exe"), Value::Str(r, Quote::None)));
                 }
-                let kv = (Key::Name(pi.put(b"ppid")), Value::Number(Number::Dec(p.ppid as i64)));
+                let kv = (
+                    Key::Name(pi.put(b"ppid")),
+                    Value::Number(Number::Dec(p.ppid as i64)),
+                );
                 pi.elems.push(kv);
                 ev.body.insert(PARENT_INFO, EventValues::Single(pi));
             }
         }
-        if let (Some(pid), Some(EventValues::Single(sc))) =
-            (pid, ev.body.get_mut(&SYSCALL))
-        {
-            let labels = self.processes.get_process(pid)
-                .map(|p| p.labels).unwrap_or_default();
+        if let (Some(pid), Some(EventValues::Single(sc))) = (pid, ev.body.get_mut(&SYSCALL)) {
+            let labels = self
+                .processes
+                .get_process(pid)
+                .map(|p| p.labels)
+                .unwrap_or_default();
             if !labels.is_empty() {
-                let labels = labels.iter()
+                let labels = labels
+                    .iter()
                     .map(|l| Value::Str(sc.put(l), Quote::None))
                     .collect::<Vec<_>>();
                 sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
@@ -586,7 +630,7 @@ impl<'a> Coalesce<'a> {
         self.done.insert((ev.node.clone(), ev.id));
 
         self.transform_event(&mut ev);
-        if !ev.filter{
+        if !ev.filter {
             (self.emit_fn)(&ev)
         }
     }
@@ -613,7 +657,7 @@ impl<'a> Coalesce<'a> {
                 self.expire_done(id.timestamp);
                 self.processes.expire();
                 self.next_expire = Some(id.timestamp + EXPIRE_PERIOD)
-            },
+            }
             None => self.next_expire = Some(id.timestamp + EXPIRE_PERIOD),
             _ => (),
         };
@@ -622,7 +666,9 @@ impl<'a> Coalesce<'a> {
             if self.done.contains(&nid) {
                 return Err(format!("duplicate event id {}", id).into());
             }
-            let ev = self.inflight.remove(&nid)
+            let ev = self
+                .inflight
+                .remove(&nid)
                 .ok_or(format!("Event id {} for EOE marker not found", &id))?;
             self.emit_event(ev);
         } else if typ.is_multipart() {
@@ -637,14 +683,14 @@ impl<'a> Coalesce<'a> {
                 None => match typ {
                     SYSCALL => {
                         ev.body.insert(typ, EventValues::Single(rv));
-                    },
+                    }
                     EXECVE | PROCTITLE | CWD => {
                         ev.body.insert(typ, EventValues::Single(rv));
-                    },
+                    }
                     _ => {
-                        ev.body.insert(typ, EventValues::Multi(vec!(rv)));
-                    },
-                }
+                        ev.body.insert(typ, EventValues::Multi(vec![rv]));
+                    }
+                },
             };
         } else {
             // user-space messages
@@ -658,33 +704,36 @@ impl<'a> Coalesce<'a> {
         Ok(())
     }
 
-    pub fn dump_state(&self, mut w: &mut dyn Write) -> Result<(), Box<dyn Error>>{
-        serde_json::to_writer(&mut w, &json!({
-            "ts": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-            "message": {
-                "type": "dump_state",
-                "label_exe": self.label_exe,
-                "inflight": self.inflight.iter().map(
-                    |(k,v)| {
-                        if let Some(node) = &k.0 {
-                            (format!("{}::{}", String::from_utf8_lossy(node), k.1), v)
-                        } else {
-                            (format!("{}", k.1), v)
+    pub fn dump_state(&self, mut w: &mut dyn Write) -> Result<(), Box<dyn Error>> {
+        serde_json::to_writer(
+            &mut w,
+            &json!({
+                "ts": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                "message": {
+                    "type": "dump_state",
+                    "label_exe": self.label_exe,
+                    "inflight": self.inflight.iter().map(
+                        |(k,v)| {
+                            if let Some(node) = &k.0 {
+                                (format!("{}::{}", String::from_utf8_lossy(node), k.1), v)
+                            } else {
+                                (format!("{}", k.1), v)
+                            }
                         }
-                    }
-                ).collect::<BTreeMap<_,_>>(),
-                "done": self.done.iter().map(
-                    |v| if let Some(node ) = &v.0 {
-                        format!("{}::{}", String::from_utf8_lossy(node), v.1)
-                    } else {
-                        format!("{}", v.1)
-                    }
-                ).collect::<Vec<_>>(),
-                "processes": self.processes,
-                "userdb": self.userdb,
-                "next_expire": self.next_expire,
-            },
-        }))?;
+                    ).collect::<BTreeMap<_,_>>(),
+                    "done": self.done.iter().map(
+                        |v| if let Some(node ) = &v.0 {
+                            format!("{}::{}", String::from_utf8_lossy(node), v.1)
+                        } else {
+                            format!("{}", v.1)
+                        }
+                    ).collect::<Vec<_>>(),
+                    "processes": self.processes,
+                    "userdb": self.userdb,
+                    "next_expire": self.next_expire,
+                },
+            }),
+        )?;
         w.write_all(b"\n")?;
         w.flush()?;
         Ok(())
@@ -692,40 +741,43 @@ impl<'a> Coalesce<'a> {
 }
 
 impl Drop for Coalesce<'_> {
-    fn drop(&mut self) { self.expire_inflight(u64::MAX) }
+    fn drop(&mut self) {
+        self.expire_inflight(u64::MAX)
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::cell::RefCell;
-    use std::io::{BufReader,BufRead};
-    use std::rc::Rc;
     use serde_json;
+    use std::cell::RefCell;
+    use std::io::{BufRead, BufReader};
+    use std::rc::Rc;
 
     fn event_to_json(e: &Event) -> String {
-        let mut out = vec!();
+        let mut out = vec![];
         serde_json::to_writer(&mut out, e).unwrap();
         String::from_utf8_lossy(&out).to_string()
     }
 
     #[test]
-    fn dump_state() -> Result<(),Box<dyn Error>> {
-        let mut c = Coalesce::new( |_| {} );
+    fn dump_state() -> Result<(), Box<dyn Error>> {
+        let mut c = Coalesce::new(|_| {});
         c.populate_proc_table()?;
         c.populate_userdb();
         c.process_line(br#"type=SYSCALL msg=audit(1615114232.375:15558): arch=c000003e syscall=59 success=yes exit=0 a0=63b29337fd18 a1=63b293387d58 a2=63b293375640 a3=fffffffffffff000 items=2 ppid=10883 pid=10884 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="whoami" exe="/usr/bin/whoami" key=(null)
 "#.to_vec())?;
-        let mut buf: Vec<u8> = vec!();
+        let mut buf: Vec<u8> = vec![];
         c.dump_state(&mut buf)?;
         println!("{}", String::from_utf8_lossy(&buf));
         Ok(())
     }
 
     fn strip_enriched<T>(text: T) -> Vec<u8>
-    where T: AsRef<[u8]>,
+    where
+        T: AsRef<[u8]>,
     {
-        let mut out = vec!();
+        let mut out = vec![];
         for line in BufReader::new(text.as_ref()).lines() {
             let line = line.unwrap().clone();
             for c in line.as_bytes() {
@@ -739,8 +791,9 @@ mod test {
         out
     }
 
-    fn process_record<T>(c: &mut Coalesce, text: T) -> Result<(),Box<dyn Error>>
-    where T: AsRef<[u8]>,
+    fn process_record<T>(c: &mut Coalesce, text: T) -> Result<(), Box<dyn Error>>
+    where
+        T: AsRef<[u8]>,
     {
         for line in BufReader::new(text.as_ref()).lines() {
             let mut line = line.unwrap().clone();
@@ -753,20 +806,40 @@ mod test {
     #[test]
     fn coalesce() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(Vec::new()));
-        let mut c = Coalesce::new(|e: &Event| { ec.borrow_mut().push(e.clone()); } );
+        let mut c = Coalesce::new(|e: &Event| {
+            ec.borrow_mut().push(e.clone());
+        });
 
         process_record(&mut c, include_bytes!("testdata/line-user-acct.txt"))?;
-        assert_eq!(ec.borrow().last().unwrap().id, EventID{ timestamp: 1615113648981, sequence: 15220});
+        assert_eq!(
+            ec.borrow().last().unwrap().id,
+            EventID {
+                timestamp: 1615113648981,
+                sequence: 15220
+            }
+        );
 
         if let Ok(_) = process_record(&mut c, include_bytes!("testdata/line-user-acct.txt")) {
             panic!("failed to detect duplicate entries");
         };
 
         process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
-        assert_eq!(ec.borrow().last().unwrap().id, EventID{ timestamp: 1615114232375, sequence: 15558});
+        assert_eq!(
+            ec.borrow().last().unwrap().id,
+            EventID {
+                timestamp: 1615114232375,
+                sequence: 15558
+            }
+        );
 
         process_record(&mut c, include_bytes!("testdata/record-execve-long.txt"))?;
-        assert_eq!(ec.borrow().last().unwrap().id, EventID{ timestamp: 1615150974493, sequence: 21028});
+        assert_eq!(
+            ec.borrow().last().unwrap().id,
+            EventID {
+                timestamp: 1615150974493,
+                sequence: 21028
+            }
+        );
 
         // recordds do not begin with SYSCALL.
         process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
@@ -781,13 +854,18 @@ mod test {
     fn duplicate_uids() {
         let ec = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new( |e: &Event| { *ec.borrow_mut() = Some(e.clone()) } );
+        let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
         c.translate_userdb = true;
         process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
         if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
             // Check for: pid uid subj old-auid auid tty old-ses ses res UID OLD-AUID AUID
             let l = records[0].elems.len();
-            assert!(l == 12, "expected 12 fields, got {}: {:?}", l, records[0].into_iter().collect::<Vec<_>>());
+            assert!(
+                l == 12,
+                "expected 12 fields, got {}: {:?}",
+                l,
+                records[0].into_iter().collect::<Vec<_>>()
+            );
         } else {
             panic!("expected EventValues::Multi");
         };
@@ -797,34 +875,54 @@ mod test {
     fn keep_enriched_syscalls() {
         let ec = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new( |e: &Event| { *ec.borrow_mut() = Some(e.clone()) } );
+        let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
         process_record(&mut c, include_bytes!("testdata/record-execve.txt")).unwrap();
-        assert!(event_to_json(ec.borrow().as_ref().unwrap())
-                .contains(r#""ARCH":"x86_64""#));
-        assert!(event_to_json(ec.borrow().as_ref().unwrap())
-                .contains(r#""SYSCALL":"execve""#));
+        assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#""ARCH":"x86_64""#));
+        assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#""SYSCALL":"execve""#));
     }
 
     #[test]
     fn translate_uids() {
         let ec = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new( |e: &Event| { *ec.borrow_mut() = Some(e.clone()) } );
+        let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
         c.translate_userdb = true;
-        process_record(&mut c, strip_enriched(include_bytes!("testdata/record-login.txt"))).unwrap();
+        process_record(
+            &mut c,
+            strip_enriched(include_bytes!("testdata/record-login.txt")),
+        )
+        .unwrap();
         if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
             let mut uid = false;
             let mut old_auid = false;
             let mut auid = false;
             // UID="root" OLD-AUID="unset" AUID="root"
-            for (k,v) in &records[0] {
-                if &k == "UID" && &v == "root" { uid = true; }
-                if &k == "OLD-AUID" && &v == "unset" { old_auid = true; }
-                if &k == "AUID" && &v == "root" { auid = true; }
+            for (k, v) in &records[0] {
+                if &k == "UID" && &v == "root" {
+                    uid = true;
+                }
+                if &k == "OLD-AUID" && &v == "unset" {
+                    old_auid = true;
+                }
+                if &k == "AUID" && &v == "root" {
+                    auid = true;
+                }
             }
-            assert!(uid, "missing UID: {:?}", records[0].into_iter().collect::<Vec<_>>());
-            assert!(old_auid, "missing OLD-AUID: {:?}", records[0].into_iter().collect::<Vec<_>>());
-            assert!(auid, "missing AUID: {:?}", records[0].into_iter().collect::<Vec<_>>());
+            assert!(
+                uid,
+                "missing UID: {:?}",
+                records[0].into_iter().collect::<Vec<_>>()
+            );
+            assert!(
+                old_auid,
+                "missing OLD-AUID: {:?}",
+                records[0].into_iter().collect::<Vec<_>>()
+            );
+            assert!(
+                auid,
+                "missing AUID: {:?}",
+                records[0].into_iter().collect::<Vec<_>>()
+            );
         } else {
             panic!("expected EventValues::Multi");
         };
@@ -834,32 +932,37 @@ mod test {
     fn key_label() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new( |e| {
+        let mut c = Coalesce::new(|e| {
             *ec.borrow_mut() = Some(e.clone());
-        } );
+        });
         c.proc_label_keys.insert(Vec::from(&b"software_mgmt"[..]));
-        c.proc_propagate_labels.insert(Vec::from(&b"software_mgmt"[..]));
+        c.proc_propagate_labels
+            .insert(Vec::from(&b"software_mgmt"[..]));
         process_record(&mut c, include_bytes!("testdata/tree/00.txt"))?;
         {
-            assert!(event_to_json(ec.borrow().as_ref().unwrap())
+            assert!(
+                event_to_json(ec.borrow().as_ref().unwrap())
                     .contains(r#""LABELS":["software_mgmt"]"#),
-                    "process gets 'software_mgmt' label from key");
+                "process gets 'software_mgmt' label from key"
+            );
         }
 
         process_record(&mut c, include_bytes!("testdata/tree/01.txt"))?;
         {
-            assert!(event_to_json(ec.borrow().as_ref().unwrap())
+            assert!(
+                event_to_json(ec.borrow().as_ref().unwrap())
                     .contains(r#""LABELS":["software_mgmt"]"#),
-                    "child process inherits 'software_mgmt' label");
+                "child process inherits 'software_mgmt' label"
+            );
         }
-        
+
         Ok(())
     }
 
     #[test]
     fn label_exe() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
-        let emitter = | e: &Event | { *ec.borrow_mut() = Some(e.clone()) };
+        let emitter = |e: &Event| *ec.borrow_mut() = Some(e.clone());
         let lm = LabelMatcher::new(&[("whoami", "recon")])?;
 
         let mut c = Coalesce::new(emitter);
@@ -870,17 +973,20 @@ mod test {
 
         let mut c = Coalesce::new(emitter);
         c.label_exe = Some(&lm);
-        process_record(&mut c, strip_enriched(include_bytes!("testdata/record-execve.txt")))?;
+        process_record(
+            &mut c,
+            strip_enriched(include_bytes!("testdata/record-execve.txt")),
+        )?;
         drop(c);
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["recon"]"#));
-        
+
         Ok(())
     }
 
     #[test]
     fn filter_key() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
-        let emitter = | e: &Event | { *ec.borrow_mut() = Some(e.clone()) };
+        let emitter = |e: &Event| *ec.borrow_mut() = Some(e.clone());
 
         let mut c = Coalesce::new(emitter);
         c.filter_keys.insert(Vec::from(&b"filter-this"[..]));
@@ -888,14 +994,13 @@ mod test {
         process_record(&mut c, include_bytes!("testdata/record-syscall-key.txt"))?;
         drop(c);
         assert!(ec.borrow().as_ref().is_none());
-        
+
         let mut c = Coalesce::new(emitter);
         c.filter_keys.insert(Vec::from(&b"random-filter"[..]));
         process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
         drop(c);
         assert!(!ec.borrow().as_ref().is_none());
 
-        
         Ok(())
     }
 }

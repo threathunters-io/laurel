@@ -1,24 +1,24 @@
-use std::error::Error;
 use std::boxed::Box;
-use std::fs::{read,read_dir,read_link};
-use std::str::FromStr;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryInto;
+use std::error::Error;
+use std::fs::{read, read_dir, read_link};
 use std::iter::Iterator;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::str::FromStr;
 use std::vec::Vec;
-use std::collections::{BTreeMap,BTreeSet,HashSet};
 
 use lazy_static::lazy_static;
-use nix::unistd::{sysconf,SysconfVar};
-use nix::time::{clock_gettime,ClockId};
 use nix::sys::time::TimeSpec;
+use nix::time::{clock_gettime, ClockId};
+use nix::unistd::{sysconf, SysconfVar};
 
-use serde::{Serialize,Serializer};
 use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 
-use crate::types::{EventID,Record,Value,Number};
 use crate::label_matcher::LabelMatcher;
+use crate::types::{EventID, Number, Record, Value};
 
 lazy_static! {
     /// kernel clock ticks per second
@@ -26,7 +26,7 @@ lazy_static! {
         = sysconf(SysconfVar::CLK_TCK).unwrap().unwrap() as u64;
 }
 
-#[derive(Clone,Debug,Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Process {
     /// Unix timestamp with millisecond precision
     pub launch_time: u64,
@@ -50,17 +50,35 @@ impl Serialize for Process {
         map.serialize_entry("ppid", &self.ppid)?;
         map.serialize_entry(
             "argv",
-            &self.argv.iter().map(|v|String::from_utf8_lossy(v)).collect::<Vec<_>>())?;
+            &self
+                .argv
+                .iter()
+                .map(|v| String::from_utf8_lossy(v))
+                .collect::<Vec<_>>(),
+        )?;
         map.serialize_entry(
             "labels",
-            &self.labels.iter().map(|v|String::from_utf8_lossy(v)).collect::<Vec<_>>())?;
+            &self
+                .labels
+                .iter()
+                .map(|v| String::from_utf8_lossy(v))
+                .collect::<Vec<_>>(),
+        )?;
         map.serialize_entry("event_id", &self.event_id)?;
         map.serialize_entry(
             "comm",
-            &self.comm.clone().map(|v|String::from_utf8_lossy(&v).to_string()))?;
+            &self
+                .comm
+                .clone()
+                .map(|v| String::from_utf8_lossy(&v).to_string()),
+        )?;
         map.serialize_entry(
             "exe",
-            &self.exe.clone().map(|v|String::from_utf8_lossy(&v).to_string()))?;
+            &self
+                .exe
+                .clone()
+                .map(|v| String::from_utf8_lossy(&v).to_string()),
+        )?;
         map.end()
     }
 }
@@ -79,20 +97,26 @@ impl Process {
         let buf = read(format!("/proc/{}/stat", pid))
             .map_err(|e| format!("read /proc/{}/stat: {}", pid, e))?;
         // comm may contain whitespace and ")", skip over it.
-        let comm_end = buf.iter().enumerate()
-            .rfind(|(_,c)| **c == b')')
-            .ok_or("end of 'cmd' field not found")?.0;
-        let stat = &buf[comm_end+2..]
+        let comm_end = buf
+            .iter()
+            .enumerate()
+            .rfind(|(_, c)| **c == b')')
+            .ok_or("end of 'cmd' field not found")?
+            .0;
+        let stat = &buf[comm_end + 2..]
             .split(|c| *c == b' ')
             .collect::<Vec<_>>();
 
         let event_id = None;
         let comm = read(format!("/proc/{}/comm", pid))
-            .map(|mut s| { s.truncate(s.len()-1); s })
+            .map(|mut s| {
+                s.truncate(s.len() - 1);
+                s
+            })
             .ok();
 
         let exe = read_link(format!("/proc/{}/exe", pid))
-            .map(|p| Vec::from(p.as_os_str().as_bytes()) )
+            .map(|p| Vec::from(p.as_os_str().as_bytes()))
             .ok();
 
         // see proc(5), /proc/[pid]/stat (4)
@@ -102,30 +126,47 @@ impl Process {
 
         // Use the boottime-based clock to calculate process start
         // time, convert to Unix-epoch-based-time.
-        let proc_boottime = TimeSpec::from(libc::timespec{
+        let proc_boottime = TimeSpec::from(libc::timespec {
             tv_sec: (starttime / *CLK_TCK) as i64,
             tv_nsec: ((starttime % *CLK_TCK) * (1_000_000_000 / *CLK_TCK)) as i64,
         });
         let proc_age = clock_gettime(ClockId::CLOCK_BOOTTIME)
-            .map_err(|e| format!("clock_gettime: {}", e))? - proc_boottime;
+            .map_err(|e| format!("clock_gettime: {}", e))?
+            - proc_boottime;
         let launch_time = {
             let lt = clock_gettime(ClockId::CLOCK_REALTIME)
-                .map_err(|e| format!("clock_gettime: {}", e))? - proc_age;
+                .map_err(|e| format!("clock_gettime: {}", e))?
+                - proc_age;
             (lt.tv_sec() * 1000 + lt.tv_nsec() / 1_000_000) as u64
         };
 
         let labels = HashSet::new();
-        Ok(Process{launch_time, ppid, argv, labels, event_id, comm, exe})
+        Ok(Process {
+            launch_time,
+            ppid,
+            argv,
+            labels,
+            event_id,
+            comm,
+            exe,
+        })
     }
 
     /// Use a processed EXECVE event to generate a shadow process table entry
     #[allow(dead_code)]
-    pub fn parse_execve(id: &EventID, rsyscall: &Record, rexecve: &Record) -> Result<(u32, Process), Box<dyn Error>> {
-        let mut p = Process { launch_time: id.timestamp, ..Process::default() };
+    pub fn parse_execve(
+        id: &EventID,
+        rsyscall: &Record,
+        rexecve: &Record,
+    ) -> Result<(u32, Process), Box<dyn Error>> {
+        let mut p = Process {
+            launch_time: id.timestamp,
+            ..Process::default()
+        };
         let pid: u32;
         if let Some(v) = rsyscall.get(b"pid") {
             match v.value {
-                Value::Number(Number::Dec(n)) => pid=*n as u32,
+                Value::Number(Number::Dec(n)) => pid = *n as u32,
                 _ => return Err("pid field is not numeric".into()),
             }
         } else {
@@ -154,9 +195,9 @@ impl Process {
 ///
 /// This process table replica can be fed with EXECVE-based events or
 /// from /proc entries.
-#[derive(Debug,Default,Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct ProcTable {
-    pub processes: BTreeMap<u32,Process>,
+    pub processes: BTreeMap<u32, Process>,
 }
 
 impl ProcTable {
@@ -164,21 +205,23 @@ impl ProcTable {
     ///
     /// If label_exe and propagate_labels are supplied, Process labels
     /// based on executable are applied and propagated to children.
-    pub fn from_proc(label_exe: Option<&LabelMatcher>, propagate_labels: &HashSet<Vec<u8>>) -> Result<ProcTable,Box<dyn Error>> {
-        let mut pt = ProcTable { processes: BTreeMap::new() };
+    pub fn from_proc(
+        label_exe: Option<&LabelMatcher>,
+        propagate_labels: &HashSet<Vec<u8>>,
+    ) -> Result<ProcTable, Box<dyn Error>> {
+        let mut pt = ProcTable {
+            processes: BTreeMap::new(),
+        };
         for entry in read_dir("/proc")
-            .map_err(|e| format!("read_dir: /proc: {}", e))?.flatten()
+            .map_err(|e| format!("read_dir: /proc: {}", e))?
+            .flatten()
         {
-            if let Ok(pid) = u32::from_str(entry.file_name()
-                                           .to_string_lossy()
-                                           .as_ref())
-            {
+            if let Ok(pid) = u32::from_str(entry.file_name().to_string_lossy().as_ref()) {
                 // /proc/<pid> access is racy. Ignore errors here.
                 if let Ok(mut proc) = Process::parse_proc(pid) {
                     if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
-                        proc.labels.extend(label_exe.matches(exe)
-                                           .iter()
-                                           .map( |v| Vec::from(*v)) );
+                        proc.labels
+                            .extend(label_exe.matches(exe).iter().map(|v| Vec::from(*v)));
                     }
                     pt.processes.insert(pid, proc);
                 }
@@ -192,18 +235,16 @@ impl ProcTable {
                 let mut ppid = pid;
                 for _ in 1..64 {
                     if let Some(proc) = pt.get_process(ppid) {
-                        collect.extend(proc.labels
-                                       .intersection(propagate_labels)
-                                       .cloned());
+                        collect.extend(proc.labels.intersection(propagate_labels).cloned());
                         ppid = proc.ppid;
                         if ppid <= 1 {
                             break;
                         }
-                    } else { 
+                    } else {
                         break;
                     }
                 }
-                
+
                 if let Some(proc) = pt.processes.get_mut(&pid) {
                     proc.labels.extend(collect);
                 }
@@ -214,13 +255,30 @@ impl ProcTable {
     }
 
     /// Adds a Process to the process table
-    pub fn add_process(&mut self, pid: u32, ppid: u32, id: EventID, comm: Option<Vec<u8>>, exe: Option<Vec<u8>>, argv: Vec<Vec<u8>>) {
+    pub fn add_process(
+        &mut self,
+        pid: u32,
+        ppid: u32,
+        id: EventID,
+        comm: Option<Vec<u8>>,
+        exe: Option<Vec<u8>>,
+        argv: Vec<Vec<u8>>,
+    ) {
         let labels = HashSet::new();
         let launch_time = id.timestamp;
         let event_id = Some(id);
         self.processes.insert(
             pid,
-            Process{launch_time, ppid, argv, labels, event_id, comm, exe});
+            Process {
+                launch_time,
+                ppid,
+                argv,
+                labels,
+                event_id,
+                comm,
+                exe,
+            },
+        );
     }
 
     /// Retrieves a process by pid. If the process is not found in the
@@ -235,7 +293,7 @@ impl ProcTable {
                     self.processes.insert(pid, p.clone());
                     Some(p)
                 }
-                Err(_) => None
+                Err(_) => None,
             }
         }
     }
@@ -258,13 +316,15 @@ impl ProcTable {
                 let mut pid = *pid;
                 while let Some(proc) = self.processes.get(&pid) {
                     if pid <= 1 || !prune.remove(&pid) {
-                        break
+                        break;
                     }
                     pid = proc.ppid;
                 }
             }
         }
-        prune.iter().for_each(|pid| { self.processes.remove(pid); } );
+        prune.iter().for_each(|pid| {
+            self.processes.remove(pid);
+        });
     }
 
     pub fn add_label(&mut self, pid: u32, label: &[u8]) {
@@ -274,11 +334,12 @@ impl ProcTable {
     }
 }
 
-type Environment = Vec<(Vec<u8>,Vec<u8>)>;
+type Environment = Vec<(Vec<u8>, Vec<u8>)>;
 
 /// Returns environment for a given process
 pub fn get_environ<F>(pid: u32, pred: F) -> Result<Environment, Box<dyn Error>>
-    where F: Fn(&[u8]) -> bool
+where
+    F: Fn(&[u8]) -> bool,
 {
     let buf = read(format!("/proc/{}/environ", pid))?;
     let mut res = Vec::new();
@@ -297,7 +358,7 @@ pub fn get_environ<F>(pid: u32, pred: F) -> Result<Environment, Box<dyn Error>>
 mod tests {
     use super::*;
     #[test]
-    fn show_processes() -> Result<(),Box<dyn Error>> {
+    fn show_processes() -> Result<(), Box<dyn Error>> {
         let pt = ProcTable::from_proc(None, &HashSet::new())?;
         for p in pt.processes {
             println!("{:?}", &p);

@@ -1,10 +1,10 @@
 use std::env;
 use std::fs;
-use std::path::{Path,PathBuf};
-use std::io::BufReader;
 use std::io::prelude::*;
-use std::string::String;
+use std::io::BufReader;
 use std::iter::FromIterator;
+use std::path::{Path, PathBuf};
+use std::string::String;
 
 extern crate bindgen;
 
@@ -15,12 +15,16 @@ fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
         let filename = if let Some(f) = p.file_name() {
             f
         } else {
-            continue
+            continue;
         };
-        let arch = if let Some(a) = filename.to_string_lossy().into_owned().strip_suffix("_table.h") {
+        let arch = if let Some(a) = filename
+            .to_string_lossy()
+            .into_owned()
+            .strip_suffix("_table.h")
+        {
             a.to_string()
         } else {
-            continue
+            continue;
         };
         buf.push_str("{ let mut t = HashMap::new(); for (num, name) in &[");
 
@@ -42,32 +46,43 @@ fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
     Ok(buf)
 }
 
-fn main() -> Result<(),Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("const.rs");
     let msg_file = "audit-specs/messages/message-dictionary.csv";
     let fields_file = "audit-specs/fields/field-dictionary.csv";
 
-    let mut constants: Vec<(String, String)> =
-        BufReader::new(fs::File::open(msg_file)?)
+    let mut constants: Vec<(String, String)> = BufReader::new(fs::File::open(msg_file)?)
         .lines()
         .skip(1) // skip over header
-        .map(|line| line.unwrap().split(',').map(|x|x.to_string()).collect::<Vec<_>>())
-        .map(|fields| 
-             (fields[0].strip_prefix("AUDIT_").unwrap().to_string(), fields[1].clone()))
+        .map(|line| {
+            line.unwrap()
+                .split(',')
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+        })
+        .map(|fields| {
+            (
+                fields[0].strip_prefix("AUDIT_").unwrap().to_string(),
+                fields[1].clone(),
+            )
+        })
         .collect();
 
     // Artificial record
     constants.push(("PARENT_INFO".into(), "0xffffff00".into()));
     constants.push(("LABELS".into(), "0xffffff01".into()));
 
-    let fields: Vec<(String, String)> =
-        BufReader::new(fs::File::open(fields_file)?)
+    let fields: Vec<(String, String)> = BufReader::new(fs::File::open(fields_file)?)
         .lines()
         .skip(3) // skip over heder and regex describing a* mess
-        .map(|line| line.unwrap().split(',').map(|x|x.to_string()).collect::<Vec<_>>())
-        .map(|fields|
-             (fields[0].clone(), fields[1].clone()))
+        .map(|line| {
+            line.unwrap()
+                .split(',')
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+        })
+        .map(|fields| (fields[0].clone(), fields[1].clone()))
         .collect();
 
     let mut template = Vec::new();
@@ -75,28 +90,39 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let template = String::from_utf8(template)?;
 
     let buf = template
-        .replace("/* @EVENT_CONST@ */",
-                 &String::from_iter(
-                     constants.iter()
-                         .map(|(name,value)|format!(r#"("{}", {}), "#, name, value))))
-        .replace("/* @FIELD_TYPES@ */",
-                 &String::from_iter(
-                     fields.iter()
-                         .filter(|(_,typ)| typ == "encoded" || typ.starts_with("numeric"))
-                         .map(|(name, typ)| {
-                             match typ.as_str() {
-                                 "numeric hexadecimal" => format!(r#"("{}", FieldType::NumericHex),"#, name),
-                                 "numeric decimal" => format!(r#"("{}", FieldType::NumericDec),"#, name),
-                                 "numeric octal" => format!(r#"("{}", FieldType::NumericOct),"#, name),
-                                 "numeric" => format!(r#"("{}", FieldType::Numeric),"#, name),
-                                 "encoded" => format!(r#"("{}", FieldType::Encoded),"#, name),
-                                 _ => format!(r#"("{}", FieldType::Invalid),"#, name),
-                             }
-                         })))
-        .replace("/* @CONSTANTS@ */",
-                 &String::from_iter(
-                     constants.iter()
-                         .map(|(name,value)|format!("#[allow(dead_code)] pub const {}: MessageType = MessageType({});\n", name, value))))
+        .replace(
+            "/* @EVENT_CONST@ */",
+            &String::from_iter(
+                constants
+                    .iter()
+                    .map(|(name, value)| format!(r#"("{}", {}), "#, name, value)),
+            ),
+        )
+        .replace(
+            "/* @FIELD_TYPES@ */",
+            &String::from_iter(
+                fields
+                    .iter()
+                    .filter(|(_, typ)| typ == "encoded" || typ.starts_with("numeric"))
+                    .map(|(name, typ)| match typ.as_str() {
+                        "numeric hexadecimal" => format!(r#"("{}", FieldType::NumericHex),"#, name),
+                        "numeric decimal" => format!(r#"("{}", FieldType::NumericDec),"#, name),
+                        "numeric octal" => format!(r#"("{}", FieldType::NumericOct),"#, name),
+                        "numeric" => format!(r#"("{}", FieldType::Numeric),"#, name),
+                        "encoded" => format!(r#"("{}", FieldType::Encoded),"#, name),
+                        _ => format!(r#"("{}", FieldType::Invalid),"#, name),
+                    }),
+            ),
+        )
+        .replace(
+            "/* @CONSTANTS@ */",
+            &String::from_iter(constants.iter().map(|(name, value)| {
+                format!(
+                    "#[allow(dead_code)] pub const {}: MessageType = MessageType({});\n",
+                    name, value
+                )
+            })),
+        )
         .replace("/* @SYSCALL_BUILD@ */", &gen_syscall()?)
         .into_bytes();
 
@@ -115,8 +141,8 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
         .write_to_file(PathBuf::from(env::var("OUT_DIR").unwrap()).join("sockaddr.rs"))
         .expect("Couldn't write bindings!");
 
-    println!("cargo:rerun-if-changed=build.rs"); 
-    println!("cargo:rerun-if-changed=const.rs.in"); 
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=const.rs.in");
     println!("cargo:rerun-if-changed=src/sockaddr.h");
     println!("cargo:rerun-if-changed={}", msg_file);
     println!("cargo:rerun-if-changed={}", fields_file);
