@@ -21,7 +21,7 @@ use caps::{CapSet, Capability};
 use serde::Serialize;
 
 use laurel::coalesce::Coalesce;
-use laurel::config::{ArrayOrString, Config, Logfile};
+use laurel::config::{ArrayOrString, Config, Logfile, OutFormat};
 use laurel::lumberjack::LumberjackWriter;
 use laurel::rotate::FileRotate;
 
@@ -120,14 +120,17 @@ impl Logger {
         def: &Logfile,
         dir: &Path,
         runas_user: &User,
-        lumberjack: bool,
+        out_format: &OutFormat,
     ) -> Result<Self, Box<dyn Error>> {
         match &def.file {
-            p if p.as_os_str() == "-" && !lumberjack => Ok(Logger {
+            p if p.as_os_str() == "-" && !out_format.lumberjack => Ok(Logger {
                 output: Box::new(BufWriter::new(Box::new(io::stdout()))),
             }),
-            p if p.as_os_str() == "-" && lumberjack => Ok(Logger {
-                output: Box::new(LumberjackWriter::new(Box::new(io::stdout()), None)),
+            p if p.as_os_str() == "-" && out_format.lumberjack => Ok(Logger {
+                output: Box::new(LumberjackWriter::new(
+                    Box::new(io::stdout()),
+                    out_format.prefix.clone(),
+                )),
             }),
             p if p.has_root() && p.parent() != None => Err(format!(
                 "invalid file directory={} file={}",
@@ -160,9 +163,12 @@ impl Logger {
                 if let Some(filesize) = &def.size {
                     rot = rot.with_filesize(*filesize);
                 }
-                if lumberjack {
+                if out_format.lumberjack {
                     Ok(Logger {
-                        output: Box::new(LumberjackWriter::new(Box::new(rot), None)),
+                        output: Box::new(LumberjackWriter::new(
+                            Box::new(rot),
+                            out_format.prefix.clone(),
+                        )),
                     })
                 } else {
                     Ok(Logger {
@@ -243,15 +249,10 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         &config.auditlog,
         &dir,
         &runas_user,
-        config.out_format.lumberjack,
+        &config.out_format,
     )?);
     let mut debug_logger = if let Some(l) = &config.debug.log {
-        Some(Logger::new(
-            l,
-            &dir,
-            &runas_user,
-            config.out_format.lumberjack,
-        )?)
+        Some(Logger::new(l, &dir, &runas_user, &config.out_format)?)
     } else {
         None
     };

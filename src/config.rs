@@ -85,6 +85,7 @@ pub struct Filter {
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct OutFormat {
     pub lumberjack: bool,
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

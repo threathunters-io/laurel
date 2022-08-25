@@ -51,6 +51,12 @@ universal = false
 # UID, GID values
 user-db = false
 
+# Optional section to enable lumberjack formatting for rsyslog
+# [out_format]
+
+# lumberjack = true
+# prefix = "@notceecookie:"
+
 [enrich]
 
 # List of environment variables to log for every EXECVE event
