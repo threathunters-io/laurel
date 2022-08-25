@@ -127,7 +127,7 @@ impl Logger {
                 output: Box::new(BufWriter::new(Box::new(io::stdout()))),
             }),
             p if p.as_os_str() == "-" && lumberjack => Ok(Logger {
-                output: Box::new(LumberjackWriter::new(Box::new(io::stdout()))),
+                output: Box::new(LumberjackWriter::new(Box::new(io::stdout()), None)),
             }),
             p if p.has_root() && p.parent() != None => Err(format!(
                 "invalid file directory={} file={}",
@@ -162,7 +162,7 @@ impl Logger {
                 }
                 if lumberjack {
                     Ok(Logger {
-                        output: Box::new(LumberjackWriter::new(Box::new(rot))),
+                        output: Box::new(LumberjackWriter::new(Box::new(rot), None)),
                     })
                 } else {
                     Ok(Logger {

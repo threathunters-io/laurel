@@ -1,12 +1,13 @@
 use std::io;
 
-const PREFIX: &str = "@cee:";
+const DEFAULT_PREFIX: &str = "@cee:";
 const DEFAULT_CAPACITY: usize = 10;
 
 pub struct LumberjackWriter {
     buf_size: usize,
     cur_line: usize,
     buffer: Vec<Vec<u8>>,
+    prefix: String,
     wrapped: Box<dyn io::Write>,
 }
 
@@ -22,11 +23,15 @@ fn init_buffer<'a>(buffer: &'a mut Vec<Vec<u8>>, buf_size: usize) {
 }
 
 impl LumberjackWriter {
-    pub fn new(wrapped: Box<dyn io::Write>) -> Self {
-        Self::with_capacity(wrapped, DEFAULT_CAPACITY)
+    pub fn new(wrapped: Box<dyn io::Write>, prefix: Option<String>) -> Self {
+        Self::with_capacity(wrapped, prefix, DEFAULT_CAPACITY)
     }
 
-    pub fn with_capacity(wrapped: Box<dyn io::Write>, buf_size: usize) -> Self {
+    pub fn with_capacity(
+        wrapped: Box<dyn io::Write>,
+        prefix: Option<String>,
+        buf_size: usize,
+    ) -> Self {
         let mut buffer = Vec::with_capacity(buf_size);
         init_buffer(&mut buffer, buf_size);
         assert_eq!(buffer.len(), buf_size);
@@ -34,6 +39,7 @@ impl LumberjackWriter {
             buf_size,
             wrapped,
             buffer,
+            prefix: prefix.unwrap_or(DEFAULT_PREFIX.to_owned()),
             cur_line: 0,
         }
     }
@@ -66,7 +72,7 @@ impl LumberjackWriter {
             if self.buffer[i].is_empty() {
                 return Ok(());
             }
-            self.wrapped.write(PREFIX.as_bytes())?;
+            self.wrapped.write(self.prefix.as_bytes())?;
             self.wrapped.write(&self.buffer[i])?;
             self.buffer[i] = vec![];
         }
@@ -157,7 +163,7 @@ mod test {
     fn test_full_write() {
         static BUF: Buf = Buf::new();
 
-        let mut lw = LumberjackWriter::with_capacity(Box::new(&BUF), 3);
+        let mut lw = LumberjackWriter::with_capacity(Box::new(&BUF), None, 3);
 
         let three = "{\"number\":1}\n{\"number\":2}\n{\"number\":3,\"notUnicode\":\"é\"}\n";
         let exp_three =
@@ -184,7 +190,7 @@ mod test {
     fn test_flush() {
         static BUF: Buf = Buf::new();
 
-        let mut lw = LumberjackWriter::with_capacity(Box::new(&BUF), 3);
+        let mut lw = LumberjackWriter::with_capacity(Box::new(&BUF), None, 3);
 
         let two = "{\"number\":4}\n{\"number\":5}\n";
         let exp_two = "@cee:{\"number\":4}\n@cee:{\"number\":5}\n";
