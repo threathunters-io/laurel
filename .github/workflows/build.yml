@@ -37,7 +37,7 @@ jobs:
         toolchain: stable
 
     - name: Install dependency
-      run: sudo apt-get -qy install libacl1-dev selinux-policy-dev
+      run: sudo apt-get -qy install libacl1-dev selinux-policy-dev libgoogle-perftools-dev
 
     - uses: actions/cache@v2
       with:
@@ -51,6 +51,7 @@ jobs:
 
     - run: cargo build
     - run: cargo test
+    - run: cargo bench --no-run
     - run: make -C contrib/selinux
 
   build_static_musl:
