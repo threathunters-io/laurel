@@ -11,6 +11,7 @@ LINUX=~/src/linux
 echo '#include <linux/audit.h>' \
     | cpp -dM -D__LINUX_COMPILER_TYPES_H -I "${LINUX}/include/uapi" -I "${LINUX}/tools/include" \
     | sed -ne '/^#define AUDIT_ARCH_/ { ; s/^.* \(AUDIT_ARCH_[A-Z0-9_]*\) .*$/\1/; p }' \
+    | sort -u \
     | ( \
         cat<<EOF
 #include <linux/audit.h>
@@ -19,7 +20,10 @@ echo '#include <linux/audit.h>' \
 char* lc(char* s) {
     static char l[64];
     for (int i=0; s[i] != 0; i++) {
-        l[i] = s[i] | 0x20;
+        if (s[i] >= 'A' && s[i] <= 'Z')
+             l[i] = s[i] | 0x20;
+        else
+             l[i] = s[i];
         l[i+1] = 0;
     }
     return l;
@@ -27,7 +31,7 @@ char* lc(char* s) {
 int main() {
 EOF
         while read token; do
-            echo 'printf("(\"%s\", 0x%08x),\\n", lc("'$token'") + 11, '$token');'
+            echo 'printf("(b\"%s\", 0x%08x),\\n", lc("'$token'") + 11, '$token');'
         done
         echo "}"
     ) \
@@ -38,57 +42,57 @@ rm -f print-audit-archs
 */
 
 const ARCHS: &[(&[u8], u32)] = &[
-    (b"sparc64", 0x8000002b),
-    (b"mips", 0x00000008),
-    (b"arcv2", 0x400000c3),
-    (b"s390", 0x00000016),
-    (b"ia64", 0xc0000032),
-    (b"tilepro", 0x400000bc),
-    (b"arcv2be", 0x000000c3),
-    (b"ppc64", 0x80000015),
-    (b"x86_64", 0xc000003e),
-    (b"nios2", 0x40000071),
-    (b"csky", 0x400000fc),
-    (b"shel64", 0xc000002a),
-    (b"sh", 0x0000002a),
-    (b"parisc64", 0x8000000f),
-    (b"mipsel64", 0xc0000008),
-    (b"mips64n32", 0xa0000008),
-    (b"tilegx", 0xc00000bf),
-    (b"unicore", 0x4000006e),
-    (b"nds32", 0x400000a7),
-    (b"parisc", 0x0000000f),
-    (b"riscv32", 0x400000f3),
-    (b"mips64", 0x80000008),
-    (b"ppc64le", 0xc0000015),
-    (b"alpha", 0xc0009026),
-    (b"nds32be", 0x000000a7),
-    (b"h8300", 0x0000002e),
-    (b"mipsel", 0x40000008),
-    (b"sparc", 0x00000002),
-    (b"xtensa", 0x0000005e),
-    (b"i386", 0x40000003),
-    (b"openrisc", 0x0000005c),
     (b"aarch64", 0xc00000b7),
-    (b"tilegx32", 0x400000bf),
-    (b"frv", 0x00005441),
-    (b"c6xbe", 0x0000008c),
+    (b"alpha", 0xc0009026),
+    (b"arcompact", 0x4000005d),
     (b"arcompactbe", 0x0000005d),
+    (b"arcv2", 0x400000c3),
+    (b"arcv2be", 0x000000c3),
     (b"arm", 0x40000028),
-    (b"riscv64", 0xc00000f3),
     (b"armeb", 0x00000028),
     (b"c6x", 0x4000008c),
-    (b"m68k", 0x00000004),
-    (b"arcompact", 0x4000005d),
-    (b"s390x", 0x80000016),
-    (b"ppc", 0x00000014),
-    (b"sh64", 0x8000002a),
-    (b"mipsel64n32", 0xe0000008),
-    (b"shel", 0x4000002a),
-    (b"m32R", 0x00000058),
-    (b"microblaze", 0x000000bd),
+    (b"c6xbe", 0x0000008c),
     (b"cris", 0x4000004c),
+    (b"csky", 0x400000fc),
+    (b"frv", 0x00005441),
+    (b"h8300", 0x0000002e),
     (b"hexagon", 0x000000a4),
+    (b"i386", 0x40000003),
+    (b"ia64", 0xc0000032),
+    (b"m32r", 0x00000058),
+    (b"m68k", 0x00000004),
+    (b"microblaze", 0x000000bd),
+    (b"mips", 0x00000008),
+    (b"mips64", 0x80000008),
+    (b"mips64n32", 0xa0000008),
+    (b"mipsel", 0x40000008),
+    (b"mipsel64", 0xc0000008),
+    (b"mipsel64n32", 0xe0000008),
+    (b"nds32", 0x400000a7),
+    (b"nds32be", 0x000000a7),
+    (b"nios2", 0x40000071),
+    (b"openrisc", 0x0000005c),
+    (b"parisc", 0x0000000f),
+    (b"parisc64", 0x8000000f),
+    (b"ppc", 0x00000014),
+    (b"ppc64", 0x80000015),
+    (b"ppc64le", 0xc0000015),
+    (b"riscv32", 0x400000f3),
+    (b"riscv64", 0xc00000f3),
+    (b"s390", 0x00000016),
+    (b"s390x", 0x80000016),
+    (b"sh", 0x0000002a),
+    (b"sh64", 0x8000002a),
+    (b"shel", 0x4000002a),
+    (b"shel64", 0xc000002a),
+    (b"sparc", 0x00000002),
+    (b"sparc64", 0x8000002b),
+    (b"tilegx", 0xc00000bf),
+    (b"tilegx32", 0x400000bf),
+    (b"tilepro", 0x400000bc),
+    (b"unicore", 0x4000006e),
+    (b"x86_64", 0xc000003e),
+    (b"xtensa", 0x0000005e),
 ];
 
 lazy_static! {
