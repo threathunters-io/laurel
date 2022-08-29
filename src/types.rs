@@ -378,7 +378,7 @@ impl TryFrom<RValue<'_>> for Vec<u8> {
             }
             Value::Number(_) => Err("Won't convert number to string".into()),
             Value::List(_) | Value::StringifiedList(_) => {
-                Err("Can't convert list to scalarr".into())
+                Err("Can't convert list to scalar".into())
             }
             Value::Map(_) => Err("Can't convert map to scalar".into()),
         }
