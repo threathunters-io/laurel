@@ -290,6 +290,12 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         .iter()
         .map(|s| s.as_bytes().to_vec())
         .collect();
+    coalesce.filter_labels = config
+        .filter
+        .filter_labels
+        .iter()
+        .map(|s| s.as_bytes().to_vec())
+        .collect();
 
     coalesce.translate_universal = config.translate.universal;
     if config.translate.userdb {

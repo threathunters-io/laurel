@@ -80,6 +80,8 @@ pub struct LabelProcess {
 pub struct Filter {
     #[serde(rename = "filter-keys")]
     pub filter_keys: HashSet<String>,
+    #[serde(rename = "filter-labels")]
+    pub filter_labels: HashSet<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

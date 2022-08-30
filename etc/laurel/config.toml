@@ -86,3 +86,8 @@ propagate-labels = [ "software_mgmt", "amazon-ssm-agent" ]
 # LAUREL will discard these.
 
 #filter-keys = ["filter-this"]
+
+# In addition to key based filtering it is also possible to configure label based 
+# filtering. This alows the possibility to filter based on parent processes.
+
+#filter-labels = ["software_mgmt"]
