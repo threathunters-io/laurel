@@ -1,0 +1,5 @@
+type=SERVICE_START msg=audit(1661853391.646:4486226): pid=1 uid=0 auid=4294967295 ses=4294967295 subj=? msg='unit=apt-daily comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'UID="root" AUID="unset"
+type=SYSCALL msg=audit(1661853391.646:4486226): arch=c000003e syscall=44 success=yes exit=120 a0=2e a1=7fff698a0190 a2=78 a3=0 items=0 ppid=0 pid=1 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="systemd" exe="/usr/lib/systemd/systemd" subj=? key=(null)ARCH=x86_64 SYSCALL=sendto AUID="unset" UID="root" GID="root" EUID="root" SUID="root" FSUID="root" EGID="root" SGID="root" FSGID="root"
+type=SOCKADDR msg=audit(1661853391.646:4486226): saddr=100000000000000000000000SADDR={ fam=netlink nlnk-fam=16 nlnk-pid=0 }
+type=UNKNOWN[1420] msg=audit(1661853391.646:4486226): subj_apparmor=unconfined
+type=EOE msg=audit(1661853391.646:4486226):
