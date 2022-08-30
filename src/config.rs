@@ -86,6 +86,8 @@ pub struct LabelProcess {
 pub struct Filter {
     #[serde(default, rename = "filter-keys")]
     pub filter_keys: HashSet<String>,
+    #[serde(default, rename = "filter-labels")]
+    pub filter_labels: HashSet<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -185,6 +187,12 @@ impl Config {
             filter_keys: self
                 .filter
                 .filter_keys
+                .iter()
+                .map(|s| s.as_bytes().to_vec())
+                .collect(),
+            filter_labels: self
+                .filter
+                .filter_labels
                 .iter()
                 .map(|s| s.as_bytes().to_vec())
                 .collect(),

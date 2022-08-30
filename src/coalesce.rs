@@ -101,6 +101,7 @@ pub struct Settings<'a> {
     pub label_exe: Option<&'a LabelMatcher>,
 
     pub filter_keys: HashSet<Vec<u8>>,
+    pub filter_labels: HashSet<Vec<u8>>,
 }
 
 impl Default for Settings<'_> {
@@ -116,6 +117,7 @@ impl Default for Settings<'_> {
             translate_userdb: false,
             label_exe: None,
             filter_keys: HashSet::new(),
+            filter_labels: HashSet::new(),
         }
     }
 }
@@ -642,6 +644,12 @@ impl<'a> Coalesce<'a> {
         if let (Some(pid), Some(EventValues::Single(sc))) = (pid, ev.body.get_mut(&SYSCALL)) {
             if let Some(p) = self.processes.get_process(pid) {
                 if !p.labels.is_empty() {
+                    if p.labels
+                        .iter()
+                        .any(|x| self.settings.filter_labels.contains(x))
+                    {
+                        ev.filter = true;
+                    }
                     let labels = p
                         .labels
                         .iter()
@@ -1043,6 +1051,43 @@ mod test {
         process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
         drop(c);
         assert!(!ec.borrow().as_ref().is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn filter_label() -> Result<(), Box<dyn Error>> {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new(|e| {
+            *ec.borrow_mut() = Some(e.clone());
+        });
+        c.settings
+            .proc_label_keys
+            .insert(Vec::from(&b"software_mgmt"[..]));
+        c.settings
+            .filter_labels
+            .insert(Vec::from(&b"software_mgmt"[..]));
+        c.settings
+            .proc_propagate_labels
+            .insert(Vec::from(&b"software_mgmt"[..]));
+
+        process_record(&mut c, include_bytes!("testdata/tree/00.txt"))?;
+        {
+            assert!(ec.borrow().as_ref().is_none());
+        }
+
+        process_record(&mut c, include_bytes!("testdata/tree/01.txt"))?;
+        {
+            assert!(ec.borrow().as_ref().is_none());
+        }
+
+        process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
+        {
+            assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"/usr/sbin/cron"#));
+        }
+
+        drop(c);
 
         Ok(())
     }
