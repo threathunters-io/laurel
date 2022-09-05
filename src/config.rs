@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::coalesce::Settings;
 use crate::label_matcher::LabelMatcher;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Logfile {
+    #[serde(default)]
     pub file: PathBuf,
     #[serde(rename = "read-users")]
     pub users: Option<Vec<String>>,
@@ -31,8 +32,7 @@ pub enum ArrayOrString {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Transform {
-    #[serde(rename = "execve-argv")]
-    #[serde(default)]
+    #[serde(default, rename = "execve-argv")]
     pub execve_argv: HashSet<ArrayOrString>,
 }
 
@@ -46,15 +46,15 @@ impl Default for Transform {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Translate {
+    #[serde(default)]
     pub universal: bool,
-    #[serde(rename = "user-db")]
+    #[serde(default, rename = "user-db")]
     pub userdb: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Enrich {
-    #[serde(rename = "execve-env")]
-    #[serde(default)]
+    #[serde(default, rename = "execve-env")]
     pub execve_env: HashSet<String>,
 }
 
@@ -69,17 +69,17 @@ impl Default for Enrich {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct LabelProcess {
-    #[serde(rename = "label-keys")]
+    #[serde(default, rename = "label-keys")]
     pub label_keys: HashSet<String>,
-    #[serde(rename = "label-exe")]
+    #[serde(default, rename = "label-exe")]
     pub label_exe: Option<LabelMatcher>,
-    #[serde(rename = "propagate-labels")]
+    #[serde(default, rename = "propagate-labels")]
     pub propagate_labels: HashSet<String>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Filter {
-    #[serde(rename = "filter-keys")]
+    #[serde(default, rename = "filter-keys")]
     pub filter_keys: HashSet<String>,
 }
 
@@ -87,9 +87,9 @@ pub struct Filter {
 pub struct Config {
     pub user: Option<String>,
     pub directory: Option<PathBuf>,
-    #[serde(rename = "statusreport-period")]
-    #[serde(default)]
+    #[serde(default, rename = "statusreport-period")]
     pub statusreport_period: Option<u64>,
+    #[serde(default)]
     pub auditlog: Logfile,
     #[serde(default)]
     pub debug: Debug,
@@ -220,5 +220,23 @@ read-users = ["splunk"]
                 generations: None,
             }
         );
+    }
+
+    #[test]
+    fn parse_defaults() {
+        toml::de::from_str::<Config>("").unwrap();
+
+        toml::de::from_str::<Config>(
+            r#"
+[auditlog]
+[debug]
+[transform]
+[translate]
+[enrich]
+[label-process]
+[filter]
+"#,
+        )
+        .unwrap();
     }
 }
