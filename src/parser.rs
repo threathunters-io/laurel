@@ -27,7 +27,7 @@ pub fn parse(
         )
     })?;
 
-    let (rest, body) = parse_body(&rest, ty, skip_enriched).map_err(|e| {
+    let (rest, body) = parse_body(rest, ty, skip_enriched).map_err(|e| {
         format!(
             "cannot parse body: {}",
             e.map_input(String::from_utf8_lossy)
