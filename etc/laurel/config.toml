@@ -19,6 +19,11 @@ generations = 10
 # POSIX ACLs
 read-users = [ "splunk" ]
 
+# Add a prefix to every output line. The CEE cookie can be used to
+# instruct consumers to parse the JSON document, cf.
+# https://www.rsyslog.com/doc/master/configuration/modules/mmjsonparse.html
+# line-prefix = "@cee: "
+
 # [debug]
 # dump-state-period = 120
 

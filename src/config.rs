@@ -14,6 +14,8 @@ pub struct Logfile {
     pub users: Option<Vec<String>>,
     pub size: Option<u64>,
     pub generations: Option<u64>,
+    #[serde(rename = "line-prefix")]
+    pub line_prefix: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -123,6 +125,7 @@ impl Default for Config {
                 users: None,
                 size: Some(10 * 1024 * 1024),
                 generations: Some(5),
+                line_prefix: None,
             },
             debug: Debug::default(),
             transform: Transform::default(),
@@ -232,6 +235,7 @@ read-users = ["splunk"]
                 users: Some(vec!["splunk".to_string()]),
                 size: None,
                 generations: None,
+                line_prefix: None,
             }
         );
     }

@@ -105,11 +105,15 @@ fn drop_privileges(runas_user: &User) -> Result<(), Box<dyn Error>> {
 }
 
 struct Logger {
+    prefix: Option<String>,
     output: BufWriter<Box<dyn Write>>,
 }
 
 impl Logger {
     fn log<S: Serialize>(&mut self, message: S) {
+        if let Some(prefix) = &self.prefix {
+            self.output.write_all(prefix.as_bytes()).unwrap();
+        }
         serde_json::to_writer(&mut self.output, &message).unwrap();
         self.output.write_all(b"\n").unwrap();
         self.output.flush().unwrap();
@@ -118,6 +122,7 @@ impl Logger {
     fn new(def: &Logfile, dir: &Path, runas_user: &User) -> Result<Self, Box<dyn Error>> {
         match &def.file {
             p if p.as_os_str() == "-" => Ok(Logger {
+                prefix: def.line_prefix.clone(),
                 output: BufWriter::new(Box::new(io::stdout())),
             }),
             p if p.has_root() && p.parent() != None => Err(format!(
@@ -152,6 +157,7 @@ impl Logger {
                     rot = rot.with_filesize(*filesize);
                 }
                 Ok(Logger {
+                    prefix: def.line_prefix.clone(),
                     output: BufWriter::new(Box::new(rot)),
                 })
             }
