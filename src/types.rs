@@ -169,6 +169,18 @@ pub enum Value {
     /// For example, `SYSCALL` / `a0` etc are interpreted as
     /// hexadecimal numbers.
     Number(Number),
+    /// Elements removed from ARGV lists
+    Skipped((usize, usize)),
+}
+
+impl Value {
+    pub fn str_len(&self) -> usize {
+        match self {
+            Value::Str(r, _) => r.len(),
+            Value::Segments(vr) => vr.iter().map(|r| r.len()).sum(),
+            _ => 0,
+        }
+    }
 }
 
 /// List of [`Key`]/[`Value`] pairs, that are, for the most part,
@@ -219,7 +231,8 @@ impl Record {
                             Value::Segments(_)
                             | Value::List(_)
                             | Value::StringifiedList(_)
-                            | Value::Map(_) => panic!("extend after normalize?"),
+                            | Value::Map(_)
+                            | Value::Skipped(_) => panic!("extend after normalize?"),
                         },
                     )
                 })
@@ -381,6 +394,7 @@ impl TryFrom<RValue<'_>> for Vec<u8> {
                 Err("Can't convert list to scalar".into())
             }
             Value::Map(_) => Err("Can't convert map to scalar".into()),
+            Value::Skipped(_) => Err("Can't convert skipped to scalar".into()),
         }
     }
 }
@@ -440,6 +454,9 @@ impl Debug for RValue<'_> {
                             }
                         }
                         Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
+                        Value::Skipped(n) => {
+                            write!(f, "Skip<elems{} bytes={}>", n.0, n.1)?;
+                        }
                         Value::Empty => panic!("list can't contain empty value"),
                         Value::List(_) | Value::StringifiedList(_) => {
                             panic!("list can't contain list")
@@ -466,6 +483,9 @@ impl Debug for RValue<'_> {
                             }
                         }
                         Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
+                        Value::Skipped(n) => {
+                            write!(f, "Skip<elems={} bytes={}>", n.0, n.1)?;
+                        }
                         Value::Empty => panic!("list can't contain empty value"),
                         Value::List(_) | Value::StringifiedList(_) => {
                             panic!("list can't contain list")
@@ -494,6 +514,9 @@ impl Debug for RValue<'_> {
             }
             Value::Number(n) => {
                 write!(f, "{:?}", n)
+            }
+            Value::Skipped(n) => {
+                write!(f, "Skip<elems={} bytes={}>", n.0, n.1)
             }
         }
     }
@@ -537,14 +560,20 @@ impl Serialize for RValue<'_> {
                     } else {
                         buf.push(b' ');
                     }
-                    buf.extend(
-                        RValue {
-                            raw: self.raw,
-                            value: v,
-                        }
-                        .try_into()
-                        .unwrap_or_else(|_| vec![b'x']),
-                    );
+                    if let Value::Skipped((args, bytes)) = v {
+                        buf.extend(
+                            format!("<<< Skipped: args={}, bytes={} >>>", args, bytes).bytes(),
+                        );
+                    } else {
+                        buf.extend(
+                            RValue {
+                                raw: self.raw,
+                                value: v,
+                            }
+                            .try_into()
+                            .unwrap_or_else(|_| vec![b'x']),
+                        );
+                    }
                 }
                 s.serialize_str(&buf.to_quoted_string())
             }
@@ -559,6 +588,12 @@ impl Serialize for RValue<'_> {
                     map.serialize_key(&self.raw[v.0.clone()].to_quoted_string())?;
                     map.serialize_value(&self.raw[v.1.clone()].to_quoted_string())?;
                 }
+                map.end()
+            }
+            Value::Skipped((args, bytes)) => {
+                let mut map = s.serialize_map(Some(2))?;
+                map.serialize_entry("skipped_args", args)?;
+                map.serialize_entry("skipped_bytes", bytes)?;
                 map.end()
             }
         }

@@ -90,6 +90,7 @@ pub struct Settings<'a> {
     pub execve_argv_string: bool,
 
     pub execve_env: HashSet<Vec<u8>>,
+    pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
@@ -110,6 +111,7 @@ impl Default for Settings<'_> {
             execve_argv_list: true,
             execve_argv_string: false,
             execve_env: HashSet::new(),
+            execve_argv_limit_bytes: None,
             enrich_container: false,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
@@ -471,6 +473,39 @@ impl<'a> Coalesce<'a> {
                             }
                             _ => new.push((k.key.clone(), v.value.clone())),
                         };
+                    }
+
+                    // Strip data from the middle of excessively long ARGV
+                    if let Some(argv_max) = self.settings.execve_argv_limit_bytes {
+                        let argv_size: usize = argv.iter().map(|v| 1 + v.str_len()).sum();
+                        if argv_size > argv_max {
+                            let diff = argv_size - argv_max;
+                            let skip_range = (argv_size - diff) / 2..(argv_size + diff) / 2;
+                            argv = {
+                                let mut filtered = Vec::new();
+                                let mut start = 0;
+                                let mut skipped: Option<(usize, usize)> = None;
+                                for arg in argv.iter() {
+                                    let end = start + arg.str_len();
+                                    if skip_range.contains(&start) || skip_range.contains(&end) {
+                                        skipped = match skipped {
+                                            None => Some((1, end - start)),
+                                            Some((args, bytes)) => {
+                                                Some((args + 1, 1 + bytes + (end - start)))
+                                            }
+                                        };
+                                    } else {
+                                        if let Some((args, bytes)) = skipped {
+                                            filtered.push(Value::Skipped((args, bytes)));
+                                            skipped = None;
+                                        }
+                                        filtered.push(arg.clone());
+                                    }
+                                    start = end + 1;
+                                }
+                                filtered
+                            };
+                        }
                     }
 
                     // ARGV
@@ -1112,6 +1147,78 @@ mod test {
         }
 
         drop(c);
+
+        Ok(())
+    }
+
+    #[test]
+    fn strip_long_argv() -> Result<(), Box<dyn Error>> {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new(|e| {
+            *ec.borrow_mut() = Some(e.clone());
+        });
+
+        c.settings.execve_argv_limit_bytes = Some(10000);
+        let mut buf = vec![];
+        let msgid = "1663143990.204:2148478";
+        let npath = 40000;
+
+        buf.extend(
+            format!(r#"type=SYSCALL msg=audit({}): arch=c000003e syscall=59 success=yes exit=0 a0=1468e584be18 a1=1468e57f5078 a2=1468e584bd68 a3=7ffc3e352220 items=2 ppid=9264 pid=9279 auid=4294967295 uid=995 gid=992 euid=995 suid=995 fsuid=995 egid=992 sgid=992 fsgid=992 tty=(none) ses=4294967295 comm="find" exe="/usr/bin/find" key=(null)
+"#, msgid).bytes());
+        buf.extend(
+            format!(
+                r#"type=EXECVE msg=audit({}): argc={} a0="/usr/bin/find" "#,
+                msgid,
+                npath + 9
+            )
+            .bytes(),
+        );
+        for i in 1..npath {
+            if i % 70 == 0 {
+                buf.extend(format!("\ntype=EXECVE msg=audit({}): ", msgid).bytes());
+            } else {
+                buf.push(b' ');
+            }
+            buf.extend(format!(r#"a{}="/opt/app/redacted/to/protect/the/guilty/output_processing.2022-09-06.{:05}.garbage""#,i,i).bytes());
+        }
+        // buf.extend(format!("type=EXECVE msg=audit({}):", msgid).bytes());
+        for (i, param) in [
+            "-type",
+            "f",
+            "-mtime",
+            "+7",
+            "-exec",
+            "/usr/bin/rm",
+            "-f",
+            "{}",
+            ";",
+        ]
+        .iter()
+        .enumerate()
+        {
+            buf.extend(format!(r#" a{}="{}""#, npath + i, param).bytes());
+        }
+        buf.extend(format!("\ntype=EOE msg=audit({}): \n", msgid).bytes());
+
+        process_record(&mut c, &buf)?;
+        {
+            let output = event_to_json(ec.borrow().as_ref().unwrap());
+            assert!(output.len() < 15000);
+            assert!(
+                output.find(".00020.garbage").is_some(),
+                "Can't find start of argv"
+            );
+            assert!(
+                output.find(".39980.garbage").is_some(),
+                "Can't find end of argv"
+            );
+            assert!(
+                output.find(".20000.garbage").is_none(),
+                "Should not see middle of argv"
+            );
+        }
 
         Ok(())
     }
