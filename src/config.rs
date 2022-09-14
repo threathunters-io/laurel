@@ -36,13 +36,18 @@ pub enum ArrayOrString {
 pub struct Transform {
     #[serde(default, rename = "execve-argv")]
     pub execve_argv: HashSet<ArrayOrString>,
+    #[serde(default, rename = "execve-argv-limit-bytes")]
+    pub execve_argv_limit_bytes: Option<usize>,
 }
 
 impl Default for Transform {
     fn default() -> Self {
         let mut execve_argv = HashSet::new();
         execve_argv.insert(ArrayOrString::Array);
-        Transform { execve_argv }
+        Transform {
+            execve_argv,
+            execve_argv_limit_bytes: None,
+        }
     }
 }
 
@@ -165,6 +170,7 @@ impl Config {
         Settings {
             execve_argv_list: self.transform.execve_argv.contains(&ArrayOrString::Array),
             execve_argv_string: self.transform.execve_argv.contains(&ArrayOrString::String),
+            execve_argv_limit_bytes: self.transform.execve_argv_limit_bytes,
             execve_env: self
                 .enrich
                 .execve_env
