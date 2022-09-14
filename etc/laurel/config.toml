@@ -46,6 +46,12 @@ execve-argv = [ "array" ]
 
 # execve-argv = [ "array", "string" ]
 
+# Trim excessively long EXECVE.ARGV and EXECVE.ARGV_STR entries.
+# Excess is cut from the middle of the argument list and a marker
+# indicating how many arguments / bytes have been cut is inserted.
+
+# execve-argv-limit-bytes = 10000
+
 [translate]
 
 # Perform translations of numeric values that can also be done by
