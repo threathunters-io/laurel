@@ -65,21 +65,22 @@ jobs:
   build-glibc:
     needs: prep
     runs-on: ubuntu-latest
-    container: debian:buster-slim
+    container: centos:7
     steps:
       - name: Prepare
         run: |
-          apt-get -q update
-          apt-get -qy upgrade
-          apt-get -qy install ca-certificates rustc-mozilla cargo clang libacl1-dev jq
+          yum -q -y update
+          yum -q -y install centos-release-scl
+          yum -q -y install gcc llvm-toolset-7-clang file libacl-devel
+      - name: Install Rust toolchain (stable)
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
       - uses: actions/checkout@v2
-      - name: Tweak build dependencies
-        run: |
-          cargo update --package bindgen --precise 0.59.2
-          cargo update --package indexmap --precise 1.8.2
       - name: Build
         run: |
-          cargo build --release
+          scl enable llvm-toolset-7 "cargo build --release"
       - name: Determine minimum GNU libc version
         run: |
           objdump -t target/release/laurel | sed -ne '/@GLIBC_/{s/^.*@GLIBC_//;p;}' | sort -uV
