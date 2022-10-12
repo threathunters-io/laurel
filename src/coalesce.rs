@@ -62,6 +62,12 @@ impl Event {
             filter: false,
         }
     }
+    pub fn id(&self) -> EventID {
+        self.id
+    }
+    pub fn records(&self) -> indexmap::map::Iter<'_, MessageType, EventValues> {
+        self.body.iter()
+    }
 }
 
 impl Serialize for Event {
