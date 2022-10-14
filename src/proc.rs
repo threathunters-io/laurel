@@ -410,7 +410,7 @@ where
         let mut kv = f.splitn(2, |c| *c == b'=');
         let k = kv.next().unwrap();
         if pred(k) {
-            let v = kv.next().or(Some(b"")).unwrap();
+            let v = kv.next().unwrap_or(b"");
             res.push((k.to_owned(), v.to_owned()));
         }
     }
