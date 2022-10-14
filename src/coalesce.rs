@@ -47,10 +47,10 @@ impl Serialize for EventValues {
 
 #[derive(Clone, Debug)]
 pub struct Event {
-    node: Option<Vec<u8>>,
-    id: EventID,
-    body: IndexMap<MessageType, EventValues>,
-    filter: bool,
+    pub node: Option<Vec<u8>>,
+    pub id: EventID,
+    pub body: IndexMap<MessageType, EventValues>,
+    pub filter: bool,
 }
 
 impl Event {
