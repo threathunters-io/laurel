@@ -292,8 +292,10 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         };
 
         // Output status information about Laurel every "statusreport_period_t" time (configurable)
-        if let Some(p) = statusreport_period {
-            if statusreport_last_t.elapsed()? >= p {
+        if let Some(statusreport_period_t) = statusreport_period {
+            if statusreport_period_t.as_secs() > 0
+                && statusreport_last_t.elapsed()? >= statusreport_period_t
+            {
                 log_info(&format!("Laurel version {}", LAUREL_VERSION));
                 log_info( &format!(
                     "Parsing stats (until now): processed {} lines {} events with {} errors in total",
@@ -318,8 +320,10 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     }
 
     // If periodical reports were enabled, stats only contains temporary statistics.
-    if statusreport_period.is_some() {
-        stats = overall_stats;
+    if let Some(statusreport_period_t) = statusreport_period {
+        if statusreport_period_t.as_secs() > 0 {
+            stats = overall_stats;
+        }
     }
 
     log_info(&format!(
