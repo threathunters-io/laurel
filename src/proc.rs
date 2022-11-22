@@ -2,7 +2,7 @@ use std::boxed::Box;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryInto;
 use std::error::Error;
-use std::fs::{read, read_dir, read_link};
+use std::fs::{read, read_dir, read_link, File};
 use std::io::{BufRead, BufReader};
 use std::iter::Iterator;
 use std::os::unix::ffi::OsStrExt;
@@ -74,8 +74,7 @@ where
 
 impl ContainerInfo {
     fn parse_proc(pid: u32) -> Result<ContainerInfo, Box<dyn Error>> {
-        let buf = read(format!("/proc/{}/cgroup", pid))?;
-        let mut r = BufReader::new(&*buf);
+        let mut r = BufReader::with_capacity(1 << 16, File::open(format!("/proc/{}/cgroup", pid))?);
         parse_proc_pid_cgroup(&mut r)
     }
 }
@@ -142,12 +141,14 @@ impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
     #[allow(dead_code)]
     pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
-        let argv = read(format!("/proc/{}/cmdline", pid))
-            .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?
-            .split(|c| *c == 0)
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_owned())
-            .collect::<Vec<_>>();
+        let argv = BufReader::with_capacity(
+            1 << 16,
+            File::open(format!("/proc/{}/cmdline", pid))
+                .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?,
+        )
+        .split(0)
+        .filter_map(|s| s.ok())
+        .collect::<Vec<_>>();
 
         let buf = read(format!("/proc/{}/stat", pid))
             .map_err(|e| format!("read /proc/{}/stat: {}", pid, e))?;
@@ -404,13 +405,17 @@ pub fn get_environ<F>(pid: u32, pred: F) -> Result<Environment, Box<dyn Error>>
 where
     F: Fn(&[u8]) -> bool,
 {
-    let buf = read(format!("/proc/{}/environ", pid))?;
+    let entries =
+        BufReader::with_capacity(1 << 16, File::open(format!("/proc/{}/environ", pid))?).split(0);
     let mut res = Vec::new();
-    for f in buf.split(|c| *c == 0) {
-        let mut kv = f.splitn(2, |c| *c == b'=');
-        let k = kv.next().unwrap();
+    for e in entries {
+        let mut kv = match &e {
+            Ok(e) => e.splitn(2, |c| *c == b'='),
+            Err(_) => continue,
+        };
+        let k = kv.next().unwrap_or_default();
         if pred(k) {
-            let v = kv.next().unwrap_or(b"");
+            let v = kv.next().unwrap_or_default();
             res.push((k.to_owned(), v.to_owned()));
         }
     }
