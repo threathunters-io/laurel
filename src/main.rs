@@ -6,9 +6,10 @@ use std::collections::HashSet;
 use std::env;
 use std::error::Error;
 use std::fs;
-use std::io::{self, BufRead, BufWriter, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::ops::AddAssign;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::io::FromRawFd;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -266,8 +267,11 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let mut stats = Stats::default();
     let mut overall_stats = Stats::default();
 
-    let stdin = io::stdin();
-    let mut input = stdin.lock();
+    // std::io::Stdin's buffer is only 8KB, so we construct our own.
+    // 1MB ought to be enough for anybody.
+    //
+    // TODO: Check that fd#0 is actually valid, open?
+    let mut input = BufReader::with_capacity(1 << 20, unsafe { std::fs::File::from_raw_fd(0) });
 
     let statusreport_period = config.statusreport_period.map(Duration::from_secs);
     let mut statusreport_last_t = SystemTime::now();
