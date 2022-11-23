@@ -141,11 +141,25 @@ pub enum Number {
 
 impl Debug for Number {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Num:<")?;
+        write!(f, "Num:<{}>", self)
+    }
+}
+
+impl Display for Number {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Number::Hex(n) => write!(f, "0x{:x}>", n),
-            Number::Dec(n) => write!(f, "{}>", n),
-            Number::Oct(n) => write!(f, "0o{:o}>", n),
+            Number::Hex(n) => write!(f, "0x{:x}", n),
+            Number::Dec(n) => write!(f, "{}", n),
+            Number::Oct(n) => write!(f, "0o{:o}", n),
+        }
+    }
+}
+
+impl Serialize for Number {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Number::Dec(n) => s.serialize_i64(*n),
+            _ => s.collect_str(&format_args!("{}", self)),
         }
     }
 }
@@ -453,7 +467,7 @@ impl Debug for RValue<'_> {
                                 write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
                             }
                         }
-                        Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
+                        Value::Number(n) => write!(f, "{:?}", n)?,
                         Value::Skipped(n) => {
                             write!(f, "Skip<elems{} bytes={}>", n.0, n.1)?;
                         }
@@ -462,7 +476,6 @@ impl Debug for RValue<'_> {
                             panic!("list can't contain list")
                         }
                         Value::Map(_) => panic!("list can't contain map"),
-                        Value::Number(_) => panic!("List can't contain number"),
                     }
                 }
                 write!(f, ">")
@@ -482,7 +495,7 @@ impl Debug for RValue<'_> {
                                 write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
                             }
                         }
-                        Value::Number(Number::Hex(n)) => write!(f, "{:?}", Number::Hex(*n))?,
+                        Value::Number(n) => write!(f, "{:?}", n)?,
                         Value::Skipped(n) => {
                             write!(f, "Skip<elems={} bytes={}>", n.0, n.1)?;
                         }
@@ -491,7 +504,6 @@ impl Debug for RValue<'_> {
                             panic!("list can't contain list")
                         }
                         Value::Map(_) => panic!("List can't contain mapr"),
-                        Value::Number(_) => panic!("List can't contain number"),
                     }
                 }
                 write!(f, ">")
@@ -512,12 +524,8 @@ impl Debug for RValue<'_> {
                 write!(f, ">")?;
                 unimplemented!();
             }
-            Value::Number(n) => {
-                write!(f, "{:?}", n)
-            }
-            Value::Skipped(n) => {
-                write!(f, "Skip<elems={} bytes={}>", n.0, n.1)
-            }
+            Value::Number(n) => write!(f, "{:?}", n),
+            Value::Skipped(n) => write!(f, "Skip<elems={} bytes={}>", n.0, n.1),
         }
     }
 }
@@ -577,11 +585,7 @@ impl Serialize for RValue<'_> {
                 }
                 s.serialize_str(&buf.to_quoted_string())
             }
-            Value::Number(n) => match n {
-                Number::Dec(n) => s.serialize_i64(*n),
-                Number::Hex(n) => s.collect_str(&format_args!("0x{:x}", n)),
-                Number::Oct(n) => s.collect_str(&format_args!("0o{:o}", n)),
-            },
+            Value::Number(n) => n.serialize(s),
             Value::Map(vs) => {
                 let mut map = s.serialize_map(Some(vs.len()))?;
                 for v in vs {
