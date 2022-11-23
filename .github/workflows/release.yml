@@ -17,7 +17,7 @@ jobs:
               echo "git != cargo: $version_git != $version_cargo" >&2
               exit 1
           fi
-          echo ::set-output "name=git_version::$version_git"
+          echo "git_version=$version_git" >> $GITHUB_OUTPUT
       - name: Create release
         id: create_release
         uses: actions/create-release@v1
