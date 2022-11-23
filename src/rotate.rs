@@ -25,7 +25,7 @@ pub struct FileRotate {
     offset: u64,
 }
 
-impl<'a> FileRotate {
+impl FileRotate {
     /// Creates a new [`FileRotate`] instance. This does not involve
     /// any I/O operations; the main file is only created when calling
     /// [`write`].
