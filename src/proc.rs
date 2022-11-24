@@ -75,6 +75,8 @@ where
 impl ContainerInfo {
     fn parse_proc(pid: u32) -> Result<ContainerInfo, Box<dyn Error>> {
         let mut r = BufReader::with_capacity(1 << 16, File::open(format!("/proc/{}/cgroup", pid))?);
+        r.fill_buf()?;
+
         parse_proc_pid_cgroup(&mut r)
     }
 }
@@ -141,14 +143,14 @@ impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
     #[allow(dead_code)]
     pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
-        let argv = BufReader::with_capacity(
+        let mut r = BufReader::with_capacity(
             1 << 16,
             File::open(format!("/proc/{}/cmdline", pid))
                 .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?,
-        )
-        .split(0)
-        .filter_map(|s| s.ok())
-        .collect::<Vec<_>>();
+        );
+        r.fill_buf()?;
+
+        let argv = r.split(0).filter_map(|s| s.ok()).collect::<Vec<_>>();
 
         let buf = read(format!("/proc/{}/stat", pid))
             .map_err(|e| format!("read /proc/{}/stat: {}", pid, e))?;
@@ -405,8 +407,10 @@ pub fn get_environ<F>(pid: u32, pred: F) -> Result<Environment, Box<dyn Error>>
 where
     F: Fn(&[u8]) -> bool,
 {
-    let entries =
-        BufReader::with_capacity(1 << 16, File::open(format!("/proc/{}/environ", pid))?).split(0);
+    let mut r = BufReader::with_capacity(1 << 16, File::open(format!("/proc/{}/environ", pid))?);
+    r.fill_buf()?;
+
+    let entries = r.split(0);
     let mut res = Vec::new();
     for e in entries {
         let mut kv = match &e {
