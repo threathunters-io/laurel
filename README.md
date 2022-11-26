@@ -5,6 +5,8 @@
 
 LAUREL is an event post-processing plugin for _auditd(8)_ to improve its usability in modern security monitoring setups.
 
+Documentation corresponding to the latest stable release can be found [here](https://github.com/hillu/laurel/tree/v0.4.1).
+
 ## Motivation
 
 TLDR: Instead of audit events that look like this…
