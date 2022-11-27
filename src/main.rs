@@ -175,10 +175,16 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     opts.optopt("c", "config", "Configuration file", "FILE");
     opts.optflag("d", "dry-run", "Only parse configuration and exit");
     opts.optflag("h", "help", "Print short help text and exit");
+    opts.optflag("v", "version", "Print version and exit");
 
     let matches = opts.parse(&args[1..])?;
     if matches.opt_present("h") {
         println!("{}", opts.usage(&args[0]));
+        return Ok(());
+    }
+
+    if matches.opt_present("v") {
+        println!("{}", LAUREL_VERSION);
         return Ok(());
     }
 
