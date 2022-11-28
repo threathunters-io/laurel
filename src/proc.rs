@@ -262,6 +262,14 @@ pub struct ProcTable {
     pub processes: BTreeMap<u32, Process>,
 }
 
+fn get_pids() -> Result<Vec<u32>, Box<dyn Error>> {
+    Ok(read_dir("/proc")
+        .map_err(|e| format!("read_dir: /proc: {}", e))?
+        .flatten()
+        .filter_map(|e| u32::from_str(e.file_name().to_string_lossy().as_ref()).ok())
+        .collect::<Vec<u32>>())
+}
+
 impl ProcTable {
     /// Constructs process table from /proc entries
     ///
@@ -274,19 +282,14 @@ impl ProcTable {
         let mut pt = ProcTable {
             processes: BTreeMap::new(),
         };
-        for entry in read_dir("/proc")
-            .map_err(|e| format!("read_dir: /proc: {}", e))?
-            .flatten()
-        {
-            if let Ok(pid) = u32::from_str(entry.file_name().to_string_lossy().as_ref()) {
-                // /proc/<pid> access is racy. Ignore errors here.
-                if let Ok(mut proc) = Process::parse_proc(pid) {
-                    if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
-                        proc.labels
-                            .extend(label_exe.matches(exe).iter().map(|v| Vec::from(*v)));
-                    }
-                    pt.processes.insert(pid, proc);
+        for pid in get_pids()? {
+            // /proc/<pid> access is racy. Ignore errors here.
+            if let Ok(mut proc) = Process::parse_proc(pid) {
+                if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
+                    proc.labels
+                        .extend(label_exe.matches(exe).iter().map(|v| Vec::from(*v)));
                 }
+                pt.processes.insert(pid, proc);
             }
         }
 
@@ -377,16 +380,21 @@ impl ProcTable {
     /// It should be possible to run this every few seconds without
     /// incurring load.
     pub fn expire(&mut self) {
+        // initialize prune list with all known processes
         let mut prune: HashSet<u32> = self.processes.keys().cloned().collect();
-        for pid in self.processes.keys() {
-            if Path::new(&format!("/proc/{}", pid)).is_dir() {
-                let mut pid = *pid;
-                while let Some(proc) = self.processes.get(&pid) {
-                    if pid <= 1 || !prune.remove(&pid) {
-                        break;
-                    }
-                    pid = proc.ppid;
+        let live_processes = match get_pids() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        // remove from prune list all live processes and their
+        // parents, excluding pid1
+        for seed_pid in live_processes {
+            let mut pid = seed_pid;
+            while let Some(proc) = self.processes.get(&pid) {
+                if pid <= 1 || !prune.remove(&pid) {
+                    break;
                 }
+                pid = proc.ppid;
             }
         }
         prune.iter().for_each(|pid| {
