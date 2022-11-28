@@ -2,8 +2,8 @@ use std::boxed::Box;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryInto;
 use std::error::Error;
-use std::fs::{read, read_dir, read_link, File};
-use std::io::{BufRead, BufReader};
+use std::fs::{read_dir, read_link, File};
+use std::io::{BufRead, BufReader, Read};
 use std::iter::Iterator;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -27,6 +27,17 @@ lazy_static! {
         = sysconf(SysconfVar::CLK_TCK).unwrap().unwrap() as u64;
 }
 
+/// Read contents of file, return buffer.
+/// Time out after 100m, this ought to be enough for everything in /proc.
+fn slurp_file(path: impl AsRef<Path>) -> Result<Vec<u8>, Box<dyn Error>> {
+    let f = File::open(path)?;
+    let mut r = BufReader::with_capacity(1 << 16, f);
+    r.fill_buf()?;
+    let mut buf = Vec::with_capacity(8192);
+    r.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ContainerInfo {
     pub id: Vec<u8>,
@@ -44,15 +55,8 @@ fn extract_sha256(buf: &[u8]) -> Option<&[u8]> {
     }
 }
 
-fn parse_proc_pid_cgroup<R>(r: &mut R) -> Result<ContainerInfo, Box<dyn Error>>
-where
-    R: BufRead,
-{
-    for line in r.split(b'\n') {
-        if line.is_err() {
-            continue;
-        }
-        let line = line.unwrap();
+fn parse_proc_pid_cgroup(buf: &[u8]) -> Result<ContainerInfo, Box<dyn Error>> {
+    for line in buf.split(|c| *c == b'\n') {
         let dir = line.split(|&c| c == b':').nth(2);
         if dir.is_none() {
             continue;
@@ -74,10 +78,8 @@ where
 
 impl ContainerInfo {
     fn parse_proc(pid: u32) -> Result<ContainerInfo, Box<dyn Error>> {
-        let mut r = BufReader::with_capacity(1 << 16, File::open(format!("/proc/{}/cgroup", pid))?);
-        r.fill_buf()?;
-
-        parse_proc_pid_cgroup(&mut r)
+        let buf = slurp_file(format!("/proc/{}/cgroup", pid))?;
+        parse_proc_pid_cgroup(&buf)
     }
 }
 
@@ -143,16 +145,15 @@ impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
     #[allow(dead_code)]
     pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
-        let mut r = BufReader::with_capacity(
-            1 << 16,
-            File::open(format!("/proc/{}/cmdline", pid))
-                .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?,
-        );
-        r.fill_buf()?;
+        let buf = slurp_file(format!("/proc/{}/cmdline", pid))
+            .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?;
 
-        let argv = r.split(0).filter_map(|s| s.ok()).collect::<Vec<_>>();
+        let argv = buf
+            .split(|c| *c == 0)
+            .map(|a| Vec::from(a))
+            .collect::<Vec<_>>();
 
-        let buf = read(format!("/proc/{}/stat", pid))
+        let buf = slurp_file(format!("/proc/{}/stat", pid))
             .map_err(|e| format!("read /proc/{}/stat: {}", pid, e))?;
         // comm may contain whitespace and ")", skip over it.
         let comm_end = buf
@@ -166,7 +167,7 @@ impl Process {
             .collect::<Vec<_>>();
 
         let event_id = None;
-        let comm = read(format!("/proc/{}/comm", pid))
+        let comm = slurp_file(format!("/proc/{}/comm", pid))
             .map(|mut s| {
                 s.truncate(s.len() - 1);
                 s
@@ -407,16 +408,11 @@ pub fn get_environ<F>(pid: u32, pred: F) -> Result<Environment, Box<dyn Error>>
 where
     F: Fn(&[u8]) -> bool,
 {
-    let mut r = BufReader::with_capacity(1 << 16, File::open(format!("/proc/{}/environ", pid))?);
-    r.fill_buf()?;
-
-    let entries = r.split(0);
+    let buf = slurp_file(format!("/proc/{}/environ", pid))?;
     let mut res = Vec::new();
-    for e in entries {
-        let mut kv = match &e {
-            Ok(e) => e.splitn(2, |c| *c == b'='),
-            Err(_) => continue,
-        };
+
+    for e in buf.split(|c| *c == 0) {
+        let mut kv = e.splitn(2, |c| *c == b'=');
         let k = kv.next().unwrap_or_default();
         if pred(k) {
             let v = kv.next().unwrap_or_default();
@@ -429,7 +425,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::BufReader;
     #[test]
     fn show_processes() -> Result<(), Box<dyn Error>> {
         let pt = ProcTable::from_proc(None, &HashSet::new())?;
@@ -441,15 +436,13 @@ mod tests {
 
     #[test]
     fn parse_cgroup() -> Result<(), Box<dyn Error>> {
-        for line in &[
-            &b"0::/system.slice/docker-47335b04ebb4aefdc353dda62ddd38e5e1e00fc1372f0c8d0138417f0ccb9e6c.scope\n"[..],
-            &b"0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-974a75c8cf45648fcc6e718ba92ee1f2034463674f0d5b0c50f5cab041a4cbd6.scope/container\n"[..]
-        ]
+        let testdata = &br#"0::/system.slice/docker-47335b04ebb4aefdc353dda62ddd38e5e1e00fc1372f0c8d0138417f0ccb9e6c.scope
+0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-974a75c8cf45648fcc6e718ba92ee1f2034463674f0d5b0c50f5cab041a4cbd6.scope/container
+"#[..];
         {
-            let mut r = BufReader::new(*line);
-            parse_proc_pid_cgroup(&mut r)
-                .map_err(|e| Box::<dyn Error>::from(
-                    format!("{}: {}", String::from_utf8_lossy(line), e)))?;
+            parse_proc_pid_cgroup(&testdata).map_err(|e| {
+                Box::<dyn Error>::from(format!("{}: {}", String::from_utf8_lossy(&testdata), e))
+            })?;
         }
         Ok(())
     }
