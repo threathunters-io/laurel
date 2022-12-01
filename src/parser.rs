@@ -1,3 +1,4 @@
+use std::convert::{From, TryFrom};
 use std::ops::Range;
 use std::str::{self, FromStr};
 
@@ -52,13 +53,6 @@ pub fn parse(
     let mut elems = Vec::with_capacity(body.len());
 
     for (k, v) in body {
-        let k = match &k {
-            PKey::Name(s) => Key::Name(to_range(&raw, s)),
-            PKey::NameUID(s) => Key::NameUID(to_range(&raw, s)),
-            PKey::NameGID(s) => Key::NameGID(to_range(&raw, s)),
-            PKey::Arg(x, y) => Key::Arg(*x, *y),
-            PKey::ArgLen(x) => Key::ArgLen(*x),
-        };
         let v = match &v {
             PValue::Empty => Value::Empty,
             PValue::Number(n) => Value::Number(n.clone()),
@@ -167,16 +161,6 @@ fn parse_msgid(input: &[u8]) -> IResult<&[u8], EventID> {
     )(input)
 }
 
-enum PKey<'a> {
-    Name(&'a [u8]),
-    NameUID(&'a [u8]),
-    NameGID(&'a [u8]),
-    /// `a0`, `a1`, `a2[0]`, `a2[1]`…
-    Arg(u16, Option<u16>),
-    /// `a0_len` …
-    ArgLen(u16),
-}
-
 enum PValue<'a> {
     Empty,
     HexStr(&'a [u8]),
@@ -192,7 +176,7 @@ fn parse_body(
     input: &[u8],
     ty: MessageType,
     skip_enriched: bool,
-) -> IResult<&[u8], Vec<(PKey, PValue)>> {
+) -> IResult<&[u8], Vec<(Key, PValue)>> {
     let (input, special) = opt(alt((
         map_res(
             tuple((
@@ -202,11 +186,15 @@ fn parse_body(
                 many1(terminated(parse_identifier, space0)),
                 tuple((tag("}"), space0, tag("for"), space0)),
             )),
-            |(_, k, _, v, _)| -> Result<_, ()> { Ok((PKey::Name(k), PValue::List(v))) },
+            |(_, k, _, v, _)| -> Result<_, ()> {
+                Ok((Key::Name(NVec::from(&*k)), PValue::List(v)))
+            },
         ),
         map_res(
             tuple((tag("netlabel"), tag(":"), space0)),
-            |(s, _, _)| -> Result<_, ()> { Ok((PKey::Name(s), PValue::Empty)) },
+            |(s, _, _): (&[u8], _, _)| -> Result<_, ()> {
+                Ok((Key::Name(NVec::from(&*s)), PValue::Empty))
+            },
         ),
     )))(input)?;
 
@@ -236,7 +224,7 @@ fn parse_body(
 
 /// Recognize one key/value pair
 #[inline(always)]
-fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
+fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (Key, PValue)> {
     let (input, key) = match ty {
         // Special case for execve arguments: aX, aX[Y], aX_len
         msg_type::EXECVE if !input.is_empty() && input[0] == b'a' => terminated(
@@ -249,7 +237,7 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
     }?;
 
     let (input, value) = match (ty, &key) {
-        (msg_type::SYSCALL, PKey::Arg(_, None)) => map_res(
+        (msg_type::SYSCALL, Key::Arg(_, None)) => map_res(
             recognize(terminated(
                 many1_count(take_while1(is_hex_digit)),
                 peek(take_while1(is_sep)),
@@ -262,32 +250,55 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (PKey, PValue)> {
                 }
             },
         )(input)?,
-        (msg_type::EXECVE, PKey::Arg(_, _)) => parse_encoded(input)?,
-        (msg_type::EXECVE, PKey::ArgLen(_)) => parse_dec(input)?,
-        (_, PKey::Name(name)) => {
-            match FIELD_TYPES.get(name) {
-                Some(&FieldType::Encoded) => {
-                    alt((parse_encoded, |input| parse_unspec_value(input, ty, name)))(input)?
-                }
-                Some(&FieldType::NumericHex) => {
-                    alt((parse_hex, |input| parse_unspec_value(input, ty, name)))(input)?
-                }
-                Some(&FieldType::NumericDec) => {
-                    alt((parse_dec, |input| parse_unspec_value(input, ty, name)))(input)?
-                }
-                Some(&FieldType::NumericOct) => {
-                    alt((parse_oct, |input| parse_unspec_value(input, ty, name)))(input)?
-                }
-                _ => alt((parse_encoded, |input| parse_unspec_value(input, ty, name)))(input)?, // FIXME: Some(&FieldType::Numeric)
-            }
-        }
-        (_, PKey::NameUID(name)) | (_, PKey::NameGID(name)) => {
+        (msg_type::SYSCALL, Key::Common(c)) => parse_common(input, ty, *c)?,
+        (msg_type::EXECVE, Key::Arg(_, _)) => parse_encoded(input)?,
+        (msg_type::EXECVE, Key::ArgLen(_)) => parse_dec(input)?,
+        (_, Key::Name(name)) => parse_named(input, ty, name)?,
+        (_, Key::Common(c)) => parse_common(input, ty, *c)?,
+        (_, Key::NameUID(name)) | (_, Key::NameGID(name)) => {
             alt((parse_dec, |input| parse_unspec_value(input, ty, name)))(input)?
         }
         _ => parse_encoded(input)?,
     };
 
     Ok((input, (key, value)))
+}
+
+#[inline(always)]
+fn parse_named<'a>(input: &'a [u8], ty: MessageType, name: &[u8]) -> IResult<&'a [u8], PValue<'a>> {
+    match FIELD_TYPES.get(name) {
+        Some(&FieldType::Encoded) => {
+            alt((parse_encoded, |input| parse_unspec_value(input, ty, name)))(input)
+        }
+        Some(&FieldType::NumericHex) => {
+            alt((parse_hex, |input| parse_unspec_value(input, ty, name)))(input)
+        }
+        Some(&FieldType::NumericDec) => {
+            alt((parse_dec, |input| parse_unspec_value(input, ty, name)))(input)
+        }
+        Some(&FieldType::NumericOct) => {
+            alt((parse_oct, |input| parse_unspec_value(input, ty, name)))(input)
+        }
+        // FIXME: Some(&FieldType::Numeric)
+        _ => alt((parse_encoded, |input| parse_unspec_value(input, ty, name)))(input),
+    }
+}
+
+#[inline(always)]
+fn parse_common(input: &[u8], ty: MessageType, c: Common) -> IResult<&[u8], PValue> {
+    let name = <&str>::from(c).as_bytes();
+    match c {
+        Common::Arch => alt((parse_hex, |input| parse_unspec_value(input, ty, name)))(input),
+        Common::Syscall
+        | Common::Items
+        | Common::Pid
+        | Common::PPid
+        | Common::Exit
+        | Common::Ses => alt((parse_dec, |input| parse_unspec_value(input, ty, name)))(input),
+        Common::Success | Common::Tty | Common::Comm | Common::Exe | Common::Subj | Common::Key => {
+            alt((parse_encoded, |input| parse_unspec_value(input, ty, name)))(input)
+        }
+    }
 }
 
 /// Recognize encoded value:
@@ -412,16 +423,18 @@ fn parse_unspec_value<'a>(
 
 /// Recognize regular keys of key/value pairs
 #[inline(always)]
-fn parse_key(input: &[u8]) -> IResult<&[u8], PKey> {
+fn parse_key(input: &[u8]) -> IResult<&[u8], Key> {
     map_res(
         recognize(pair(alpha1, many0_count(alt((alphanumeric1, is_a("-_")))))),
         |s: &[u8]| -> Result<_, ()> {
-            if s.ends_with(b"uid") {
-                Ok(PKey::NameUID(s))
+            if let Ok(c) = Common::try_from(s) {
+                Ok(Key::Common(c))
+            } else if s.ends_with(b"uid") {
+                Ok(Key::NameUID(NVec::from(&*s)))
             } else if s.ends_with(b"gid") {
-                Ok(PKey::NameGID(s))
+                Ok(Key::NameGID(NVec::from(&*s)))
             } else {
-                Ok(PKey::Name(s))
+                Ok(Key::Name(NVec::from(&*s)))
             }
         },
     )(input)
@@ -429,37 +442,37 @@ fn parse_key(input: &[u8]) -> IResult<&[u8], PKey> {
 
 /// Recognize length specifier for EXECVE split arguments, e.g. a1_len
 #[inline(always)]
-fn parse_key_a_x_len(input: &[u8]) -> IResult<&[u8], PKey> {
+fn parse_key_a_x_len(input: &[u8]) -> IResult<&[u8], Key> {
     map_res(
         delimited(tag("a"), digit1, tag("_len")),
         |x| -> Result<_, std::num::ParseIntError> {
             let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
-            Ok(PKey::ArgLen(x))
+            Ok(Key::ArgLen(x))
         },
     )(input)
 }
 
 /// Recognize EXECVE split arguments, e.g. a1[3]
 #[inline(always)]
-fn parse_key_a_xy(input: &[u8]) -> IResult<&[u8], PKey> {
+fn parse_key_a_xy(input: &[u8]) -> IResult<&[u8], Key> {
     map_res(
         tuple((tag("a"), digit1, tag("["), digit1, tag("]"))),
-        |(_, x, _, y, _)| -> Result<PKey, std::num::ParseIntError> {
+        |(_, x, _, y, _)| -> Result<Key, std::num::ParseIntError> {
             let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
             let y = unsafe { str::from_utf8_unchecked(y) }.parse()?;
-            Ok(PKey::Arg(x, Some(y)))
+            Ok(Key::Arg(x, Some(y)))
         },
     )(input)
 }
 
 /// Recognize SYSCALL, EXECVE regular argument keys, e.g. a1, a2, a3…
 #[inline(always)]
-fn parse_key_a_x(input: &[u8]) -> IResult<&[u8], PKey> {
+fn parse_key_a_x(input: &[u8]) -> IResult<&[u8], Key> {
     map_res(
         preceded(tag("a"), digit1),
-        |x| -> Result<PKey, std::num::ParseIntError> {
+        |x| -> Result<Key, std::num::ParseIntError> {
             let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
-            Ok(PKey::Arg(x, None))
+            Ok(Key::Arg(x, None))
         },
     )(input)
 }
