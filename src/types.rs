@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display};
@@ -5,6 +6,8 @@ use std::iter::Iterator;
 use std::ops::Range;
 use std::str;
 use std::string::*;
+
+use lazy_static::lazy_static;
 
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
@@ -36,6 +39,7 @@ impl Display for EventID {
 }
 
 impl Serialize for EventID {
+    #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.collect_str(&format_args!(
             "{}.{:03}:{}",
@@ -83,6 +87,7 @@ impl Debug for MessageType {
 }
 
 impl Serialize for MessageType {
+    #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match EVENT_NAMES.get(&(self.0)) {
             Some(name) => s.collect_str(name),
@@ -104,23 +109,174 @@ impl MessageType {
     }
 }
 
+/// Common values found in SYSCALL records
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+pub enum Common {
+    Arch,
+    Syscall,
+    Success,
+    Exit,
+    Items,
+    PPid,
+    Pid,
+    Tty,
+    Ses,
+    Comm,
+    Exe,
+    Subj,
+    Key,
+}
+
+const COMMON: &[(&str, Common)] = &[
+    ("arch", Common::Arch),
+    ("syscall", Common::Syscall),
+    ("success", Common::Success),
+    ("exit", Common::Exit),
+    ("items", Common::Items),
+    ("ppid", Common::PPid),
+    ("pid", Common::Pid),
+    ("tty", Common::Tty),
+    ("ses", Common::Ses),
+    ("comm", Common::Comm),
+    ("exe", Common::Exe),
+    ("subj", Common::Subj),
+    ("key", Common::Key),
+];
+
+lazy_static! {
+    static ref COMMON_TYPES: HashMap<&'static [u8], Common> = {
+        let mut hm = HashMap::with_capacity(COMMON.len());
+        for (name, value) in COMMON {
+            hm.insert(name.as_bytes(), *value);
+        }
+        hm
+    };
+    static ref COMMON_NAMES: HashMap<Common, &'static str> = {
+        let mut hm = HashMap::with_capacity(COMMON.len());
+        for (name, value) in COMMON {
+            hm.insert(*value, *name);
+        }
+        hm
+    };
+}
+
+pub fn initialize() {
+    lazy_static::initialize(&COMMON_TYPES);
+    lazy_static::initialize(&COMMON_NAMES);
+}
+
+impl TryFrom<&[u8]> for Common {
+    type Error = &'static str;
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        COMMON_TYPES.get(&value).copied().ok_or("unknown key")
+    }
+}
+
+impl From<Common> for &str {
+    fn from(value: Common) -> Self {
+        COMMON_NAMES[&value]
+    }
+}
+
+impl Display for Common {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", COMMON_NAMES[self])
+    }
+}
+
+pub(crate) type NVec = tinyvec::TinyVec<[u8; 14]>;
+
 /// Representation of the key part of key/value pairs in [`Record`]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub enum Key {
     /// regular ASCII-only name as returned by parser
-    Name(Range<usize>),
+    Name(NVec),
     /// special case for *uid
-    NameUID(Range<usize>),
+    NameUID(NVec),
     /// special case for *gid
-    NameGID(Range<usize>),
+    NameGID(NVec),
+    /// special case for common values
+    Common(Common),
     /// regular ASCII-only name, output/serialization in all-caps, for
     /// translated / "enriched" values
-    NameTranslated(Range<usize>),
+    NameTranslated(NVec),
     /// `a0`, `a1`, `a2[0]`, `a2[1]`…
     Arg(u16, Option<u16>),
     /// `a0_len` …
     ArgLen(u16),
     Literal(&'static str),
+}
+
+impl Default for Key {
+    fn default() -> Self {
+        Key::Literal("no_key")
+    }
+}
+
+impl Debug for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.to_string())
+    }
+}
+
+impl Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Key::Arg(x, Some(y)) => write!(f, "a{}[{}]", x, y),
+            Key::Arg(x, None) => write!(f, "a{}", x),
+            Key::ArgLen(x) => write!(f, "a{}_len", x),
+            Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
+                // safety: The parser guarantees an ASCII-only key.
+                let s = unsafe { str::from_utf8_unchecked(r) };
+                f.write_str(s)
+            }
+            Key::Common(c) => write!(f, "{}", c),
+            Key::NameTranslated(r) => {
+                // safety: The parser guarantees an ASCII-only key.
+                let s = unsafe { str::from_utf8_unchecked(r) };
+                f.write_str(&str::to_ascii_uppercase(s))
+            }
+            Key::Literal(s) => f.write_str(s),
+        }
+    }
+}
+
+impl Serialize for Key {
+    #[inline(always)]
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Key::Arg(x, Some(y)) => s.collect_str(&format_args!("a{}[{}]", x, y)),
+            Key::Arg(x, None) => s.collect_str(&format_args!("a{}", x)),
+            Key::ArgLen(x) => s.collect_str(&format_args!("a{}_len", x)),
+            Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
+                // safety: The parser guarantees an ASCII-only key.
+                s.collect_str(unsafe { str::from_utf8_unchecked(r) })
+            }
+            Key::Common(c) => s.collect_str(&format_args!("{}", c)),
+            Key::NameTranslated(r) => {
+                // safety: The parser guarantees an ASCII-only key.
+                s.collect_str(&str::to_ascii_uppercase(unsafe {
+                    str::from_utf8_unchecked(r)
+                }))
+            }
+            Key::Literal(l) => s.collect_str(l),
+        }
+    }
+}
+
+impl PartialEq<str> for Key {
+    fn eq(&self, other: &str) -> bool {
+        self == other.as_bytes()
+    }
+}
+
+impl PartialEq<[u8]> for Key {
+    fn eq(&self, other: &[u8]) -> bool {
+        match self {
+            Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => r.as_ref() == other,
+            _ => self.to_string().as_bytes() == other,
+        }
+    }
 }
 
 /// Quotes in [`Value`] strings
@@ -156,6 +312,7 @@ impl Display for Number {
 }
 
 impl Serialize for Number {
+    #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
             Number::Dec(n) => s.serialize_i64(*n),
@@ -177,7 +334,7 @@ pub enum Value {
     List(Vec<Value>),
     StringifiedList(Vec<Value>),
     /// Key/Value map, used in ENV (environment variables) list
-    Map(Vec<(Range<usize>, Range<usize>)>),
+    Map(Vec<(SimpleKey, SimpleValue)>),
     /// Values generated in parse() from unquoted Str values
     ///
     /// For example, `SYSCALL` / `a0` etc are interpreted as
@@ -185,6 +342,13 @@ pub enum Value {
     Number(Number),
     /// Elements removed from ARGV lists
     Skipped((usize, usize)),
+    Literal(&'static str),
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Self::Empty
+    }
 }
 
 impl Value {
@@ -195,6 +359,18 @@ impl Value {
             _ => 0,
         }
     }
+}
+
+#[derive(Clone)]
+pub enum SimpleKey {
+    Str(Range<usize>),
+    Literal(&'static str),
+}
+
+#[derive(Clone)]
+pub enum SimpleValue {
+    Str(Range<usize>),
+    Number(Number),
 }
 
 /// List of [`Key`]/[`Value`] pairs, that are, for the most part,
@@ -216,8 +392,16 @@ impl Debug for Record {
 }
 
 impl Serialize for Record {
+    #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.collect_map(self)
+        let mut map = s.serialize_map(None)?;
+        for (k, v) in self.into_iter() {
+            match k {
+                Key::Arg(_, _) | Key::ArgLen(_) => continue,
+                _ => map.serialize_entry(&k, &v)?,
+            }
+        }
+        map.end()
     }
 }
 
@@ -232,21 +416,11 @@ impl Record {
                 .into_iter()
                 .map(|(k, v)| {
                     (
-                        match k {
-                            Key::Name(r) => Key::Name(r.offset(rawlen)),
-                            Key::NameUID(r) => Key::NameUID(r.offset(rawlen)),
-                            Key::NameGID(r) => Key::NameGID(r.offset(rawlen)),
-                            _ => k,
-                        },
+                        k,
                         match v {
                             Value::Str(r, q) => Value::Str(r.offset(rawlen), q),
-                            Value::Empty => Value::Empty,
-                            Value::Number(n) => Value::Number(n),
-                            Value::Segments(_)
-                            | Value::List(_)
-                            | Value::StringifiedList(_)
-                            | Value::Map(_)
-                            | Value::Skipped(_) => panic!("extend after normalize?"),
+                            Value::Empty | Value::Number(_) => v,
+                            _ => panic!("extend after normalize?"),
                         },
                     )
                 })
@@ -275,7 +449,7 @@ impl Record {
 }
 
 impl<'a> IntoIterator for &'a Record {
-    type Item = (RKey<'a>, RValue<'a>);
+    type Item = (&'a Key, RValue<'a>);
     type IntoIter = RecordIterator<'a>;
     fn into_iter(self) -> Self::IntoIter {
         RecordIterator { count: 0, r: self }
@@ -288,15 +462,12 @@ pub struct RecordIterator<'a> {
 }
 
 impl<'a> Iterator for RecordIterator<'a> {
-    type Item = (RKey<'a>, RValue<'a>);
+    type Item = (&'a Key, RValue<'a>);
     fn next(&mut self) -> Option<Self::Item> {
         self.count += 1;
         self.r.elems.get(self.count - 1).map(|(key, value)| {
             (
-                RKey {
-                    key,
-                    raw: &self.r.raw,
-                },
+                key,
                 RValue {
                     value,
                     raw: &self.r.raw,
@@ -306,80 +477,11 @@ impl<'a> Iterator for RecordIterator<'a> {
     }
 }
 
-/// RKey is borrowed from Record.
-#[derive(PartialEq)]
-pub struct RKey<'a> {
-    pub key: &'a Key,
-    pub raw: &'a [u8],
-}
 /// RValue is borrowed from Record.
 #[derive(Clone, Copy)]
 pub struct RValue<'a> {
     pub value: &'a Value,
     pub raw: &'a [u8],
-}
-
-impl Debug for RKey<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.to_string())
-    }
-}
-
-impl Display for RKey<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.key {
-            Key::Arg(x, Some(y)) => write!(f, "a{}[{}]", x, y),
-            Key::Arg(x, None) => write!(f, "a{}", x),
-            Key::ArgLen(x) => write!(f, "a{}_len", x),
-            Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
-                // safety: The parser guarantees an ASCII-only key.
-                let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
-                f.write_str(s)
-            }
-            Key::NameTranslated(r) => {
-                // safety: The parser guarantees an ASCII-only key.
-                let s = unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) };
-                f.write_str(&str::to_ascii_uppercase(s))
-            }
-            Key::Literal(s) => f.write_str(s),
-        }
-    }
-}
-
-impl Serialize for RKey<'_> {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match &self.key {
-            Key::Arg(x, Some(y)) => s.collect_str(&format_args!("a{}[{}]", x, y)),
-            Key::Arg(x, None) => s.collect_str(&format_args!("a{}", x)),
-            Key::ArgLen(x) => s.collect_str(&format_args!("a{}_len", x)),
-            Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
-                // safety: The parser guarantees an ASCII-only key.
-                s.collect_str(unsafe { str::from_utf8_unchecked(&self.raw[r.clone()]) })
-            }
-            Key::NameTranslated(r) => {
-                // safety: The parser guarantees an ASCII-only key.
-                s.collect_str(&str::to_ascii_uppercase(unsafe {
-                    str::from_utf8_unchecked(&self.raw[r.clone()])
-                }))
-            }
-            Key::Literal(l) => s.collect_str(l),
-        }
-    }
-}
-
-impl PartialEq<str> for RKey<'_> {
-    fn eq(&self, other: &str) -> bool {
-        self == other.as_bytes()
-    }
-}
-
-impl PartialEq<[u8]> for RKey<'_> {
-    fn eq(&self, other: &[u8]) -> bool {
-        match self.key {
-            Key::Name(r) => &self.raw[r.clone()] == other,
-            _ => self.to_string().as_bytes() == other,
-        }
-    }
 }
 
 impl TryFrom<RValue<'_>> for Vec<u8> {
@@ -409,6 +511,7 @@ impl TryFrom<RValue<'_>> for Vec<u8> {
             }
             Value::Map(_) => Err("Can't convert map to scalar".into()),
             Value::Skipped(_) => Err("Can't convert skipped to scalar".into()),
+            Value::Literal(s) => Ok(s.to_string().into()),
         }
     }
 }
@@ -476,6 +579,7 @@ impl Debug for RValue<'_> {
                             panic!("list can't contain list")
                         }
                         Value::Map(_) => panic!("list can't contain map"),
+                        Value::Literal(v) => write!(f, "{:?}", v)?,
                     }
                 }
                 write!(f, ">")
@@ -504,6 +608,7 @@ impl Debug for RValue<'_> {
                             panic!("list can't contain list")
                         }
                         Value::Map(_) => panic!("List can't contain mapr"),
+                        Value::Literal(v) => write!(f, "{}", v)?,
                     }
                 }
                 write!(f, ">")
@@ -514,23 +619,23 @@ impl Debug for RValue<'_> {
                     if n > 0 {
                         write!(f, " ")?;
                     }
-                    write!(
-                        f,
-                        "{}={}",
-                        String::from_utf8_lossy(&self.raw[v.0.clone()]),
-                        String::from_utf8_lossy(&self.raw[v.1.clone()])
-                    )?;
+                    let v = match &v.1 {
+                        SimpleValue::Str(r) => String::from_utf8_lossy(&self.raw[r.clone()]).into(),
+                        SimpleValue::Number(n) => format!("{:?}", n),
+                    };
+                    write!(f, "{}={}", n, v)?;
                 }
-                write!(f, ">")?;
-                unimplemented!();
+                write!(f, ">")
             }
             Value::Number(n) => write!(f, "{:?}", n),
             Value::Skipped(n) => write!(f, "Skip<elems={} bytes={}>", n.0, n.1),
+            Value::Literal(s) => write!(f, "{:?}", s),
         }
     }
 }
 
 impl Serialize for RValue<'_> {
+    #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self.value {
             Value::Empty => s.serialize_none(),
@@ -588,9 +693,19 @@ impl Serialize for RValue<'_> {
             Value::Number(n) => n.serialize(s),
             Value::Map(vs) => {
                 let mut map = s.serialize_map(Some(vs.len()))?;
-                for v in vs {
-                    map.serialize_key(&self.raw[v.0.clone()].to_quoted_string())?;
-                    map.serialize_value(&self.raw[v.1.clone()].to_quoted_string())?;
+                for (k, v) in vs {
+                    match k {
+                        SimpleKey::Str(r) => {
+                            map.serialize_key(&self.raw[r.clone()].to_quoted_string())?
+                        }
+                        SimpleKey::Literal(n) => map.serialize_value(n)?,
+                    }
+                    match v {
+                        SimpleValue::Str(r) => {
+                            map.serialize_value(&self.raw[r.clone()].to_quoted_string())?
+                        }
+                        SimpleValue::Number(n) => map.serialize_value(&n)?,
+                    }
                 }
                 map.end()
             }
@@ -600,6 +715,7 @@ impl Serialize for RValue<'_> {
                 map.serialize_entry("skipped_bytes", bytes)?;
                 map.end()
             }
+            Value::Literal(v) => s.collect_str(v),
         }
     }
 }

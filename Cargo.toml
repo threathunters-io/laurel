@@ -1,6 +1,6 @@
 [package]
 name = "laurel"
-version = "0.4.1"
+version = "0.5.0-pre1"
 authors = ["Hilko Bengen <bengen@hilluzination.de>",
            "Sergej Schmidt <sergej@msgpeek.net>"]
 edition = "2018"
@@ -28,6 +28,7 @@ caps = ">= 0.5"
 libc = ">= 0.2"
 posix-acl = ">= 1"
 regex = ">= 1.5.0"
+tinyvec = { version = ">= 1", features = ["alloc"] }
 
 [build-dependencies]
 bindgen = ">= 0.56"

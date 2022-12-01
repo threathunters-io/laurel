@@ -37,6 +37,7 @@ pub enum EventValues {
 }
 
 impl Serialize for EventValues {
+    #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
             EventValues::Single(rv) => rv.serialize(s),
@@ -65,6 +66,7 @@ impl Event {
 }
 
 impl Serialize for Event {
+    #[inline(always)]
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -149,68 +151,134 @@ const EXPIRE_DONE_TIMEOUT: u64 = 120_000;
 /// generate translation of SocketAddr enum to a format similar to
 /// what auditd log_format=ENRICHED produces
 fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
-    let f = rv.put(b"saddr_fam");
+    let f = SimpleKey::Literal("saddr_fam");
     let m = match sa {
         SocketAddr::Local(sa) => {
-            vec![(f, rv.put("local")), (rv.put("path"), rv.put(&sa.path))]
+            vec![
+                (f, SimpleValue::Str(rv.put("local"))),
+                (
+                    SimpleKey::Literal("path"),
+                    SimpleValue::Str(rv.put(&sa.path)),
+                ),
+            ]
         }
         SocketAddr::Inet(sa) => {
             vec![
-                (f, rv.put("inet")),
-                (rv.put("addr"), rv.put(format!("{}", sa.ip()))),
-                (rv.put("port"), rv.put(format!("{}", sa.port()))),
+                (f, SimpleValue::Str(rv.put("inet"))),
+                (
+                    SimpleKey::Literal("addr"),
+                    SimpleValue::Str(rv.put(format!("{}", sa.ip()))),
+                ),
+                (
+                    SimpleKey::Literal("port"),
+                    SimpleValue::Number(Number::Dec(sa.port().into())),
+                ),
             ]
         }
         SocketAddr::AX25(sa) => {
-            vec![(f, rv.put("ax25")), (rv.put("call"), rv.put(&sa.call))]
+            vec![
+                (f, SimpleValue::Str(rv.put("ax25"))),
+                (
+                    SimpleKey::Literal("call"),
+                    SimpleValue::Str(rv.put(&sa.call)),
+                ),
+            ]
         }
         SocketAddr::ATMPVC(sa) => {
             vec![
-                (f, rv.put("atmpvc")),
-                (rv.put("itf"), rv.put(format!("{}", sa.itf))),
-                (rv.put("vpi"), rv.put(format!("{}", sa.vpi))),
-                (rv.put("vci"), rv.put(format!("{}", sa.vci))),
+                (f, SimpleValue::Str(rv.put("atmpvc"))),
+                (
+                    SimpleKey::Literal("itf"),
+                    SimpleValue::Number(Number::Dec(sa.itf.into())),
+                ),
+                (
+                    SimpleKey::Literal("vpi"),
+                    SimpleValue::Number(Number::Dec(sa.vpi.into())),
+                ),
+                (
+                    SimpleKey::Literal("vci"),
+                    SimpleValue::Number(Number::Dec(sa.vci.into())),
+                ),
             ]
         }
         SocketAddr::X25(sa) => {
-            vec![(f, rv.put("x25")), (rv.put("addr"), rv.put(&sa.address))]
+            vec![
+                (f, SimpleValue::Str(rv.put("x25"))),
+                (
+                    SimpleKey::Literal("addr"),
+                    SimpleValue::Str(rv.put(&sa.address)),
+                ),
+            ]
         }
         SocketAddr::IPX(sa) => {
             vec![
-                (f, rv.put("ipx")),
-                (rv.put("network"), rv.put(format!("{:08x}", sa.network))),
+                (f, SimpleValue::Str(rv.put("ipx"))),
                 (
-                    rv.put("node"),
-                    rv.put(format!(
+                    SimpleKey::Literal("network"),
+                    SimpleValue::Number(Number::Hex(sa.network.into())),
+                ),
+                (
+                    SimpleKey::Literal("node"),
+                    SimpleValue::Str(rv.put(format!(
                         "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
                         sa.node[0], sa.node[1], sa.node[2], sa.node[3], sa.node[4], sa.node[5]
-                    )),
+                    ))),
                 ),
-                (rv.put("port"), rv.put(format!("{}", sa.port))),
-                (rv.put("type"), rv.put(format!("{}", sa.typ))),
+                (
+                    SimpleKey::Literal("port"),
+                    SimpleValue::Number(Number::Dec(sa.port.into())),
+                ),
+                (
+                    SimpleKey::Literal("type"),
+                    SimpleValue::Number(Number::Dec(sa.typ.into())),
+                ),
             ]
         }
         SocketAddr::Inet6(sa) => {
             vec![
-                (f, rv.put("inet6")),
-                (rv.put("addr"), rv.put(format!("{}", sa.ip()))),
-                (rv.put("port"), rv.put(format!("{}", sa.port()))),
-                (rv.put("flowinfo"), rv.put(format!("{}", sa.flowinfo()))),
-                (rv.put("scope_id"), rv.put(format!("{}", sa.scope_id()))),
+                (f, SimpleValue::Str(rv.put("inet6"))),
+                (
+                    SimpleKey::Literal("addr"),
+                    SimpleValue::Str(rv.put(format!("{}", sa.ip()))),
+                ),
+                (
+                    SimpleKey::Literal("port"),
+                    SimpleValue::Number(Number::Dec(sa.port().into())),
+                ),
+                (
+                    SimpleKey::Literal("flowinfo"),
+                    SimpleValue::Number(Number::Dec(sa.flowinfo().into())),
+                ),
+                (
+                    SimpleKey::Literal("scope_id"),
+                    SimpleValue::Number(Number::Dec(sa.scope_id().into())),
+                ),
             ]
         }
         SocketAddr::Netlink(sa) => {
             vec![
-                (f, rv.put("netlink")),
-                (rv.put("pid"), rv.put(format!("{}", sa.pid))),
-                (rv.put("groups"), rv.put(format!("{}", sa.groups))),
+                (f, SimpleValue::Str(rv.put("netlink"))),
+                (
+                    SimpleKey::Literal("pid"),
+                    SimpleValue::Number(Number::Dec(sa.pid.into())),
+                ),
+                (
+                    SimpleKey::Literal("groups"),
+                    SimpleValue::Number(Number::Hex(sa.groups.into())),
+                ),
             ]
         }
         SocketAddr::VM(sa) => {
             vec![
-                (f, rv.put("vsock")),
-                (rv.put("cid"), rv.put(format!("{}", sa.cid))),
-                (rv.put("port"), rv.put(format!("{}", sa.port))),
+                (f, SimpleValue::Str(rv.put("vsock"))),
+                (
+                    SimpleKey::Literal("cid"),
+                    SimpleValue::Number(Number::Dec(sa.cid.into())),
+                ),
+                (
+                    SimpleKey::Literal("port"),
+                    SimpleValue::Number(Number::Dec(sa.port.into())),
+                ),
             ]
         }
     };
@@ -328,11 +396,14 @@ impl<'a> Coalesce<'a> {
     /// - collects environment variables for EXECVE
     /// - registers process in shadow process table for EXECVE
     fn transform_event(&mut self, ev: &mut Event) {
+        let mut arch: Option<u32> = None;
+        let mut syscall: Option<u32> = None;
         let mut pid: Option<u32> = None;
         let mut ppid: Option<u32> = None;
-        let mut comm: Option<Vec<u8>> = None;
-        let mut exe: Option<Vec<u8>> = None;
-        let mut key: Option<Vec<u8>> = None;
+        let mut comm: Option<NVec> = None;
+        let mut exe: Option<NVec> = None;
+        let mut key: Option<NVec> = None;
+
         let mut syscall_is_exec = false;
         for tv in ev.body.iter_mut() {
             match tv {
@@ -351,8 +422,6 @@ impl<'a> Coalesce<'a> {
                     let mut new = Vec::with_capacity(rv.elems.len() - 3);
                     let mut translated = VecDeque::with_capacity(11);
                     let mut argv = Vec::with_capacity(4);
-                    let mut arch = None;
-                    let mut syscall = None;
                     for (k, v) in &rv.elems.clone() {
                         match (k, v) {
                             (Key::Arg(_, None), _) => {
@@ -361,43 +430,37 @@ impl<'a> Coalesce<'a> {
                                 continue;
                             }
                             (Key::ArgLen(_), _) => continue,
-                            (Key::Name(r), Value::Number(n)) => {
-                                let name = &rv.raw[r.clone()];
-                                match (name, n) {
-                                    (b"arch", Number::Hex(n)) => arch = Some((r.clone(), *n)),
-                                    (b"syscall", Number::Dec(n)) => syscall = Some((r.clone(), *n)),
-                                    (b"pid", Number::Dec(n)) => pid = Some(*n as u32),
-                                    (b"ppid", Number::Dec(n)) => ppid = Some(*n as u32),
-                                    _ => (),
+                            (Key::Common(c), Value::Number(n)) => match (c, n) {
+                                (Common::Arch, Number::Hex(n)) if arch.is_none() => {
+                                    arch = Some(*n as u32)
                                 }
-                            }
-                            (Key::Name(r), v) => {
-                                let name = &rv.raw[r.clone()];
-                                match name {
-                                    b"ARCH" => {
-                                        if self.settings.translate_universal && arch.is_some() {
-                                            continue;
-                                        }
-                                    }
-                                    b"SYSCALL" => {
-                                        if self.settings.translate_universal && syscall.is_some() {
-                                            continue;
-                                        }
-                                    }
-                                    b"key" => {
-                                        if let Value::Str(r, _) = v {
-                                            key = Some(rv.raw[r.clone()].into());
-                                        }
-                                    }
-                                    b"comm" => {
-                                        if let Value::Str(r, _) = v {
-                                            comm = Some(rv.raw[r.clone()].into());
-                                        }
-                                    }
-                                    b"exe" => {
-                                        if let Value::Str(r, _) = v {
-                                            exe = Some(rv.raw[r.clone()].into());
-                                        }
+                                (Common::Syscall, Number::Dec(n)) if syscall.is_none() => {
+                                    syscall = Some(*n as u32)
+                                }
+                                (Common::Pid, Number::Dec(n)) if pid.is_none() => {
+                                    pid = Some(*n as u32)
+                                }
+                                (Common::PPid, Number::Dec(n)) if ppid.is_none() => {
+                                    ppid = Some(*n as u32)
+                                }
+                                _ => (),
+                            },
+                            (Key::Common(c), Value::Str(r, _)) => match c {
+                                Common::Comm if comm.is_none() => {
+                                    comm = Some(rv.raw[r.clone()].into())
+                                }
+                                Common::Exe if exe.is_none() => {
+                                    exe = Some(rv.raw[r.clone()].into())
+                                }
+                                Common::Key if key.is_none() => {
+                                    key = Some(rv.raw[r.clone()].into())
+                                }
+                                _ => (),
+                            },
+                            (Key::Name(name), Value::Str(_, _)) => {
+                                match name.as_ref() {
+                                    b"ARCH" | b"SYSCALL" if self.settings.translate_universal => {
+                                        continue
                                     }
                                     _ => (),
                                 };
@@ -411,15 +474,15 @@ impl<'a> Coalesce<'a> {
                         new.push((k.clone(), v.clone()));
                     }
                     if let (Some(arch), Some(syscall)) = (arch, syscall) {
-                        if let Some(arch_name) = ARCH_NAMES.get(&(arch.1 as u32)) {
+                        if let Some(arch_name) = ARCH_NAMES.get(&(arch as u32)) {
                             if let Some(syscall_name) = SYSCALL_NAMES
                                 .get(arch_name)
-                                .and_then(|syscall_tbl| syscall_tbl.get(&(syscall.1 as u32)))
+                                .and_then(|syscall_tbl| syscall_tbl.get(&(syscall as u32)))
                             {
                                 if self.settings.translate_universal {
                                     let v = rv.put(syscall_name);
                                     translated.push_front((
-                                        Key::NameTranslated(syscall.0),
+                                        Key::Literal("SYSCALL"),
                                         Value::Str(v, Quote::None),
                                     ));
                                 }
@@ -429,10 +492,8 @@ impl<'a> Coalesce<'a> {
                             }
                             if self.settings.translate_universal {
                                 let v = rv.put(arch_name);
-                                translated.push_front((
-                                    Key::NameTranslated(arch.0),
-                                    Value::Str(v, Quote::None),
-                                ));
+                                translated
+                                    .push_front((Key::Literal("ARCH"), Value::Str(v, Quote::None)));
                             }
                         }
                     }
@@ -443,15 +504,15 @@ impl<'a> Coalesce<'a> {
                 (&EXECVE, EventValues::Single(rv)) => {
                     let mut new: Vec<(Key, Value)> = Vec::with_capacity(2);
                     let mut argv: Vec<Value> = Vec::with_capacity(1);
-                    for (k, v) in rv.into_iter() {
-                        match k.key {
+                    for (k, v) in &rv.elems {
+                        match k {
                             Key::ArgLen(_) => continue,
                             Key::Arg(i, None) => {
                                 let idx = *i as usize;
                                 if argv.len() <= idx {
                                     argv.resize(idx + 1, Value::Empty);
                                 };
-                                argv[idx] = v.value.clone();
+                                argv[idx] = v.clone();
                             }
                             Key::Arg(i, Some(f)) => {
                                 let idx = *i as usize;
@@ -461,7 +522,7 @@ impl<'a> Coalesce<'a> {
                                 }
                                 if let Some(Value::Segments(l)) = argv.get_mut(idx) {
                                     let frag = *f as usize;
-                                    let r = match v.value {
+                                    let r = match v {
                                         Value::Str(r, _) => r,
                                         _ => &Range { start: 0, end: 0 }, // FIXME
                                     };
@@ -471,7 +532,7 @@ impl<'a> Coalesce<'a> {
                                     }
                                 }
                             }
-                            _ => new.push((k.key.clone(), v.value.clone())),
+                            _ => new.push((k.clone(), v.clone())),
                         };
                     }
 
@@ -525,8 +586,12 @@ impl<'a> Coalesce<'a> {
                             if let Ok(vars) =
                                 get_environ(pid, |k| self.settings.execve_env.contains(k))
                             {
-                                let map =
-                                    vars.iter().map(|(k, v)| (rv.put(k), rv.put(v))).collect();
+                                let map = vars
+                                    .iter()
+                                    .map(|(k, v)| {
+                                        (SimpleKey::Str(rv.put(k)), SimpleValue::Str(rv.put(v)))
+                                    })
+                                    .collect();
                                 new.push((Key::Literal("ENV"), Value::Map(map)));
                             }
                         }
@@ -549,8 +614,8 @@ impl<'a> Coalesce<'a> {
                             pid,
                             ppid,
                             ev.id,
-                            comm.clone(),
-                            exe.clone(),
+                            comm.clone().map(|s| s.to_vec()),
+                            exe.clone().map(|s| s.to_vec()),
                             argv,
                         );
 
@@ -570,13 +635,12 @@ impl<'a> Coalesce<'a> {
                         let mut new = Vec::with_capacity(rv.elems.len());
                         let mut translated = None;
                         for (k, v) in &rv.elems.clone() {
-                            if let (Key::Name(kr), Value::Str(vr, _)) = (k, v) {
-                                let name = &rv.raw[kr.clone()];
-                                match name {
+                            if let (Key::Name(name), Value::Str(vr, _)) = (k, v) {
+                                match name.as_ref() {
                                     b"saddr" if self.settings.translate_universal => {
                                         if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
                                             translated = Some((
-                                                Key::NameTranslated(kr.clone()),
+                                                Key::Literal("SADDR"),
                                                 translate_socketaddr(rv, sa),
                                             ));
                                             continue;
@@ -629,7 +693,7 @@ impl<'a> Coalesce<'a> {
         }
 
         if let (Some(pid), Some(key)) = (&pid, &key) {
-            if self.settings.proc_label_keys.contains(key) {
+            if self.settings.proc_label_keys.contains(key.as_ref()) {
                 self.processes.add_label(*pid, key);
             }
         }
@@ -643,7 +707,7 @@ impl<'a> Coalesce<'a> {
         }
 
         if let Some(key) = &key {
-            if self.settings.filter_keys.contains(key) {
+            if self.settings.filter_keys.contains(key.as_ref()) {
                 ev.filter = true;
             }
         }
@@ -668,7 +732,7 @@ impl<'a> Coalesce<'a> {
                         .push((Key::Literal("exe"), Value::Str(r, Quote::None)));
                 }
                 let kv = (
-                    Key::Name(pi.put(b"ppid")),
+                    Key::Literal("ppid"),
                     Value::Number(Number::Dec(p.ppid as i64)),
                 );
                 pi.elems.push(kv);
@@ -1001,13 +1065,13 @@ mod test {
             let mut auid = false;
             // UID="root" OLD-AUID="unset" AUID="root"
             for (k, v) in &records[0] {
-                if &k == "UID" && &v == "root" {
+                if k == "UID" && &v == "root" {
                     uid = true;
                 }
-                if &k == "OLD-AUID" && &v == "unset" {
+                if k == "OLD-AUID" && &v == "unset" {
                     old_auid = true;
                 }
-                if &k == "AUID" && &v == "root" {
+                if k == "AUID" && &v == "root" {
                     auid = true;
                 }
             }
