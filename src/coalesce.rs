@@ -409,8 +409,6 @@ impl<'a> Coalesce<'a> {
 
         let mut parent: Option<Process> = None;
 
-        let mut execve_argv: Option<Vec<Vec<u8>>> = None;
-
         let mut syscall_is_exec = false;
 
         if let Some(EventValues::Single(rv)) = ev.body.get_mut(&SYSCALL) {
@@ -546,14 +544,6 @@ impl<'a> Coalesce<'a> {
                     Value::StringifiedList(argv.clone()),
                 ));
             }
-            execve_argv = Some(
-                argv.iter()
-                    .filter_map(|v| match v {
-                        Value::Str(r, _) => Some(Vec::from(&rv.raw[r.clone()])),
-                        _ => None,
-                    })
-                    .collect(),
-            );
 
             // ENV
             match pid {
@@ -598,7 +588,6 @@ impl<'a> Coalesce<'a> {
                 ev.id,
                 comm.as_ref().map(|s| s.to_vec()),
                 exe.as_ref().map(|s| s.to_vec()),
-                execve_argv.unwrap_or_default(),
             );
 
             parent = self.processes.get_process(ppid);

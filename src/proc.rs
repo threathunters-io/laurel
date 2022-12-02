@@ -1,6 +1,5 @@
 use std::boxed::Box;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::convert::TryInto;
 use std::error::Error;
 use std::fs::{read_dir, read_link, File};
 use std::io::{BufRead, BufReader, Read};
@@ -89,8 +88,6 @@ pub struct Process {
     pub launch_time: u64,
     /// parent process id
     pub ppid: u32,
-    /// command line
-    pub argv: Vec<Vec<u8>>,
     pub labels: HashSet<Vec<u8>>,
     /// Event ID containing the event spawning this process entry
     /// (should be EXECVE).
@@ -106,14 +103,6 @@ impl Serialize for Process {
         let mut map = s.serialize_map(Some(7))?;
         map.serialize_entry("launch_time", &self.launch_time)?;
         map.serialize_entry("ppid", &self.ppid)?;
-        map.serialize_entry(
-            "argv",
-            &self
-                .argv
-                .iter()
-                .map(|v| String::from_utf8_lossy(v))
-                .collect::<Vec<_>>(),
-        )?;
         map.serialize_entry(
             "labels",
             &self
@@ -145,14 +134,6 @@ impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
     #[allow(dead_code)]
     pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
-        let buf = slurp_file(format!("/proc/{}/cmdline", pid))
-            .map_err(|e| format!("read /proc/{}/cmdline: {}", pid, e))?;
-
-        let argv = buf
-            .split(|c| *c == 0)
-            .map(|a| Vec::from(a))
-            .collect::<Vec<_>>();
-
         let buf = slurp_file(format!("/proc/{}/stat", pid))
             .map_err(|e| format!("read /proc/{}/stat: {}", pid, e))?;
         // comm may contain whitespace and ")", skip over it.
@@ -205,7 +186,6 @@ impl Process {
         Ok(Process {
             launch_time,
             ppid,
-            argv,
             labels,
             event_id,
             comm,
@@ -216,11 +196,7 @@ impl Process {
 
     /// Use a processed EXECVE event to generate a shadow process table entry
     #[allow(dead_code)]
-    pub fn parse_execve(
-        id: &EventID,
-        rsyscall: &Record,
-        rexecve: &Record,
-    ) -> Result<(u32, Process), Box<dyn Error>> {
+    pub fn parse_execve(id: &EventID, rsyscall: &Record) -> Result<(u32, Process), Box<dyn Error>> {
         let mut p = Process {
             launch_time: id.timestamp,
             ..Process::default()
@@ -241,13 +217,6 @@ impl Process {
             }
         } else {
             return Err("ppid field not found".into());
-        }
-        if let Some(v) = rexecve.get(b"ARGV") {
-            p.argv = v.try_into()?;
-        } else if let Some(v) = rexecve.get(b"ARGV_STR") {
-            p.argv = v.try_into()?;
-        } else {
-            return Err("ARGV field not found".into());
         }
         Ok((pid, p))
     }
@@ -327,7 +296,6 @@ impl ProcTable {
         id: EventID,
         comm: Option<Vec<u8>>,
         exe: Option<Vec<u8>>,
-        argv: Vec<Vec<u8>>,
     ) {
         let labels = HashSet::new();
         let launch_time = id.timestamp;
@@ -341,7 +309,6 @@ impl ProcTable {
             Process {
                 launch_time,
                 ppid,
-                argv,
                 labels,
                 event_id,
                 comm,
