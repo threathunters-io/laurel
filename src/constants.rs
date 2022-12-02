@@ -31,7 +31,7 @@ char* lc(char* s) {
 int main() {
 EOF
         while read token; do
-            echo 'printf("(b\"%s\", 0x%08x),\\n", lc("'$token'") + 11, '$token');'
+            echo 'printf("(\"%s\", 0x%08x),\\n", lc("'$token'") + 11, '$token');'
         done
         echo "}"
     ) \
@@ -41,69 +41,69 @@ rm -f print-audit-archs
 ```
 */
 
-const ARCHS: &[(&[u8], u32)] = &[
-    (b"aarch64", 0xc00000b7),
-    (b"alpha", 0xc0009026),
-    (b"arcompact", 0x4000005d),
-    (b"arcompactbe", 0x0000005d),
-    (b"arcv2", 0x400000c3),
-    (b"arcv2be", 0x000000c3),
-    (b"arm", 0x40000028),
-    (b"armeb", 0x00000028),
-    (b"c6x", 0x4000008c),
-    (b"c6xbe", 0x0000008c),
-    (b"cris", 0x4000004c),
-    (b"csky", 0x400000fc),
-    (b"frv", 0x00005441),
-    (b"h8300", 0x0000002e),
-    (b"hexagon", 0x000000a4),
-    (b"i386", 0x40000003),
-    (b"ia64", 0xc0000032),
-    (b"m32r", 0x00000058),
-    (b"m68k", 0x00000004),
-    (b"microblaze", 0x000000bd),
-    (b"mips", 0x00000008),
-    (b"mips64", 0x80000008),
-    (b"mips64n32", 0xa0000008),
-    (b"mipsel", 0x40000008),
-    (b"mipsel64", 0xc0000008),
-    (b"mipsel64n32", 0xe0000008),
-    (b"nds32", 0x400000a7),
-    (b"nds32be", 0x000000a7),
-    (b"nios2", 0x40000071),
-    (b"openrisc", 0x0000005c),
-    (b"parisc", 0x0000000f),
-    (b"parisc64", 0x8000000f),
-    (b"ppc", 0x00000014),
-    (b"ppc64", 0x80000015),
-    (b"ppc64le", 0xc0000015),
-    (b"riscv32", 0x400000f3),
-    (b"riscv64", 0xc00000f3),
-    (b"s390", 0x00000016),
-    (b"s390x", 0x80000016),
-    (b"sh", 0x0000002a),
-    (b"sh64", 0x8000002a),
-    (b"shel", 0x4000002a),
-    (b"shel64", 0xc000002a),
-    (b"sparc", 0x00000002),
-    (b"sparc64", 0x8000002b),
-    (b"tilegx", 0xc00000bf),
-    (b"tilegx32", 0x400000bf),
-    (b"tilepro", 0x400000bc),
-    (b"unicore", 0x4000006e),
-    (b"x86_64", 0xc000003e),
-    (b"xtensa", 0x0000005e),
+const ARCHS: &[(&str, u32)] = &[
+    ("aarch64", 0xc00000b7),
+    ("alpha", 0xc0009026),
+    ("arcompact", 0x4000005d),
+    ("arcompactbe", 0x0000005d),
+    ("arcv2", 0x400000c3),
+    ("arcv2be", 0x000000c3),
+    ("arm", 0x40000028),
+    ("armeb", 0x00000028),
+    ("c6x", 0x4000008c),
+    ("c6xbe", 0x0000008c),
+    ("cris", 0x4000004c),
+    ("csky", 0x400000fc),
+    ("frv", 0x00005441),
+    ("h8300", 0x0000002e),
+    ("hexagon", 0x000000a4),
+    ("i386", 0x40000003),
+    ("ia64", 0xc0000032),
+    ("m32r", 0x00000058),
+    ("m68k", 0x00000004),
+    ("microblaze", 0x000000bd),
+    ("mips", 0x00000008),
+    ("mips64", 0x80000008),
+    ("mips64n32", 0xa0000008),
+    ("mipsel", 0x40000008),
+    ("mipsel64", 0xc0000008),
+    ("mipsel64n32", 0xe0000008),
+    ("nds32", 0x400000a7),
+    ("nds32be", 0x000000a7),
+    ("nios2", 0x40000071),
+    ("openrisc", 0x0000005c),
+    ("parisc", 0x0000000f),
+    ("parisc64", 0x8000000f),
+    ("ppc", 0x00000014),
+    ("ppc64", 0x80000015),
+    ("ppc64le", 0xc0000015),
+    ("riscv32", 0x400000f3),
+    ("riscv64", 0xc00000f3),
+    ("s390", 0x00000016),
+    ("s390x", 0x80000016),
+    ("sh", 0x0000002a),
+    ("sh64", 0x8000002a),
+    ("shel", 0x4000002a),
+    ("shel64", 0xc000002a),
+    ("sparc", 0x00000002),
+    ("sparc64", 0x8000002b),
+    ("tilegx", 0xc00000bf),
+    ("tilegx32", 0x400000bf),
+    ("tilepro", 0x400000bc),
+    ("unicore", 0x4000006e),
+    ("x86_64", 0xc000003e),
+    ("xtensa", 0x0000005e),
 ];
 
 lazy_static! {
-    pub static ref ARCH_IDS: HashMap<&'static [u8], u32> = {
+    pub static ref ARCH_IDS: HashMap<&'static str, u32> = {
         let mut hm = HashMap::with_capacity(ARCHS.len());
         for (name, value) in ARCHS {
             hm.insert(*name, *value);
         }
         hm
     };
-    pub static ref ARCH_NAMES: HashMap<u32, &'static [u8]> = {
+    pub static ref ARCH_NAMES: HashMap<u32, &'static str> = {
         let mut hm = HashMap::with_capacity(ARCHS.len());
         for (name, value) in ARCHS {
             hm.insert(*value, *name);

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::io::Write;
 use std::ops::Range;
@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
 use crate::label_matcher::LabelMatcher;
 use crate::parser::parse;
-use crate::proc::{get_environ, ProcTable};
+use crate::proc::{get_environ, ProcTable, Process};
 use crate::quoted_string::ToQuotedString;
 use crate::sockaddr::SocketAddr;
 use crate::types::*;
@@ -404,290 +404,211 @@ impl<'a> Coalesce<'a> {
         let mut exe: Option<NVec> = None;
         let mut key: Option<NVec> = None;
 
+        let mut arch_name: Option<&'static str> = None;
+        let mut syscall_name: Option<&'static str> = None;
+
+        let mut parent: Option<Process> = None;
+
+        let mut execve_argv: Option<Vec<Vec<u8>>> = None;
+
         let mut syscall_is_exec = false;
-        for tv in ev.body.iter_mut() {
-            match tv {
-                (&SYSCALL, EventValues::Single(rv)) => {
-                    rv.raw.reserve(
-                        if self.settings.translate_universal {
-                            16
-                        } else {
-                            0
-                        } + if self.settings.translate_userdb {
-                            72
-                        } else {
-                            0
-                        },
-                    );
-                    let mut new = Vec::with_capacity(rv.elems.len() - 3);
-                    let mut translated = VecDeque::with_capacity(11);
-                    let mut argv = Vec::with_capacity(4);
-                    for (k, v) in &rv.elems.clone() {
-                        match (k, v) {
-                            (Key::Arg(_, None), _) => {
-                                // FIXME: check argv length
-                                argv.push(v.clone());
-                                continue;
-                            }
-                            (Key::ArgLen(_), _) => continue,
-                            (Key::Common(c), Value::Number(n)) => match (c, n) {
-                                (Common::Arch, Number::Hex(n)) if arch.is_none() => {
-                                    arch = Some(*n as u32)
-                                }
-                                (Common::Syscall, Number::Dec(n)) if syscall.is_none() => {
-                                    syscall = Some(*n as u32)
-                                }
-                                (Common::Pid, Number::Dec(n)) if pid.is_none() => {
-                                    pid = Some(*n as u32)
-                                }
-                                (Common::PPid, Number::Dec(n)) if ppid.is_none() => {
-                                    ppid = Some(*n as u32)
-                                }
-                                _ => (),
-                            },
-                            (Key::Common(c), Value::Str(r, _)) => match c {
-                                Common::Comm if comm.is_none() => {
-                                    comm = Some(rv.raw[r.clone()].into())
-                                }
-                                Common::Exe if exe.is_none() => {
-                                    exe = Some(rv.raw[r.clone()].into())
-                                }
-                                Common::Key if key.is_none() => {
-                                    key = Some(rv.raw[r.clone()].into())
-                                }
-                                _ => (),
-                            },
-                            (Key::Name(name), Value::Str(_, _)) => {
-                                match name.as_ref() {
-                                    b"ARCH" | b"SYSCALL" if self.settings.translate_universal => {
-                                        continue
-                                    }
-                                    _ => (),
-                                };
-                            }
-                            _ => {
-                                if let Some((k, v)) = self.translate_userdb(rv, k, v) {
-                                    translated.push_back((k, v));
-                                }
-                            }
-                        };
-                        new.push((k.clone(), v.clone()));
-                    }
-                    if let (Some(arch), Some(syscall)) = (arch, syscall) {
-                        if let Some(arch_name) = ARCH_NAMES.get(&(arch as u32)) {
-                            if let Some(syscall_name) = SYSCALL_NAMES
-                                .get(arch_name)
-                                .and_then(|syscall_tbl| syscall_tbl.get(&(syscall as u32)))
-                            {
-                                if self.settings.translate_universal {
-                                    let v = rv.put(syscall_name);
-                                    translated.push_front((
-                                        Key::Literal("SYSCALL"),
-                                        Value::Str(v, Quote::None),
-                                    ));
-                                }
-                                if syscall_name.windows(6).any(|s| s == b"execve") {
-                                    syscall_is_exec = true;
-                                }
-                            }
-                            if self.settings.translate_universal {
-                                let v = rv.put(arch_name);
-                                translated
-                                    .push_front((Key::Literal("ARCH"), Value::Str(v, Quote::None)));
-                            }
-                        }
-                    }
-                    new.push((Key::Literal("ARGV"), Value::List(argv)));
-                    new.extend(translated);
-                    rv.elems = new;
-                }
-                (&EXECVE, EventValues::Single(rv)) => {
-                    let mut new: Vec<(Key, Value)> = Vec::with_capacity(2);
-                    let mut argv: Vec<Value> = Vec::with_capacity(1);
-                    for (k, v) in &rv.elems {
-                        match k {
-                            Key::ArgLen(_) => continue,
-                            Key::Arg(i, None) => {
-                                let idx = *i as usize;
-                                if argv.len() <= idx {
-                                    argv.resize(idx + 1, Value::Empty);
-                                };
-                                argv[idx] = v.clone();
-                            }
-                            Key::Arg(i, Some(f)) => {
-                                let idx = *i as usize;
-                                if argv.len() <= idx {
-                                    argv.resize(idx + 1, Value::Empty);
-                                    argv[idx] = Value::Segments(Vec::new());
-                                }
-                                if let Some(Value::Segments(l)) = argv.get_mut(idx) {
-                                    let frag = *f as usize;
-                                    let r = match v {
-                                        Value::Str(r, _) => r,
-                                        _ => &Range { start: 0, end: 0 }, // FIXME
-                                    };
-                                    if l.len() <= frag {
-                                        l.resize(frag + 1, 0..0);
-                                        l[frag] = r.clone();
-                                    }
-                                }
-                            }
-                            _ => new.push((k.clone(), v.clone())),
-                        };
-                    }
 
-                    // Strip data from the middle of excessively long ARGV
-                    if let Some(argv_max) = self.settings.execve_argv_limit_bytes {
-                        let argv_size: usize = argv.iter().map(|v| 1 + v.str_len()).sum();
-                        if argv_size > argv_max {
-                            let diff = argv_size - argv_max;
-                            let skip_range = (argv_size - diff) / 2..(argv_size + diff) / 2;
-                            argv = {
-                                let mut filtered = Vec::new();
-                                let mut start = 0;
-                                let mut skipped: Option<(usize, usize)> = None;
-                                for arg in argv.iter() {
-                                    let end = start + arg.str_len();
-                                    if skip_range.contains(&start) || skip_range.contains(&end) {
-                                        skipped = match skipped {
-                                            None => Some((1, end - start)),
-                                            Some((args, bytes)) => {
-                                                Some((args + 1, 1 + bytes + (end - start)))
-                                            }
-                                        };
-                                    } else {
-                                        if let Some((args, bytes)) = skipped {
-                                            filtered.push(Value::Skipped((args, bytes)));
-                                            skipped = None;
-                                        }
-                                        filtered.push(arg.clone());
-                                    }
-                                    start = end + 1;
-                                }
-                                filtered
-                            };
+        if let Some(EventValues::Single(rv)) = ev.body.get_mut(&SYSCALL) {
+            let mut extra = 0;
+            if self.settings.translate_universal {
+                extra += 16 // syscall, arch
+            }
+            if self.settings.translate_userdb {
+                extra += 72 // *uid, *gid: 9 entries.
+            }
+            rv.raw.reserve(extra);
+            let mut new = Vec::with_capacity(rv.elems.len() - 3);
+            let mut nrv = Record::default();
+            let mut argv = Vec::with_capacity(4);
+            for (k, v) in &rv.elems {
+                match (k, v) {
+                    (Key::Arg(_, None), _) => {
+                        // FIXME: check argv length
+                        argv.push(v.clone());
+                        continue;
+                    }
+                    (Key::ArgLen(_), _) => continue,
+                    (Key::Common(c), Value::Number(n)) => match (c, n) {
+                        (Common::Arch, Number::Hex(n)) if arch.is_none() => arch = Some(*n as u32),
+                        (Common::Syscall, Number::Dec(n)) if syscall.is_none() => {
+                            syscall = Some(*n as u32)
                         }
-                    }
-
-                    // ARGV
-                    if self.settings.execve_argv_list {
-                        new.push((Key::Literal("ARGV"), Value::List(argv.clone())));
-                    }
-                    // ARGV_STR
-                    if self.settings.execve_argv_string {
-                        new.push((
-                            Key::Literal("ARGV_STR"),
-                            Value::StringifiedList(argv.clone()),
-                        ));
-                    }
-                    // ENV
-                    match pid {
-                        Some(pid) if !self.settings.execve_env.is_empty() => {
-                            if let Ok(vars) =
-                                get_environ(pid, |k| self.settings.execve_env.contains(k))
-                            {
-                                let map = vars
-                                    .iter()
-                                    .map(|(k, v)| {
-                                        (SimpleKey::Str(rv.put(k)), SimpleValue::Str(rv.put(v)))
-                                    })
-                                    .collect();
-                                new.push((Key::Literal("ENV"), Value::Map(map)));
-                            }
-                        }
+                        (Common::Pid, Number::Dec(n)) if pid.is_none() => pid = Some(*n as u32),
+                        (Common::PPid, Number::Dec(n)) if ppid.is_none() => ppid = Some(*n as u32),
                         _ => (),
-                    };
+                    },
+                    (Key::Common(c), Value::Str(r, _)) => match c {
+                        Common::Comm if comm.is_none() => comm = Some(rv.raw[r.clone()].into()),
+                        Common::Exe if exe.is_none() => exe = Some(rv.raw[r.clone()].into()),
+                        Common::Key if key.is_none() => key = Some(rv.raw[r.clone()].into()),
+                        _ => (),
+                    },
+                    (Key::Name(name), Value::Str(_, _)) => {
+                        match name.as_ref() {
+                            b"ARCH" | b"SYSCALL" if self.settings.translate_universal => continue,
+                            _ => (),
+                        };
+                    }
+                    _ => {
+                        if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
+                            nrv.elems.push((k, v));
+                        }
+                    }
+                };
+                new.push((k.clone(), v.clone()));
+            }
+            new.push((Key::Literal("ARGV"), Value::List(argv)));
+            rv.elems = new;
+            rv.extend(nrv);
+        }
 
-                    rv.elems = new;
-
-                    // register process, add propagated labels from
-                    // parent if applicable
-                    if let (Some(pid), Some(ppid)) = (pid, ppid) {
-                        let argv = argv
-                            .iter()
-                            .filter_map(|v| match v {
-                                Value::Str(r, _) => Some(Vec::from(&rv.raw[r.clone()])),
-                                _ => None,
-                            })
-                            .collect();
-                        self.processes.add_process(
-                            pid,
-                            ppid,
-                            ev.id,
-                            comm.clone().map(|s| s.to_vec()),
-                            exe.clone().map(|s| s.to_vec()),
-                            argv,
-                        );
-
-                        if let Some(parent) = self.processes.get_process(ppid) {
-                            for l in self
-                                .settings
-                                .proc_propagate_labels
-                                .intersection(&parent.labels)
-                            {
-                                self.processes.add_label(pid, l);
+        if let Some(EventValues::Single(rv)) = ev.body.get_mut(&EXECVE) {
+            let mut new: Vec<(Key, Value)> = Vec::with_capacity(2);
+            let mut argv: Vec<Value> = Vec::with_capacity(1);
+            for (k, v) in &rv.elems {
+                match k {
+                    Key::ArgLen(_) => continue,
+                    Key::Arg(i, None) => {
+                        let idx = *i as usize;
+                        if argv.len() <= idx {
+                            argv.resize(idx + 1, Value::Empty);
+                        };
+                        argv[idx] = v.clone();
+                    }
+                    Key::Arg(i, Some(f)) => {
+                        let idx = *i as usize;
+                        if argv.len() <= idx {
+                            argv.resize(idx + 1, Value::Empty);
+                            argv[idx] = Value::Segments(Vec::new());
+                        }
+                        if let Some(Value::Segments(l)) = argv.get_mut(idx) {
+                            let frag = *f as usize;
+                            let r = match v {
+                                Value::Str(r, _) => r,
+                                _ => &Range { start: 0, end: 0 }, // FIXME
+                            };
+                            if l.len() <= frag {
+                                l.resize(frag + 1, 0..0);
+                                l[frag] = r.clone();
                             }
                         }
                     }
-                }
-                (&SOCKADDR, EventValues::Multi(rvs)) => {
-                    for mut rv in rvs {
-                        let mut new = Vec::with_capacity(rv.elems.len());
-                        let mut translated = None;
-                        for (k, v) in &rv.elems.clone() {
-                            if let (Key::Name(name), Value::Str(vr, _)) = (k, v) {
-                                match name.as_ref() {
-                                    b"saddr" if self.settings.translate_universal => {
-                                        if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
-                                            translated = Some((
-                                                Key::Literal("SADDR"),
-                                                translate_socketaddr(rv, sa),
-                                            ));
-                                            continue;
-                                        }
+                    _ => new.push((k.clone(), v.clone())),
+                };
+            }
+
+            // Strip data from the middle of excessively long ARGV
+            if let Some(argv_max) = self.settings.execve_argv_limit_bytes {
+                let argv_size: usize = argv.iter().map(|v| 1 + v.str_len()).sum();
+                if argv_size > argv_max {
+                    let diff = argv_size - argv_max;
+                    let skip_range = (argv_size - diff) / 2..(argv_size + diff) / 2;
+                    argv = {
+                        let mut filtered = Vec::new();
+                        let mut start = 0;
+                        let mut skipped: Option<(usize, usize)> = None;
+                        for arg in argv.iter() {
+                            let end = start + arg.str_len();
+                            if skip_range.contains(&start) || skip_range.contains(&end) {
+                                skipped = match skipped {
+                                    None => Some((1, end - start)),
+                                    Some((args, bytes)) => {
+                                        Some((args + 1, 1 + bytes + (end - start)))
                                     }
-                                    b"SADDR" if self.settings.translate_universal => continue,
-                                    _ => {}
+                                };
+                            } else {
+                                if let Some((args, bytes)) = skipped {
+                                    filtered.push(Value::Skipped((args, bytes)));
+                                    skipped = None;
                                 }
+                                filtered.push(arg.clone());
                             }
-                            new.push((k.clone(), v.clone()));
+                            start = end + 1;
                         }
-                        if let Some((k, v)) = translated {
-                            new.push((k, v))
-                        }
-                        rv.elems = new;
+                        filtered
+                    };
+                }
+            }
+
+            // ARGV
+            if self.settings.execve_argv_list {
+                new.push((Key::Literal("ARGV"), Value::List(argv.clone())));
+            }
+            // ARGV_STR
+            if self.settings.execve_argv_string {
+                new.push((
+                    Key::Literal("ARGV_STR"),
+                    Value::StringifiedList(argv.clone()),
+                ));
+            }
+            execve_argv = Some(
+                argv.iter()
+                    .filter_map(|v| match v {
+                        Value::Str(r, _) => Some(Vec::from(&rv.raw[r.clone()])),
+                        _ => None,
+                    })
+                    .collect(),
+            );
+
+            // ENV
+            match pid {
+                Some(pid) if !self.settings.execve_env.is_empty() => {
+                    if let Ok(vars) = get_environ(pid, |k| self.settings.execve_env.contains(k)) {
+                        let map = vars
+                            .iter()
+                            .map(|(k, v)| (SimpleKey::Str(rv.put(k)), SimpleValue::Str(rv.put(v))))
+                            .collect();
+                        new.push((Key::Literal("ENV"), Value::Map(map)));
                     }
                 }
-                (&PROCTITLE, EventValues::Single(rv)) => {
-                    if let Some(v) = rv.get(b"proctitle") {
-                        if let Value::Str(r, _) = v.value {
-                            let mut argv: Vec<Value> = Vec::new();
-                            let mut prev = r.start;
-                            for i in r.start..=r.end {
-                                if (i == r.end || rv.raw[i] == 0) && !(prev..i).is_empty() {
-                                    argv.push(Value::Str(prev..i, Quote::None));
-                                    prev = i + 1;
-                                }
-                            }
-                            rv.elems = vec![(Key::Literal("ARGV"), Value::List(argv))];
-                        }
+                _ => (),
+            };
+
+            rv.elems = new;
+        }
+        // execve end (FIXME rm comment)
+
+        // new syscall lookup (FIXME rm comment)
+        if let (Some(arch), Some(syscall)) = (arch, syscall) {
+            if let Some(an) = ARCH_NAMES.get(&(arch as u32)) {
+                arch_name = Some(*an);
+                if let Some(sn) = SYSCALL_NAMES
+                    .get(*an)
+                    .and_then(|syscall_tbl| syscall_tbl.get(&(syscall as u32)))
+                {
+                    syscall_name = Some(sn);
+                    if sn.contains("execve") {
+                        syscall_is_exec = true;
                     }
                 }
-                (_, EventValues::Single(rv)) => {
-                    for (k, v) in &rv.elems.clone() {
-                        if let Some((k, v)) = self.translate_userdb(rv, k, v) {
-                            rv.elems.push((k, v));
-                        }
-                    }
-                }
-                (_, EventValues::Multi(rvs)) => {
-                    for rv in rvs {
-                        for (k, v) in &rv.elems.clone() {
-                            if let Some((k, v)) = self.translate_userdb(rv, k, v) {
-                                rv.elems.push((k, v));
-                            }
-                        }
-                    }
+            }
+        }
+
+        // register process, add propagated labels from
+        // parent if applicable
+        if let (Some(pid), Some(ppid), true) = (pid, ppid, syscall_is_exec) {
+            self.processes.add_process(
+                pid,
+                ppid,
+                ev.id,
+                comm.as_ref().map(|s| s.to_vec()),
+                exe.as_ref().map(|s| s.to_vec()),
+                execve_argv.unwrap_or_default(),
+            );
+
+            parent = self.processes.get_process(ppid);
+            if let Some(parent) = &parent {
+                for l in self
+                    .settings
+                    .proc_propagate_labels
+                    .intersection(&parent.labels)
+                {
+                    self.processes.add_label(pid, l);
                 }
             }
         }
@@ -706,50 +627,94 @@ impl<'a> Coalesce<'a> {
             }
         }
 
+        // Since the event be dropped here, manipulation of any other
+        // state should not occur below.
         if let Some(key) = &key {
             if self.settings.filter_keys.contains(key.as_ref()) {
                 ev.filter = true;
+                return;
             }
         }
 
-        // PARENT_INFO
-        if let Some(ppid) = ppid {
-            if let Some(p) = self.processes.get_process(ppid) {
-                let mut pi = Record::default();
-                if let Some(id) = p.event_id {
-                    let r = pi.put(format!("{}", id));
-                    pi.elems
-                        .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
+        for tv in ev.body.iter_mut() {
+            match tv {
+                (&SYSCALL, EventValues::Single(_)) | (&EXECVE, EventValues::Single(_)) => {}
+                (&SOCKADDR, EventValues::Multi(rvs)) => {
+                    for mut rv in rvs {
+                        let mut new = Vec::with_capacity(rv.elems.len());
+                        let mut nrv = Record::default();
+                        for (k, v) in &rv.elems {
+                            if let (Key::Name(name), Value::Str(vr, _)) = (k, v) {
+                                match name.as_ref() {
+                                    b"saddr" if self.settings.translate_universal => {
+                                        if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
+                                            let kv = (
+                                                Key::Literal("SADDR"),
+                                                translate_socketaddr(&mut nrv, sa),
+                                            );
+                                            nrv.elems.push(kv);
+                                            continue;
+                                        }
+                                    }
+                                    b"SADDR" if self.settings.translate_universal => continue,
+                                    _ => {}
+                                }
+                            }
+                            new.push((k.clone(), v.clone()));
+                        }
+                        rv.elems = new;
+                        rv.extend(nrv);
+                    }
                 }
-                if let Some(comm) = p.comm {
-                    let r = pi.put(&comm);
-                    pi.elems
-                        .push((Key::Literal("comm"), Value::Str(r, Quote::None)));
+                (&PROCTITLE, EventValues::Single(rv)) => {
+                    if let Some(v) = rv.get(b"proctitle") {
+                        if let Value::Str(r, _) = v.value {
+                            let mut argv: Vec<Value> = Vec::new();
+                            let mut prev = r.start;
+                            for i in r.start..=r.end {
+                                if (i == r.end || rv.raw[i] == 0) && !(prev..i).is_empty() {
+                                    argv.push(Value::Str(prev..i, Quote::None));
+                                    prev = i + 1;
+                                }
+                            }
+                            rv.elems = vec![(Key::Literal("ARGV"), Value::List(argv))];
+                        }
+                    }
                 }
-                if let Some(exe) = p.exe {
-                    let r = pi.put(&exe);
-                    pi.elems
-                        .push((Key::Literal("exe"), Value::Str(r, Quote::None)));
+                (_, EventValues::Single(rv)) => {
+                    let mut nrv = Record::default();
+                    for (k, v) in &rv.elems {
+                        if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
+                            nrv.elems.push((k, v));
+                        }
+                    }
+                    rv.extend(nrv);
                 }
-                let kv = (
-                    Key::Literal("ppid"),
-                    Value::Number(Number::Dec(p.ppid as i64)),
-                );
-                pi.elems.push(kv);
-                ev.body.insert(PARENT_INFO, EventValues::Single(pi));
+                (_, EventValues::Multi(rvs)) => {
+                    for rv in rvs {
+                        let mut nrv = Record::default();
+                        for (k, v) in &rv.elems {
+                            if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
+                                nrv.elems.push((k, v));
+                            }
+                        }
+                        rv.extend(nrv);
+                    }
+                }
             }
         }
 
         if let (Some(pid), Some(EventValues::Single(sc))) = (pid, ev.body.get_mut(&SYSCALL)) {
-            if let Some(p) = self.processes.get_process(pid) {
-                if !p.labels.is_empty() {
-                    if p.labels
+            if let Some(proc) = self.processes.get_process(pid) {
+                if !proc.labels.is_empty() {
+                    if proc
+                        .labels
                         .iter()
                         .any(|x| self.settings.filter_labels.contains(x))
                     {
                         ev.filter = true;
                     }
-                    let labels = p
+                    let labels = proc
                         .labels
                         .iter()
                         .map(|l| Value::Str(sc.put(l), Quote::None))
@@ -757,7 +722,40 @@ impl<'a> Coalesce<'a> {
                     sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
                 }
 
-                if let (true, Some(c)) = (self.settings.enrich_container, &p.container_info) {
+                if let (true, Some(an), Some(sn)) =
+                    (self.settings.translate_universal, arch_name, syscall_name)
+                {
+                    sc.elems.push((Key::Literal("ARCH"), Value::Literal(an)));
+                    sc.elems.push((Key::Literal("SYSCALL"), Value::Literal(sn)));
+                }
+
+                // PARENT_INFO
+                if let Some(parent) = &parent {
+                    let mut pi = Record::default();
+                    if let Some(id) = parent.event_id {
+                        let r = pi.put(format!("{}", id));
+                        pi.elems
+                            .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
+                    }
+                    if let Some(comm) = &parent.comm {
+                        let r = pi.put(&comm);
+                        pi.elems
+                            .push((Key::Literal("comm"), Value::Str(r, Quote::None)));
+                    }
+                    if let Some(exe) = &parent.exe {
+                        let r = pi.put(&exe);
+                        pi.elems
+                            .push((Key::Literal("exe"), Value::Str(r, Quote::None)));
+                    }
+                    let kv = (
+                        Key::Literal("ppid"),
+                        Value::Number(Number::Dec(parent.ppid as i64)),
+                    );
+                    pi.elems.push(kv);
+                    ev.body.insert(PARENT_INFO, EventValues::Single(pi));
+                }
+
+                if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                     let mut ci = Record::default();
                     let r = ci.put(&c.id);
                     ci.elems
