@@ -40,8 +40,8 @@ fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
             buf.push_str(def.as_str());
             buf.push(',');
         }
-        buf.push_str("] { t.insert(*num, name.as_bytes()); } ");
-        buf.push_str(format!(" hm.insert(&b\"{}\"[..], t); }}\n", &arch).as_str());
+        buf.push_str("] { t.insert(*num, *name); } ");
+        buf.push_str(format!(" hm.insert(\"{}\", t); }}\n", &arch).as_str());
     }
     Ok(buf)
 }
