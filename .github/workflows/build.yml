@@ -30,16 +30,20 @@ jobs:
 
   build_n_test:
     runs-on: ubuntu-latest
+    container: ubuntu:latest
     steps:
     - uses: actions/checkout@v2
+    - name: Install dependency
+      run: |
+        apt-get -q update
+        apt-get -qy dist-upgrade
+        apt-get -qy install curl build-essential libclang-dev libacl1-dev selinux-policy-dev libgoogle-perftools-dev
+
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
 
-    - name: Install dependency
-      run: sudo apt-get -qy install libacl1-dev selinux-policy-dev libgoogle-perftools-dev
-
-    - uses: actions/cache@v2
+    - uses: actions/cache@v3
       with:
         path: |
           ~/.cargo/bin/
@@ -70,6 +74,7 @@ jobs:
         run: |
           cargo update --package bindgen --precise 0.59.2
           cargo update --package indexmap --precise 1.8.2
+          cargo update --package nix --precise 0.25.1
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build
