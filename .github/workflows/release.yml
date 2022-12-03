@@ -35,16 +35,12 @@ jobs:
   build-musl:
     needs: prep
     runs-on: ubuntu-latest
-    container: alpine:3.14
+    container: alpine:3.16
     steps:
       - name: Prepare
         run: |
-          apk add git ca-certificates rust cargo clang acl-static musl-dev linux-headers jq
+          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers
       - uses: actions/checkout@v2
-      - name: Tweak build dependencies
-        run: |
-          cargo update --package bindgen --precise 0.59.2
-          cargo update --package indexmap --precise 1.8.2
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
