@@ -698,7 +698,7 @@ impl Serialize for RValue<'_> {
                         SimpleKey::Str(r) => {
                             map.serialize_key(&self.raw[r.clone()].to_quoted_string())?
                         }
-                        SimpleKey::Literal(n) => map.serialize_value(n)?,
+                        SimpleKey::Literal(n) => map.serialize_key(n)?,
                     }
                     match v {
                         SimpleValue::Str(r) => {
