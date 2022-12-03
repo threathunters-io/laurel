@@ -594,9 +594,7 @@ impl<'a> Coalesce<'a> {
 
             rv.elems = new;
         }
-        // execve end (FIXME rm comment)
 
-        // new syscall lookup (FIXME rm comment)
         if let (Some(arch), Some(syscall)) = (arch, syscall) {
             if let Some(an) = ARCH_NAMES.get(&(arch as u32)) {
                 arch_name = Some(*an);
