@@ -386,6 +386,41 @@ impl<'a> Coalesce<'a> {
         None
     }
 
+    fn enrich_generic_pid(&mut self, rv: &mut Record, k: &Key, v: &Value) -> Option<(Key, Value)> {
+        let pid = match v {
+            Value::Number(Number::Dec(n)) => *n,
+            _ => return None,
+        };
+        match &k {
+            Key::Name(r) if r.ends_with(b"pid") => {
+                let key = Key::NameTranslated(r.clone());
+                let proc = self.processes.get_process(pid as _)?;
+                if proc.event_id.is_none() && proc.exe.is_none() && proc.ppid == 0 {
+                    None
+                } else {
+                    let mut m = Vec::with_capacity(3);
+                    if let Some(id) = proc.event_id {
+                        m.push((
+                            SimpleKey::Literal("ID"),
+                            SimpleValue::Str(rv.put(format!("{}", id))),
+                        ));
+                    }
+                    if let Some(exe) = &proc.exe {
+                        m.push((SimpleKey::Literal("exe"), SimpleValue::Str(rv.put(exe))));
+                    }
+                    if proc.ppid != 0 {
+                        m.push((
+                            SimpleKey::Literal("ppid"),
+                            SimpleValue::Number(Number::Dec(proc.ppid.into())),
+                        ));
+                    }
+                    Some((key, Value::Map(m)))
+                }
+            }
+            _ => None,
+        }
+    }
+
     /// Rewrite event to normal form
     ///
     /// This function
@@ -406,8 +441,6 @@ impl<'a> Coalesce<'a> {
 
         let mut arch_name: Option<&'static str> = None;
         let mut syscall_name: Option<&'static str> = None;
-
-        let mut parent: Option<Process> = None;
 
         let mut syscall_is_exec = false;
 
@@ -581,6 +614,8 @@ impl<'a> Coalesce<'a> {
 
         // register process, add propagated labels from
         // parent if applicable
+        let parent: Option<Process> = ppid.and_then(|ppid| self.processes.get_process(ppid));
+
         if let (Some(pid), Some(ppid), true) = (pid, ppid, syscall_is_exec) {
             self.processes.add_process(
                 pid,
@@ -590,7 +625,6 @@ impl<'a> Coalesce<'a> {
                 exe.as_ref().map(|s| s.to_vec()),
             );
 
-            parent = self.processes.get_process(ppid);
             if let Some(parent) = &parent {
                 for l in self
                     .settings
@@ -624,6 +658,8 @@ impl<'a> Coalesce<'a> {
                 return;
             }
         }
+
+        let proc: Option<Process> = pid.and_then(|pid| self.processes.get_process(pid));
 
         for tv in ev.body.iter_mut() {
             match tv {
@@ -675,6 +711,8 @@ impl<'a> Coalesce<'a> {
                     for (k, v) in &rv.elems {
                         if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
                             nrv.elems.push((k, v));
+                        } else if let Some((k, v)) = self.enrich_generic_pid(&mut nrv, k, v) {
+                            nrv.elems.push((k, v));
                         }
                     }
                     rv.extend(nrv);
@@ -685,6 +723,8 @@ impl<'a> Coalesce<'a> {
                         for (k, v) in &rv.elems {
                             if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
                                 nrv.elems.push((k, v));
+                            } else if let Some((k, v)) = self.enrich_generic_pid(&mut nrv, k, v) {
+                                nrv.elems.push((k, v));
                             }
                         }
                         rv.extend(nrv);
@@ -693,8 +733,46 @@ impl<'a> Coalesce<'a> {
             }
         }
 
-        if let (Some(pid), Some(EventValues::Single(sc))) = (pid, ev.body.get_mut(&SYSCALL)) {
-            if let Some(proc) = self.processes.get_process(pid) {
+        if let Some(EventValues::Single(sc)) = ev.body.get_mut(&SYSCALL) {
+            if let (true, Some(an), Some(sn)) =
+                (self.settings.translate_universal, arch_name, syscall_name)
+            {
+                sc.elems.push((Key::Literal("ARCH"), Value::Literal(an)));
+                sc.elems.push((Key::Literal("SYSCALL"), Value::Literal(sn)));
+            }
+
+            if let Some(parent) = &parent {
+                let mut m = Vec::with_capacity(4);
+                if let Some(id) = &parent.event_id {
+                    m.push((
+                        SimpleKey::Literal("EVENT_ID"),
+                        SimpleValue::Str(sc.put(format!("{}", id))),
+                    ));
+                }
+                if let Some(comm) = &parent.comm {
+                    m.push((SimpleKey::Literal("comm"), SimpleValue::Str(sc.put(comm))));
+                }
+                if let Some(exe) = &parent.exe {
+                    m.push((SimpleKey::Literal("exe"), SimpleValue::Str(sc.put(exe))));
+                }
+                if parent.ppid != 0 {
+                    m.push((
+                        SimpleKey::Literal("ppid"),
+                        SimpleValue::Number(Number::Dec(parent.ppid.into())),
+                    ));
+                }
+                sc.elems.push((Key::Literal("PPID"), Value::Map(m)));
+            }
+
+            if let Some(proc) = proc {
+                if let Some(event_id) = proc.event_id {
+                    let m = Value::Map(vec![(
+                        SimpleKey::Literal("EVENT_ID"),
+                        SimpleValue::Str(sc.put(format!("{}", event_id))),
+                    )]);
+                    sc.elems.push((Key::Literal("PID"), m));
+                }
+
                 if !proc.labels.is_empty() {
                     if proc
                         .labels
@@ -709,39 +787,6 @@ impl<'a> Coalesce<'a> {
                         .map(|l| Value::Str(sc.put(l), Quote::None))
                         .collect::<Vec<_>>();
                     sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
-                }
-
-                if let (true, Some(an), Some(sn)) =
-                    (self.settings.translate_universal, arch_name, syscall_name)
-                {
-                    sc.elems.push((Key::Literal("ARCH"), Value::Literal(an)));
-                    sc.elems.push((Key::Literal("SYSCALL"), Value::Literal(sn)));
-                }
-
-                // PARENT_INFO
-                if let Some(parent) = &parent {
-                    let mut pi = Record::default();
-                    if let Some(id) = parent.event_id {
-                        let r = pi.put(format!("{}", id));
-                        pi.elems
-                            .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
-                    }
-                    if let Some(comm) = &parent.comm {
-                        let r = pi.put(&comm);
-                        pi.elems
-                            .push((Key::Literal("comm"), Value::Str(r, Quote::None)));
-                    }
-                    if let Some(exe) = &parent.exe {
-                        let r = pi.put(&exe);
-                        pi.elems
-                            .push((Key::Literal("exe"), Value::Str(r, Quote::None)));
-                    }
-                    let kv = (
-                        Key::Literal("ppid"),
-                        Value::Number(Number::Dec(parent.ppid as i64)),
-                    );
-                    pi.elems.push(kv);
-                    ev.body.insert(PARENT_INFO, EventValues::Single(pi));
                 }
 
                 if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
