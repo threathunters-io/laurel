@@ -60,21 +60,13 @@ jobs:
 
   build_static_musl:
     runs-on: ubuntu-latest
-    container: alpine:3.14
+    container: alpine:3.16
     steps:
       - name: Prepare
         run: |
-          apk add git ca-certificates \
-                  rust cargo \
-                  clang \
-                  acl-static musl-dev linux-headers \
-                  binutils file jq
+          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers
+          apk add binutils file jq
       - uses: actions/checkout@v2
-      - name: Tweak build dependencies
-        run: |
-          cargo update --package bindgen --precise 0.59.2
-          cargo update --package indexmap --precise 1.8.2
-          cargo update --package nix --precise 0.25.1
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build
@@ -92,18 +84,14 @@ jobs:
 
   build_dynamic_glibc:
     runs-on: ubuntu-latest
-    container: debian:buster-slim
+    container: debian:bullseye-slim
     steps:
       - name: Prepare
         run: |
           apt-get -q update
           apt-get -qy upgrade
-          apt-get -qy install ca-certificates rustc-mozilla cargo clang libacl1-dev jq
+          apt-get -qy install ca-certificates rustc-mozilla cargo-mozilla clang libacl1-dev jq file
       - uses: actions/checkout@v2
-      - name: Tweak build dependencies
-        run: |
-          cargo update --package bindgen --precise 0.59.2
-          cargo update --package indexmap --precise 1.8.2
       - name: Build
         run: |
           cargo build
