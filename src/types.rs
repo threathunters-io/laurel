@@ -419,8 +419,31 @@ impl Record {
                         k,
                         match v {
                             Value::Str(r, q) => Value::Str(r.offset(rawlen), q),
-                            Value::Empty | Value::Number(_) => v,
-                            _ => panic!("extend after normalize?"),
+                            Value::Empty | Value::Number(_) | Value::Literal(_) => v,
+                            Value::Map(kv) => Value::Map(
+                                kv.into_iter()
+                                    .map(|(k, v)| {
+                                        (
+                                            k,
+                                            match v {
+                                                SimpleValue::Str(r) => {
+                                                    SimpleValue::Str(r.offset(rawlen))
+                                                }
+                                                _ => v,
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                            ),
+                            Value::Segments(_) => {
+                                panic!("Value::Segments should only exist in EXECVE")
+                            }
+                            Value::Skipped(_) => {
+                                panic!("Value::Skipped should only exist in EXECVE")
+                            }
+                            Value::List(_) | Value::StringifiedList(_) => {
+                                panic!("Value::List should only exist in EXECVE")
+                            }
                         },
                     )
                 })
