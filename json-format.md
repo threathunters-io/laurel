@@ -19,6 +19,8 @@ Some entries contain transformed data as lists:
 
 More transformations will likely be added in the future.
 
+Following _auditd's_ convention, all-caps key names are used for information added by _LAUREL_. 
+
 ## Encoding of invalid UTF-8 strings and binary data
 
 - Most byte values that represent printable ASCII characters are reproduced as-is (but are subject to JSON string escaping rules).
@@ -33,3 +35,4 @@ Rationale: The [JSON specification](https://datatracker.ietf.org/doc/html/rfc825
 ## Numeric values
 
 Numbers in the Linux audit logs may have been formatted as decimal (e.g. user id), hexadecimal (e.g. syscall arguments) or octal numbers (e.g. file modes). Decimal numbers are serialized as regular JSON numbers, i.e. without double quotes. Since JSON number literals do not support octal or hexadecimal encoding, those numbers are serialized as JSON strings with a `0o` or `0x` prefix, e.g. `"0o1337"` or `"0xcafe"`.
+

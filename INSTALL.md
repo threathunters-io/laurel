@@ -2,7 +2,7 @@
 
 ## Either build from source…
 
-_LAUREL_ is written in Rust. To build it, a reasonably recent Rust compiler (we currently use 1.48) is required. Also:
+_LAUREL_ is written in Rust. To build it, a reasonably recent Rust compiler is required, we currently use 1.48 for development. Also:
 - `cargo`
 - `clang`
 - the `libacl` library and its header files (Debian: `libacl1-dev`, RedHat: `libacl-devel`, Alpine: `acl-dev`)
@@ -19,6 +19,7 @@ For tagged releases, two types of binaries are created:
 
 - a statically-linked, [musl-libc](https://musl.libc.org) version, built on Alpine 3.14,
 - a dynamically-linked version based on GNU libc, built on Debian 10.
+- a dynamically-linked version based on an older version of GNU libc, built on CentOS 7.
 
 The static build lacks the ability to perform user and group lookups using the _nsswitch_ facility used on GNU-libc-based systems, therefore it should be avoided on systems where other user/group databases than local `/etc/passwd` and `/etc/group` files are used (cf. issue #84).
 
