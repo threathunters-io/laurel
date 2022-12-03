@@ -64,6 +64,9 @@ user-db = false
 
 [enrich]
 
+# Add context (event-id, comm, exe, ppid) for *pid entries
+pid = true
+
 # List of environment variables to log for every EXECVE event
 execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
 

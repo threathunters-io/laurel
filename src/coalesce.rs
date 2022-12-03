@@ -94,6 +94,7 @@ pub struct Settings<'a> {
     pub execve_env: HashSet<Vec<u8>>,
     pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
+    pub enrich_pid: bool,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
     pub proc_propagate_labels: HashSet<Vec<u8>>,
@@ -115,6 +116,7 @@ impl Default for Settings<'_> {
             execve_env: HashSet::new(),
             execve_argv_limit_bytes: None,
             enrich_container: false,
+            enrich_pid: true,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
             translate_universal: false,
@@ -391,6 +393,9 @@ impl<'a> Coalesce<'a> {
             Value::Number(Number::Dec(n)) => *n,
             _ => return None,
         };
+        if !self.settings.enrich_pid {
+            return None;
+        }
         match &k {
             Key::Name(r) if r.ends_with(b"pid") => {
                 let key = Key::NameTranslated(r.clone());
@@ -739,7 +744,7 @@ impl<'a> Coalesce<'a> {
                 sc.elems.push((Key::Literal("SYSCALL"), Value::Literal(sn)));
             }
 
-            if let Some(parent) = &parent {
+            if let (true, Some(parent)) = (self.settings.enrich_pid, &parent) {
                 let mut m = Vec::with_capacity(4);
                 if let Some(id) = &parent.event_id {
                     m.push((
@@ -763,7 +768,7 @@ impl<'a> Coalesce<'a> {
             }
 
             if let Some(proc) = proc {
-                if let Some(event_id) = proc.event_id {
+                if let (true, Some(event_id)) = (self.settings.enrich_pid, proc.event_id) {
                     let m = Value::Map(vec![(
                         SimpleKey::Literal("EVENT_ID"),
                         SimpleValue::Str(sc.put(format!("{}", event_id))),
