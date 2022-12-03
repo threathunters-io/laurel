@@ -65,6 +65,7 @@ pub struct Enrich {
     pub execve_env: HashSet<String>,
     #[serde(default)]
     pub container: bool,
+    pub pid: bool,
 }
 
 impl Default for Enrich {
@@ -75,6 +76,7 @@ impl Default for Enrich {
         Enrich {
             execve_env,
             container: false,
+            pid: true,
         }
     }
 }
@@ -178,6 +180,7 @@ impl Config {
                 .map(|s| s.as_bytes().to_vec())
                 .collect(),
             enrich_container: self.enrich.container,
+            enrich_pid: self.enrich.pid,
             proc_label_keys: self
                 .label_process
                 .label_keys
