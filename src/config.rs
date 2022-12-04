@@ -32,9 +32,15 @@ pub enum ArrayOrString {
     String,
 }
 
+fn execve_argv_default() -> HashSet<ArrayOrString> {
+    let mut execve_argv = HashSet::new();
+    execve_argv.insert(ArrayOrString::Array);
+    execve_argv
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Transform {
-    #[serde(default, rename = "execve-argv")]
+    #[serde(default = "execve_argv_default", rename = "execve-argv")]
     pub execve_argv: HashSet<ArrayOrString>,
     #[serde(default, rename = "execve-argv-limit-bytes")]
     pub execve_argv_limit_bytes: Option<usize>,
@@ -42,10 +48,8 @@ pub struct Transform {
 
 impl Default for Transform {
     fn default() -> Self {
-        let mut execve_argv = HashSet::new();
-        execve_argv.insert(ArrayOrString::Array);
         Transform {
-            execve_argv,
+            execve_argv: execve_argv_default(),
             execve_argv_limit_bytes: None,
         }
     }
@@ -59,23 +63,32 @@ pub struct Translate {
     pub userdb: bool,
 }
 
+fn execve_env_default() -> HashSet<String> {
+    let mut execve_env = HashSet::new();
+    execve_env.insert("LD_PRELOAD".into());
+    execve_env.insert("LD_LIBRARY_PATH".into());
+    execve_env
+}
+
+fn true_value() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Enrich {
     #[serde(default, rename = "execve-env")]
     pub execve_env: HashSet<String>,
-    #[serde(default)]
+    #[serde(default = "true_value")]
     pub container: bool,
+    #[serde(default = "true_value")]
     pub pid: bool,
 }
 
 impl Default for Enrich {
     fn default() -> Self {
-        let mut execve_env = HashSet::new();
-        execve_env.insert("LD_PRELOAD".into());
-        execve_env.insert("LD_LIBRARY_PATH".into());
         Enrich {
-            execve_env,
-            container: false,
+            execve_env: execve_env_default(),
+            container: true,
             pid: true,
         }
     }
