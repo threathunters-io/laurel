@@ -1,7 +1,8 @@
 use posix_acl::{PosixACL, Qualifier, ACL_READ};
 use std::ffi::{OsStr, OsString};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, remove_file, rename, File, OpenOptions};
 use std::io::{Error, ErrorKind, Result, Seek, SeekFrom, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 
 use nix::sys::stat::{fchmod, Mode};
@@ -71,21 +72,52 @@ impl FileRotate {
         Ok(())
     }
 
+    /// Opens main file, re-using existing file if prersent.
+    ///
+    /// If the file does not exist, a new temporary file is crerated,
+    /// permissions are adjusted, and it is renamed to the final
+    /// destination.
     fn open(&mut self) -> Result<()> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.basename)?;
-        fchmod(file.as_raw_fd(), Mode::from_bits(0o600).unwrap())
-            .map_err(|e| Error::new(ErrorKind::Other, e))?;
         let mut acl = PosixACL::new(0o600);
         for uid in &self.uids {
             acl.set(Qualifier::User(uid.as_raw()), ACL_READ);
         }
-        acl.write_acl(&self.basename)
-            .map_err(|e| Error::new(e.kind(), e))?;
-        self.offset = file.seek(SeekFrom::End(0))?;
-        self.file = Some(file);
+
+        if let Ok(mut f) = OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(&self.basename)
+        {
+            fchmod(f.as_raw_fd(), Mode::from_bits(0o600).unwrap())
+                .map_err(|e| Error::new(ErrorKind::Other, e))?;
+            acl.write_acl(&self.basename)
+                .map_err(|e| Error::new(e.kind(), e))?;
+
+            self.offset = f.seek(SeekFrom::End(0))?;
+            self.file = Some(f);
+        } else {
+            let mut tmp = self.basename.clone();
+            tmp.push(".tmp");
+
+            remove_file(&tmp).or_else(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => Ok(()),
+                _ => Err(e),
+            })?;
+
+            let f = OpenOptions::new()
+                .create_new(true)
+                .mode(0o600)
+                .write(true)
+                .append(true)
+                .open(&tmp)?;
+
+            acl.write_acl(&tmp).map_err(|e| Error::new(e.kind(), e))?;
+
+            rename(&tmp, &self.basename)?;
+
+            self.offset = 0;
+            self.file = Some(f);
+        }
         Ok(())
     }
 }
