@@ -120,7 +120,7 @@ impl Logger {
         self.output.flush().unwrap();
     }
 
-    fn new(def: &Logfile, dir: &Path, runas_user: &User) -> Result<Self, Box<dyn Error>> {
+    fn new(def: &Logfile, dir: &Path) -> Result<Self, Box<dyn Error>> {
         match &def.file {
             p if p.as_os_str() == "-" => Ok(Logger {
                 prefix: def.line_prefix.clone(),
@@ -135,14 +135,6 @@ impl Logger {
             p => {
                 let mut filename = dir.to_path_buf();
                 filename.push(&p);
-                // Set permissions on main (active) logfile before
-                // FileRotate is created.
-                if filename.exists() {
-                    chown(&filename, Some(runas_user.uid), Some(runas_user.gid))
-                        .map_err(|e| format!("chown: {}: {}", filename.to_string_lossy(), e))?;
-                    fs::set_permissions(&filename, PermissionsExt::from_mode(0o600))
-                        .map_err(|e| format!("chmod: {}: {}", filename.to_string_lossy(), e))?;
-                }
                 let mut rot = FileRotate::new(filename);
                 for user in &def.clone().users.unwrap_or_default() {
                     rot = rot.with_uid(
@@ -237,9 +229,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
         .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
 
-    let logger = std::cell::RefCell::new(Logger::new(&config.auditlog, &dir, &runas_user)?);
+    let logger = std::cell::RefCell::new(Logger::new(&config.auditlog, &dir)?);
     let mut debug_logger = if let Some(l) = &config.debug.log {
-        Some(Logger::new(l, &dir, &runas_user)?)
+        Some(Logger::new(l, &dir)?)
     } else {
         None
     };
