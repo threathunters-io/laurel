@@ -1,0 +1,1 @@
+type=MAC_POLICY_LOAD msg=audit(1670142818.140:74058301): policy loaded auid=4294967295 ses=4294967295AUID="unset"

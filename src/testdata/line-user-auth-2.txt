@@ -1,0 +1,1 @@
+type=USER_AUTH msg=audit(1670330949.860:161339): pid=5519 uid=0 auid=4294967295 ses=4294967295 msg='op=PAM:authentication grantors=? acct="system-property('xsl:vendor')/>" exe="/usr/bin/python3.8" hostname=? addr=? terminal=? res=failed'UID="root" AUID="unset"
