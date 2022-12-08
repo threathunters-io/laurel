@@ -375,7 +375,7 @@ fn parse_unspec_value<'a>(
 ) -> IResult<&'a [u8], PValue<'a>> {
     // work around apparent AppArmor breakage
     match (ty, name) {
-        (msg_type::SYSCALL, b"subj") => {
+        (msg_type::SYSCALL, b"subj") | (msg_type::USER_AUTH, b"subj") => {
             if let Ok((input, s)) = recognize(tuple((
                 opt(tag("=")),
                 take_while(is_safe_chr),
@@ -835,5 +835,6 @@ mod test {
         do_parse(include_bytes!("testdata/line-daemon-end.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-netfilter.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-anom-abend.txt")).unwrap();
+        do_parse(include_bytes!("testdata/line-user-auth.txt")).unwrap();
     }
 }
