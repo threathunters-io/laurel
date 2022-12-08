@@ -837,4 +837,28 @@ mod test {
         do_parse(include_bytes!("testdata/line-anom-abend.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-user-auth.txt")).unwrap();
     }
+
+    #[test]
+    #[should_panic]
+    fn breakage_sockaddr_unix() {
+        do_parse(include_bytes!("testdata/line-sockaddr-unix.txt")).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn breakage_sockaddr_unknown() {
+        do_parse(include_bytes!("testdata/line-sockaddr-unknown.txt")).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn breakage_userauth2() {
+        do_parse(include_bytes!("testdata/line-user-auth-2.txt")).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn breakage_mac_policy_load() {
+        do_parse(include_bytes!("testdata/line-mac-policy-load.txt")).unwrap();
+    }
 }
