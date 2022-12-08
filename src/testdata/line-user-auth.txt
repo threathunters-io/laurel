@@ -1,0 +1,1 @@
+type=USER_AUTH msg=audit(1670424651.175:10465161): pid=1932610 uid=0 auid=4294967295 ses=4294967295 subj=/usr/sbin/cupsd (enforce) msg='op=PAM:authentication grantors=pam_permit acct="user" exe="/usr/sbin/cupsd" hostname=localhost addr=::1 terminal=cups res=success'UID="root" AUID="unset"
