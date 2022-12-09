@@ -231,7 +231,7 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (Key, PValue)> {
             alt((parse_key_a_x_len, parse_key_a_xy, parse_key_a_x, parse_key)),
             tag("="),
         )(input),
-        // SYCALL: Special case for syscall params: aX
+        // Special case for syscall params: aX
         msg_type::SYSCALL => terminated(alt((parse_key_a_x, parse_key)), tag("="))(input),
         _ => terminated(parse_key, tag("="))(input),
     }?;
@@ -307,10 +307,9 @@ fn parse_common(input: &[u8], ty: MessageType, c: Common) -> IResult<&[u8], PVal
 #[inline(always)]
 fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
     alt((
-        map_res(
-            delimited(tag("\""), take_while(is_safe_chr), tag("\"")),
-            |s| -> Result<_, ()> { Ok(PValue::Str(s, Quote::Double)) },
-        ),
+        map_res(parse_str_dq_safe, |s| -> Result<_, ()> {
+            Ok(PValue::Str(s, Quote::Double))
+        }),
         map_res(
             terminated(
                 recognize(many1_count(take_while_m_n(2, 2, is_hex_digit))),
@@ -378,7 +377,7 @@ fn parse_unspec_value<'a>(
         (msg_type::SYSCALL, b"subj") | (msg_type::USER_AUTH, b"subj") => {
             if let Ok((input, s)) = recognize(tuple((
                 opt(tag("=")),
-                take_while(is_safe_chr),
+                parse_str_unq,
                 opt(delimited(tag(" ("), parse_identifier, tag(")"))),
             )))(input)
             {
@@ -386,12 +385,7 @@ fn parse_unspec_value<'a>(
             }
         }
         (msg_type::AVC, b"info") => {
-            if let Ok((input, s)) = delimited::<_, _, _, _, (), _, _, _>(
-                tag("\""),
-                take_while(|c| c != b'"'),
-                tag("\""),
-            )(input)
-            {
+            if let Ok((input, s)) = parse_str_dq(input) {
                 return Ok((input, PValue::Str(s, Quote::None)));
             }
         }
@@ -403,22 +397,44 @@ fn parse_unspec_value<'a>(
             terminated(take_while1(is_safe_unquoted_chr), peek(take_while1(is_sep))),
             |s| -> Result<_, ()> { Ok(PValue::Str(s, Quote::None)) },
         ),
-        map_res(
-            delimited(tag("'"), take_while(|c| c != b'\''), tag("'")),
-            |s| -> Result<_, ()> { Ok(PValue::Str(s, Quote::Single)) },
-        ),
-        map_res(
-            delimited(tag("\""), take_while(|c| c != b'"'), tag("\"")),
-            |s| -> Result<_, ()> { Ok(PValue::Str(s, Quote::Double)) },
-        ),
-        map_res(
-            delimited(tag("{"), take_while(|c| c != b'}'), tag("}")),
-            |s| -> Result<_, ()> { Ok(PValue::Str(s, Quote::Braces)) },
-        ),
+        map_res(parse_str_sq, |s| -> Result<_, ()> {
+            Ok(PValue::Str(s, Quote::Single))
+        }),
+        map_res(parse_str_dq, |s| -> Result<_, ()> {
+            Ok(PValue::Str(s, Quote::Double))
+        }),
+        map_res(parse_str_braced, |s| -> Result<_, ()> {
+            Ok(PValue::Str(s, Quote::Braces))
+        }),
         map_res(peek(take_while1(is_sep)), |_| -> Result<_, ()> {
             Ok(PValue::Empty)
         }),
     ))(input)
+}
+
+#[inline(always)]
+fn parse_str_sq(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    delimited(tag("'"), take_while(|c| c != b'\''), tag("'"))(input)
+}
+
+#[inline(always)]
+fn parse_str_dq_safe(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    delimited(tag("\""), take_while(is_safe_chr), tag("\""))(input)
+}
+
+#[inline(always)]
+fn parse_str_dq(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    delimited(tag("\""), take_while(|c| c != b'"'), tag("\""))(input)
+}
+
+#[inline(always)]
+fn parse_str_braced(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    delimited(tag("{"), take_while(|c| c != b'}'), tag("}"))(input)
+}
+
+#[inline(always)]
+fn parse_str_unq(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    take_while(is_safe_chr)(input)
 }
 
 /// Recognize regular keys of key/value pairs
