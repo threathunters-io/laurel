@@ -397,11 +397,17 @@ fn parse_unspec_value<'a>(
             terminated(take_while1(is_safe_unquoted_chr), peek(take_while1(is_sep))),
             |s| -> Result<_, ()> { Ok(PValue::Str(s, Quote::None)) },
         ),
+        map_res(parse_kv_sq, |s| -> Result<_, ()> {
+            Ok(PValue::Str(s, Quote::Single))
+        }),
         map_res(parse_str_sq, |s| -> Result<_, ()> {
             Ok(PValue::Str(s, Quote::Single))
         }),
         map_res(parse_str_dq, |s| -> Result<_, ()> {
             Ok(PValue::Str(s, Quote::Double))
+        }),
+        map_res(parse_kv_braced, |s| -> Result<_, ()> {
+            Ok(PValue::Str(s, Quote::Braces))
         }),
         map_res(parse_str_braced, |s| -> Result<_, ()> {
             Ok(PValue::Str(s, Quote::Braces))
@@ -435,6 +441,45 @@ fn parse_str_braced(input: &[u8]) -> IResult<&[u8], &[u8]> {
 #[inline(always)]
 fn parse_str_unq(input: &[u8]) -> IResult<&[u8], &[u8]> {
     take_while(is_safe_chr)(input)
+}
+
+#[inline(always)]
+fn parse_str_unq_inside_sq(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    take_while(|c| is_safe_chr(c) && c != b'\'')(input)
+}
+
+/// More "correct" variant of parse_str_sq
+#[inline(always)]
+fn parse_kv_sq(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    delimited(
+        tag("'"),
+        recognize(separated_list0(
+            tag(" "),
+            tuple((
+                recognize(pair(alpha1, many0_count(alt((alphanumeric1, is_a("-_")))))),
+                tag("="),
+                alt((parse_str_dq, parse_str_braced, parse_str_unq_inside_sq)),
+            )),
+        )),
+        tag("'"),
+    )(input)
+}
+
+/// More "correct" variant of parse_str_braced
+#[inline(always)]
+fn parse_kv_braced(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    delimited(
+        tag("{ "),
+        recognize(separated_list0(
+            tag(" "),
+            tuple((
+                recognize(pair(alpha1, many0_count(alt((alphanumeric1, is_a("-_")))))),
+                tag("="),
+                alt((parse_str_sq, parse_str_dq, parse_str_unq)),
+            )),
+        )),
+        tag(" }"),
+    )(input)
 }
 
 /// Recognize regular keys of key/value pairs
@@ -852,24 +897,14 @@ mod test {
         do_parse(include_bytes!("testdata/line-netfilter.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-anom-abend.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-user-auth.txt")).unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn breakage_sockaddr_unix() {
         do_parse(include_bytes!("testdata/line-sockaddr-unix.txt")).unwrap();
+        do_parse(include_bytes!("testdata/line-user-auth-2.txt")).unwrap();
     }
 
     #[test]
     #[should_panic]
     fn breakage_sockaddr_unknown() {
         do_parse(include_bytes!("testdata/line-sockaddr-unknown.txt")).unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn breakage_userauth2() {
-        do_parse(include_bytes!("testdata/line-user-auth-2.txt")).unwrap();
     }
 
     #[test]
