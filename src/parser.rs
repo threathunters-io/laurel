@@ -198,6 +198,13 @@ fn parse_body(
         ),
     )))(input)?;
 
+    let (input, _) = match ty {
+        // Skip. overe start of message doesn't fit the key=value
+        // scheme and does not contain useful information.
+        msg_type::MAC_POLICY_LOAD => opt(tag("policy loaded "))(input)?,
+        _ => (input, None),
+    };
+
     let (input, mut kv) = if skip_enriched {
         terminated(
             separated_list0(tag(b" "), |input| parse_kv(input, ty)),
@@ -908,7 +915,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn breakage_mac_policy_load() {
         do_parse(include_bytes!("testdata/line-mac-policy-load.txt")).unwrap();
     }
