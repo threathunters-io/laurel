@@ -235,6 +235,27 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     } else {
         None
     };
+    let mut error_logger = if let Some(def) = &config.debug.parse_error_log {
+        let mut filename = dir;
+        filename.push(&def.file);
+        let mut rot = FileRotate::new(filename);
+        for user in &def.clone().users.unwrap_or_default() {
+            rot = rot.with_uid(
+                User::from_name(user)?
+                    .ok_or_else(|| format!("user {} not found", &user))?
+                    .uid,
+            );
+        }
+        if let Some(generations) = &def.generations {
+            rot = rot.with_generations(*generations);
+        }
+        if let Some(filesize) = &def.size {
+            rot = rot.with_filesize(*filesize);
+        }
+        Some(rot)
+    } else {
+        None
+    };
 
     if !Uid::effective().is_root() {
         log_warn("Not dropping privileges -- not running as root");
@@ -287,6 +308,10 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             Ok(()) => (),
             Err(e) => {
                 stats.errors += 1;
+                if let Some(ref mut l) = error_logger {
+                    l.write_all(&line)?;
+                    l.flush()?;
+                }
                 let line = String::from_utf8_lossy(&line).replace('\n', "");
                 log_err(&format!("Error {} processing msg: {}", e, &line));
                 continue;
