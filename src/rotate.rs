@@ -1,9 +1,10 @@
-use posix_acl::{PosixACL, Qualifier, ACL_READ};
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, remove_file, rename, File, OpenOptions};
 use std::io::{Error, ErrorKind, Result, Seek, SeekFrom, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
+
+use exacl::{setfacl, AclEntry, Perm};
 
 use nix::sys::stat::{fchmod, Mode};
 use nix::unistd::Uid;
@@ -78,9 +79,13 @@ impl FileRotate {
     /// permissions are adjusted, and it is renamed to the final
     /// destination.
     fn open(&mut self) -> Result<()> {
-        let mut acl = PosixACL::new(0o600);
+        let mut acl = vec![
+            AclEntry::allow_user("", Perm::from_bits_truncate(6), None),
+            AclEntry::allow_group("", Perm::from_bits_truncate(4), None),
+            AclEntry::allow_other(Perm::empty(), None),
+        ];
         for uid in &self.uids {
-            acl.set(Qualifier::User(uid.as_raw()), ACL_READ);
+            acl.push(AclEntry::allow_user(&format!("{}", uid), Perm::READ, None));
         }
 
         if let Ok(mut f) = OpenOptions::new()
@@ -90,8 +95,8 @@ impl FileRotate {
         {
             fchmod(f.as_raw_fd(), Mode::from_bits(0o600).unwrap())
                 .map_err(|e| Error::new(ErrorKind::Other, e))?;
-            acl.write_acl(&self.basename)
-                .map_err(|e| Error::new(e.kind(), e))?;
+
+            setfacl(&[&self.basename], &acl, None).map_err(|e| Error::new(e.kind(), e))?;
 
             self.offset = f.seek(SeekFrom::End(0))?;
             self.file = Some(f);
@@ -111,7 +116,7 @@ impl FileRotate {
                 .append(true)
                 .open(&tmp)?;
 
-            acl.write_acl(&tmp).map_err(|e| Error::new(e.kind(), e))?;
+            setfacl(&[&tmp], &acl, None).map_err(|e| Error::new(e.kind(), e))?;
 
             rename(&tmp, &self.basename)?;
 
