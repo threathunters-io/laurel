@@ -20,6 +20,11 @@ jobs:
       - name: Build
         run: |
           make -C contrib/selinux
+      - name: Archive policy
+        uses: actions/upload-artifact@v3
+        with:
+          name: selinux-el7
+          path: contrib/selinux/laurel.pp
 
   build-c8:
     runs-on: ubuntu-latest
@@ -32,3 +37,25 @@ jobs:
       - name: Build
         run: |
           make -C contrib/selinux
+      - name: Archive policy
+        uses: actions/upload-artifact@v3
+        with:
+          name: selinux-el8
+          path: contrib/selinux/laurel.pp
+
+  build-al2:
+    runs-on: ubuntu-latest
+    container: amazonlinux:2
+    steps:
+      - name: Prepare
+        run: |
+          yum install -y selinux-policy-devel findutils tar
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          make -C contrib/selinux
+      - name: Archive policy
+        uses: actions/upload-artifact@v3
+        with:
+          name: selinux-al2
+          path: contrib/selinux/laurel.pp
