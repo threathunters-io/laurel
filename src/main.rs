@@ -98,8 +98,12 @@ fn drop_privileges(runas_user: &User) -> Result<(), Box<dyn Error>> {
     let mut capabilities = HashSet::new();
     capabilities.insert(Capability::CAP_SYS_PTRACE);
     capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
+    caps::set(None, CapSet::Permitted, &capabilities)
+        .map_err(|e| format!("set effective capabilities: {}", e))?;
     caps::set(None, CapSet::Effective, &capabilities)
-        .map_err(|e| format!("set capabilities: {}", e))?;
+        .map_err(|e| format!("set effective capabilities: {}", e))?;
+    caps::set(None, CapSet::Inheritable, &HashSet::new())
+        .map_err(|e| format!("set inherited capabilities: {}", e))?;
 
     set_keepcaps(false)?;
     Ok(())
