@@ -80,6 +80,9 @@ execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
 # Add container context to SYSCALL-based events
 container = true
 
+# Add script context to SYSCALL execve events
+script = true
+
 [label-process]
 
 # Audit records that contain certain keys can be reused as a label
@@ -97,6 +100,10 @@ label-keys = [ "software_mgmt" ]
 label-exe.'^/opt/.*/bin/java$' = 'java'
 label-exe.'^/usr/lib/jvm/.*/bin/java$' = 'java'
 label-exe.'^/snap/amazon-ssm-agent/\d+/' = 'amazon-ssm-agent'
+
+# Labels can be attached to processes that have been identified as
+# scripts.
+label-script."maint" = "^/root/maint-.*[.]sh$"
 
 # Process Labels can be propagated to spawned child processes. This is
 # useful for marking an entire subtree of children that have been
