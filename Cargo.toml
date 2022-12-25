@@ -1,6 +1,6 @@
 [package]
 name = "laurel"
-version = "0.5.0"
+version = "0.5.1-pre"
 authors = ["Hilko Bengen <bengen@hilluzination.de>",
            "Sergej Schmidt <sergej@msgpeek.net>"]
 edition = "2021"
