@@ -2,7 +2,12 @@ use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::io::Write;
 use std::ops::Range;
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 
 use indexmap::IndexMap;
 
@@ -95,6 +100,7 @@ pub struct Settings<'a> {
     pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
     pub enrich_pid: bool,
+    pub enrich_script: bool,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
     pub proc_propagate_labels: HashSet<Vec<u8>>,
@@ -103,6 +109,7 @@ pub struct Settings<'a> {
     pub translate_userdb: bool,
 
     pub label_exe: Option<&'a LabelMatcher>,
+    pub label_script: Option<&'a LabelMatcher>,
 
     pub filter_keys: HashSet<Vec<u8>>,
     pub filter_labels: HashSet<Vec<u8>>,
@@ -117,11 +124,13 @@ impl Default for Settings<'_> {
             execve_argv_limit_bytes: None,
             enrich_container: false,
             enrich_pid: true,
+            enrich_script: true,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
             translate_universal: false,
             translate_userdb: false,
             label_exe: None,
+            label_script: None,
             filter_keys: HashSet::new(),
             filter_labels: HashSet::new(),
         }
@@ -285,6 +294,69 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
         }
     };
     Value::Map(m)
+}
+
+/// Returns a script name from path if exe's dev / inode don't match
+///
+/// This seems to work with Docker containers but not with Podman.
+fn path_script_name(path: &Record, pid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
+    let mut proc_exe_path = Vec::from(format!("/proc/{}/root", pid).as_bytes());
+    proc_exe_path.extend(exe);
+
+    let meta = std::fs::metadata(OsStr::from_bytes(&proc_exe_path)).ok()?;
+    let (e_dev, e_inode) = (meta.dev(), meta.ino());
+
+    let mut p_dev: Option<u64> = None;
+    let mut p_inode: Option<u64> = None;
+    let mut name = None;
+    for (k, v) in path {
+        if k == "name" {
+            if let Value::Str(r, _) = v.value {
+                let mut pb = PathBuf::new();
+                let s = Path::new(OsStr::from_bytes(&path.raw[r.clone()]));
+                if !s.is_absolute() {
+                    pb.push(OsStr::from_bytes(cwd));
+                }
+                pb.push(s);
+                let mut tpb = PathBuf::new();
+                // We can't just use PathBuf::canonicalize here
+                // because we don't want symlinks to be rersolved.
+                for c in pb.components() {
+                    match c {
+                        Component::RootDir if tpb.has_root() => {}
+                        Component::CurDir => {}
+                        Component::ParentDir => {
+                            tpb.pop();
+                        }
+                        _ => tpb.push(c),
+                    }
+                }
+                name = Some(NVec::from(tpb.as_os_str().as_bytes()))
+            }
+        } else if k == "inode" {
+            if let Value::Number(Number::Dec(i)) = v.value {
+                p_inode = Some(*i as _);
+            }
+        } else if k == "dev" {
+            if let Value::Str(r, _) = v.value {
+                let mut d = 0;
+                let value = String::from_utf8_lossy(&v.raw[r.clone()]);
+                for p in value.split(|c| c == ':') {
+                    if let Ok(parsed) = u64::from_str_radix(p, 16) {
+                        d <<= 8;
+                        d |= parsed;
+                    }
+                }
+                p_dev = Some(d as _);
+            }
+            break;
+        }
+    }
+    match (p_dev, p_inode, name) {
+        (Some(p_dev), Some(p_inode), _) if p_dev == e_dev && p_inode == e_inode => None,
+        (Some(_), Some(_), Some(name)) => Some(name),
+        _ => None,
+    }
 }
 
 impl<'a> Coalesce<'a> {
@@ -658,6 +730,32 @@ impl<'a> Coalesce<'a> {
             }
         }
 
+        let script: Option<NVec> = match (self.settings.enrich_script, self.settings.label_script) {
+            (false, None) => None,
+            _ => match (&exe, pid, ev.body.get(&PATH), syscall_is_exec) {
+                (Some(exe), Some(pid), Some(EventValues::Multi(paths)), true) => {
+                    let mut cwd = &b"/"[..];
+                    if let Some(EventValues::Single(r)) = ev.body.get(&CWD) {
+                        if let Some(rv) = r.get("cwd") {
+                            if let Value::Str(r, _) = rv.value {
+                                cwd = &rv.raw[r.clone()];
+                            }
+                        }
+                    };
+                    path_script_name(&paths[0], pid, cwd, exe)
+                }
+                _ => None,
+            },
+        };
+
+        if let (Some(pid), Some(script), Some(label_script)) =
+            (pid, &script, self.settings.label_script)
+        {
+            for label in label_script.matches(script.as_ref()) {
+                self.processes.add_label(pid, label);
+            }
+        }
+
         // Since the event may be dropped here, manipulation of any
         // other state should not occur below.
         if let Some(key) = &key {
@@ -770,6 +868,14 @@ impl<'a> Coalesce<'a> {
                     ));
                 }
                 sc.elems.push((Key::Literal("PPID"), Value::Map(m)));
+            }
+
+            if let (true, Some(script)) = (self.settings.enrich_script, script) {
+                let (k, v) = (
+                    Key::Literal("SCRIPT"),
+                    Value::Str(sc.put(script), Quote::None),
+                );
+                sc.elems.push((k, v));
             }
 
             if let Some(proc) = proc {

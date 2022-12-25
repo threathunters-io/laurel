@@ -84,6 +84,8 @@ pub struct Enrich {
     pub container: bool,
     #[serde(default = "true_value")]
     pub pid: bool,
+    #[serde(default = "true_value")]
+    pub script: bool,
 }
 
 impl Default for Enrich {
@@ -92,6 +94,7 @@ impl Default for Enrich {
             execve_env: execve_env_default(),
             container: true,
             pid: true,
+            script: true,
         }
     }
 }
@@ -102,6 +105,8 @@ pub struct LabelProcess {
     pub label_keys: HashSet<String>,
     #[serde(default, rename = "label-exe")]
     pub label_exe: Option<LabelMatcher>,
+    #[serde(default, rename = "label-script")]
+    pub label_script: Option<LabelMatcher>,
     #[serde(default, rename = "propagate-labels")]
     pub propagate_labels: HashSet<String>,
 }
@@ -196,6 +201,7 @@ impl Config {
                 .collect(),
             enrich_container: self.enrich.container,
             enrich_pid: self.enrich.pid,
+            enrich_script: self.enrich.script,
             proc_label_keys: self
                 .label_process
                 .label_keys
@@ -211,6 +217,7 @@ impl Config {
             translate_universal: self.translate.universal,
             translate_userdb: self.translate.userdb,
             label_exe: self.label_process.label_exe.as_ref(),
+            label_script: self.label_process.label_script.as_ref(),
             filter_keys: self
                 .filter
                 .filter_keys
