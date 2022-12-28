@@ -186,14 +186,12 @@ fn parse_body(
                 many1(terminated(parse_identifier, space0)),
                 tuple((tag("}"), space0, tag("for"), space0)),
             )),
-            |(_, k, _, v, _)| -> Result<_, ()> {
-                Ok((Key::Name(NVec::from(&*k)), PValue::List(v)))
-            },
+            |(_, k, _, v, _)| -> Result<_, ()> { Ok((Key::Name(NVec::from(k)), PValue::List(v))) },
         ),
         map_res(
             tuple((tag("netlabel"), tag(":"), space0)),
             |(s, _, _): (&[u8], _, _)| -> Result<_, ()> {
-                Ok((Key::Name(NVec::from(&*s)), PValue::Empty))
+                Ok((Key::Name(NVec::from(s)), PValue::Empty))
             },
         ),
     )))(input)?;
@@ -498,11 +496,11 @@ fn parse_key(input: &[u8]) -> IResult<&[u8], Key> {
             if let Ok(c) = Common::try_from(s) {
                 Ok(Key::Common(c))
             } else if s.ends_with(b"uid") {
-                Ok(Key::NameUID(NVec::from(&*s)))
+                Ok(Key::NameUID(NVec::from(s)))
             } else if s.ends_with(b"gid") {
-                Ok(Key::NameGID(NVec::from(&*s)))
+                Ok(Key::NameGID(NVec::from(s)))
             } else {
-                Ok(Key::Name(NVec::from(&*s)))
+                Ok(Key::Name(NVec::from(s)))
             }
         },
     )(input)

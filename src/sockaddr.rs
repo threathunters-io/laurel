@@ -19,24 +19,24 @@ pub struct SocketAddrLL {
 }
 */
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SocketAddrLocal {
     pub path: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SocketAddrAX25 {
     pub call: [u8; 7],
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SocketAddrATMPVC {
     pub itf: i16,
     pub vpi: i16,
     pub vci: i32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SocketAddrIPX {
     pub port: u16,
     pub network: u32,
@@ -44,24 +44,24 @@ pub struct SocketAddrIPX {
     pub typ: u8,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SocketAddrX25 {
     pub address: [u8; 16],
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SocketAddrVM {
     pub port: u32,
     pub cid: u32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SocketAddrNL {
     pub pid: u32,
     pub groups: u32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SocketAddr {
     Local(SocketAddrLocal),
     Inet(SocketAddrV4),

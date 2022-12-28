@@ -187,7 +187,7 @@ impl Display for Common {
 pub(crate) type NVec = tinyvec::TinyVec<[u8; 14]>;
 
 /// Representation of the key part of key/value pairs in [`Record`]
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub enum Key {
     /// regular ASCII-only name as returned by parser
     Name(NVec),
@@ -280,7 +280,7 @@ impl PartialEq<[u8]> for Key {
 }
 
 /// Quotes in [`Value`] strings
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Quote {
     None,
     Single,

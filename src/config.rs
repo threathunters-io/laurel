@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::coalesce::Settings;
 use crate::label_matcher::LabelMatcher;
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Logfile {
     #[serde(default)]
     pub file: PathBuf,
@@ -18,7 +18,7 @@ pub struct Logfile {
     pub line_prefix: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Debug {
     pub log: Option<Logfile>,
     #[serde(rename = "parse-error-log")]
