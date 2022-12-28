@@ -136,11 +136,11 @@ pub struct Coalesce<'a> {
     done: HashSet<(Option<Vec<u8>>, EventID)>,
     /// Timestamp for next cleanup
     next_expire: Option<u64>,
-    /// process table built from observing process-related events
+    /// Process table built from observing process-related events
     processes: ProcTable,
-    /// output function
+    /// Output function
     emit_fn: Box<dyn 'a + FnMut(&Event)>,
-    /// creadential cache
+    /// Creadential cache
     userdb: UserDB,
 
     pub settings: Settings<'a>,
@@ -347,6 +347,8 @@ impl<'a> Coalesce<'a> {
     /// Translates UID, GID and variants, e.g.:
     /// - auid=1000 -> AUID="user"
     /// - ogid=1000 -> OGID="user"
+    /// IDs that can't be resolved are translated into "unknown(n)".
+    /// `(uint32)-1` is translated into "unset".
     #[inline(always)]
     fn translate_userdb(&mut self, rv: &mut Record, k: &Key, v: &Value) -> Option<(Key, Value)> {
         if !self.settings.translate_userdb {
@@ -388,6 +390,8 @@ impl<'a> Coalesce<'a> {
         None
     }
 
+    /// Enrich "pid" entries using `ppid`, `exe`, `ID` (generating
+    /// event id) from the shadow process table
     fn enrich_generic_pid(&mut self, rv: &mut Record, k: &Key, v: &Value) -> Option<(Key, Value)> {
         let pid = match v {
             Value::Number(Number::Dec(n)) => *n,
@@ -433,8 +437,9 @@ impl<'a> Coalesce<'a> {
     /// - turns EXECVE/a* and EXECVE/a*[*] fields into an ARGV list
     /// - turns PROCTITLE/proctitle into a (abbreviated) ARGV list
     /// - translates *uid, *gid, syscall, arch, sockaddr if configured to do so.
-    /// - collects environment variables for EXECVE
-    /// - registers process in shadow process table for EXECVE
+    /// - enriches PID and container enrichment if configured to do so.
+    /// - collects environment variables for EXECVE events
+    /// - registers process in shadow process table for EXECVE events
     fn transform_event(&mut self, ev: &mut Event) {
         let mut arch: Option<u32> = None;
         let mut syscall: Option<u32> = None;
@@ -653,8 +658,8 @@ impl<'a> Coalesce<'a> {
             }
         }
 
-        // Since the event be dropped here, manipulation of any other
-        // state should not occur below.
+        // Since the event may be dropped here, manipulation of any
+        // other state should not occur below.
         if let Some(key) = &key {
             if self.settings.filter_keys.contains(key.as_ref()) {
                 ev.filter = true;
