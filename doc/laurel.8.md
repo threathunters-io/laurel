@@ -13,12 +13,21 @@ laurel(8) -- transform, enrich Linux audit logs
 
 `laurel` is an `auditd(8)` plug-in that parses Linux audit events,
 enriches them with local information, and transforms them into a
-JSONlines-based output format intended for consumptions by log
+JSONlines-based output format intended for consumption by log
 processing and SIEM software.
 
 # OPTIONS
-**-c**, **--config**
-: path to configuration file (default: `/etc/laurel/config.toml`)
+**-c FILE**, **-\-config=FILE**
+: path to configuration file (default: unset)
+
+**-d**, **-\-dry-run**
+: Only parse configuration and exit
+
+**-h**, **-\-help**
+: Print short help text and exit
+
+**-v**, **-\-version**
+: Print version and exit
 
 # DESCRIPTION
 
@@ -38,14 +47,15 @@ args = --config /etc/laurel/config.toml
 
 # CONFIGURATION
 
-Configuration of `laurel` itself is done through a TOML file.
+Configuration of `laurel` itself is done through a single
+configuration file in TOML format.
 
 ## main section
 
 This section contains basic operation parameters.
 
-- `user`: `laurel` is started as root by `auditd`, but it drops to
-  this user as soon as possible. Default: unset
+- `user`: `laurel` is started as `root` by `auditd`, but it drops to
+  a dedicated user as soon as possible. Default: unset
 - `directory`: The base directory into which all files are written.
   Default: `.`
 - `statusreport-period`: How often stats are written to Syslog, in
