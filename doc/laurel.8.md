@@ -107,6 +107,9 @@ Options that can be configured here actually add information to events
 - `pid`: Add context information for process IDs. Default: true
 - `script`: If an `exec` syscall spawns a script (as opposed to a
   binary), add a `SCRIPT` entry to the `SYSCALL` record. Default: true
+- `parent-info`: Add `PARENT_INFO` record corresponding to
+  `SYSCALL.ppid`. Deprecated, use `pid` instead in new setups.
+  Default: false
 
 ## `[label-process]` section
 
