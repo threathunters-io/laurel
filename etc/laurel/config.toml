@@ -83,6 +83,9 @@ container = true
 # Add script context to SYSCALL execve events
 script = true
 
+# Deprecated. Use pid instead.
+# parent_info = false
+
 [label-process]
 
 # Audit records that contain certain keys can be reused as a label
