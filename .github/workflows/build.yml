@@ -65,11 +65,14 @@ jobs:
       - name: Prepare
         run: |
           apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers
+          wget $(sed -ne '/community$/{;s/v3[.]16/v3.17/;p;q;}' /etc/apk/repositories)/x86_64/pandoc-2.19.2-r0.apk
+          apk add make pandoc-2.19.2-r0.apk
           apk add binutils file jq
       - uses: actions/checkout@v2
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build
+          make -C doc
       - name: Show binary charcteristics
         run: |
           set -x

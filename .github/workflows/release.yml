@@ -40,14 +40,17 @@ jobs:
       - name: Prepare
         run: |
           apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers
+          wget $(sed -ne '/community$/{;s/v3[.]16/v3.17/;p;q;}' /etc/apk/repositories)/x86_64/pandoc-2.19.2-r0.apk
+          apk add make pandoc-2.19.2-r0.apk
       - uses: actions/checkout@v2
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
+          make -C doc
       - name: Build tarball
         run: |
-          ln target/release/laurel .
-          tar -czf laurel.tar.gz laurel *.md
+          ln -f target/release/laurel doc/laurel.8 .
+          tar -czf laurel.tar.gz laurel laurel.8 *.md
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
@@ -68,6 +71,8 @@ jobs:
           yum -q -y update
           yum -q -y install centos-release-scl
           yum -q -y install gcc llvm-toolset-7-clang file libacl-devel
+          yum -q -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+          yum -q -y install make pandoc
       - name: Install Rust toolchain (stable)
         uses: actions-rs/toolchain@v1
         with:
@@ -77,6 +82,7 @@ jobs:
       - name: Build
         run: |
           scl enable llvm-toolset-7 "cargo build --release"
+          make -C doc
       - name: Determine minimum GNU libc version
         run: |
           objdump -t target/release/laurel | sed -ne '/@GLIBC_/{s/^.*@GLIBC_//;p;}' | sort -uV
@@ -87,8 +93,8 @@ jobs:
           echo Minimum GNU libc version: $min_glibc_version
       - name: Build tarball
         run: |
-          ln target/release/laurel .
-          tar -czf laurel.tar.gz laurel *.md
+          ln -f target/release/laurel doc/laurel.8 .
+          tar -czf laurel.tar.gz laurel laurel.8 *.md
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
