@@ -57,7 +57,7 @@ This section contains basic operation parameters.
 - `user`: `laurel` is started as `root` by `auditd`, but it drops to
   a dedicated user as soon as possible. Default: unset
 - `directory`: The base directory into which all files are written.
-  Default: `.`
+  Default: `.` (current directory)
 - `statusreport-period`: How often stats are written to Syslog, in
   seconds. Default: unset
 
@@ -106,7 +106,9 @@ Options that can be configured here actually add information to events
   container runtimes. Default: true
 - `pid`: Add context information for process IDs. Default: true
 - `script`: If an `exec` syscall spawns a script (as opposed to a
-  binary), add a `SCRIPT` entry to the `SYSCALL` record. Default: true
+  binary), add a `SCRIPT` entry to the `SYSCALL` record. A script is
+  assumed if the first `PATH` entry does not correspond to file
+  mentioned  in `SYSCALL.exe`. Default: true
 - `parent-info`: Add `PARENT_INFO` record corresponding to
   `SYSCALL.ppid`. Deprecated, use `pid` instead in new setups.
   Default: false
@@ -118,9 +120,11 @@ associated with those processes. These labels can be propagated from
 parent to child processes.
 
 - `label-exe.<regexp> = <label-name>`: Regular expressions/label
-  mappings applied to executables on `exec` calls. Default: none
+  mappings applied to binary executables (`SYSCALL.exe`) on `exec`
+  calls. Default: none
 - `label-script.<regexp> = <label-name>`: Regular expressions/label
-  mappings applied to scripts on `exec` calls. Default: none
+  mappings applied to scripts (`SYSCALL.SCRIPT`, see `enrich.script`
+  description above) on `exec` calls. Default: none
 - `label-keys`: A list of keys that are applied as a process label,
   see `auditctl(8)`'s `-k` option. Default: none
 - `propagate-labels`: List of labels that are propagated to child
@@ -128,7 +132,8 @@ parent to child processes.
 
 ## `[filter]` section
 
-Filters make `laurel` drop entire events from the log file.
+Filters make `laurel` drop entire events from the log file while still
+using them for internal processing such as process tracking.
 
 - `filter-keys`: A list of strings that are matched against
   `SYSCALL.key` to drop the event. Default: empty
