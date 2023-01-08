@@ -88,7 +88,7 @@ pub struct Enrich {
     pub container: bool,
     #[serde(default = "true_value")]
     pub pid: bool,
-    #[serde(default = "false_value", rename="parent-info")]
+    #[serde(default = "false_value", rename = "parent-info")]
     pub parent_info: bool,
     #[serde(default = "true_value")]
     pub script: bool,
