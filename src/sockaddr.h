@@ -5,7 +5,7 @@
 #include <linux/ax25.h>
 #include <linux/caif/caif_socket.h>
 #include <linux/can.h>
-#include <linux/dn.h>
+// #include <linux/dn.h>
 #include <linux/if_alg.h>
 #include <linux/if_packet.h>
 // #include <linux/if_pppox.h>
