@@ -71,14 +71,14 @@ own log file rotation, just like `auditd(8)`.
 - `file`: Filename for the audit log file. Default: `audit.log`
 - `size`: Size in bytes after which the log file is rotated. Default:
   10MiB
-- `generations`: Number of generations to keep aftere rotation.
+- `generations`: Number of generations to keep after rotation.
   Default: 5
 - `read-users`: List of users that are granted read access
   to the log file using POSIX ACLs. Default: empty
 - `line-prefix`: A string that is prepended to every line. Default:
   unset
 
-## `[transform]` sectionx
+## `[transform]` section
 
 - `execve-argv`: The list of `EXECVE.a*` fields are transformed to an
   `ARGV` list or `ARGV_STR` string. Set to `array`, `string` (or
