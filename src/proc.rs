@@ -167,8 +167,8 @@ impl Process {
         // Use the boottime-based clock to calculate process start
         // time, convert to Unix-epoch-based-time.
         let proc_boottime = TimeSpec::from(libc::timespec {
-            tv_sec: (starttime / *CLK_TCK) as i64,
-            tv_nsec: ((starttime % *CLK_TCK) * (1_000_000_000 / *CLK_TCK)) as i64,
+            tv_sec: (starttime / *CLK_TCK) as _,
+            tv_nsec: ((starttime % *CLK_TCK) * (1_000_000_000 / *CLK_TCK)) as _,
         });
         let proc_age = clock_gettime(ClockId::CLOCK_BOOTTIME)
             .map_err(|e| format!("clock_gettime: {}", e))?
