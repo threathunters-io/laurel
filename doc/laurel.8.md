@@ -127,6 +127,10 @@ parent to child processes.
   description above) on `exec` calls. Default: none
 - `label-keys`: A list of keys that are applied as a process label,
   see `auditctl(8)`'s `-k` option. Default: none
+- `unlabel-exe.<regexp> = <label-name>`: Like `label-exe`, but for
+  removing labels
+- `unlabel-script.<regexp> = <label-name>`: Like `label-script`, but
+  for removing labels
 - `propagate-labels`: List of labels that are propagated to child
   processes. Default: empty
 

@@ -110,7 +110,9 @@ pub struct Settings<'a> {
     pub translate_userdb: bool,
 
     pub label_exe: Option<&'a LabelMatcher>,
+    pub unlabel_exe: Option<&'a LabelMatcher>,
     pub label_script: Option<&'a LabelMatcher>,
+    pub unlabel_script: Option<&'a LabelMatcher>,
 
     pub filter_keys: HashSet<Vec<u8>>,
     pub filter_labels: HashSet<Vec<u8>>,
@@ -132,7 +134,9 @@ impl Default for Settings<'_> {
             translate_universal: false,
             translate_userdb: false,
             label_exe: None,
+            unlabel_exe: None,
             label_script: None,
+            unlabel_script: None,
             filter_keys: HashSet::new(),
             filter_labels: HashSet::new(),
         }
@@ -724,11 +728,16 @@ impl<'a> Coalesce<'a> {
             }
         }
 
-        if let (Some(exe), Some(pid), Some(label_exe), true) =
-            (&exe, &pid, &self.settings.label_exe, syscall_is_exec)
-        {
-            for label in label_exe.matches(exe) {
-                self.processes.add_label(*pid, label);
+        if let (Some(exe), Some(pid), true) = (&exe, &pid, syscall_is_exec) {
+            if let Some(label_exe) = &self.settings.label_exe {
+                for label in label_exe.matches(exe) {
+                    self.processes.add_label(*pid, label);
+                }
+            }
+            if let Some(unlabel_exe) = &self.settings.unlabel_exe {
+                for label in unlabel_exe.matches(exe) {
+                    self.processes.remove_label(*pid, label);
+                }
             }
         }
 
@@ -750,11 +759,16 @@ impl<'a> Coalesce<'a> {
             },
         };
 
-        if let (Some(pid), Some(script), Some(label_script)) =
-            (pid, &script, self.settings.label_script)
-        {
-            for label in label_script.matches(script.as_ref()) {
-                self.processes.add_label(pid, label);
+        if let (Some(pid), Some(script)) = (pid, &script) {
+            if let Some(label_script) = self.settings.label_script {
+                for label in label_script.matches(script.as_ref()) {
+                    self.processes.add_label(pid, label);
+                }
+            }
+            if let Some(unlabel_script) = self.settings.unlabel_script {
+                for label in unlabel_script.matches(script.as_ref()) {
+                    self.processes.remove_label(pid, label);
+                }
             }
         }
 
