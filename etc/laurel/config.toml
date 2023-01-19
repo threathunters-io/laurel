@@ -96,17 +96,22 @@ script = true
 # e.g.: -w /usr/bin/dpkg -p x -k software_mgmt
 label-keys = [ "software_mgmt" ]
 
-# Labels can be attached to processes that run certain programs. The
-# file program file path (SYSCALL.exe or /proc/pid/exe) is matched
-# against regular expressions. This is useful for programs that cannot
-# be identified through auditd file watches (-w <path> -p x -k <key>).
+# Labels can be attached to or removed from processes that run certain
+# programs. The file program file path (SYSCALL.exe or /proc/pid/exe)
+# is matched against regular expressions. This is useful for programs
+# that cannot be identified through auditd file watches (-w <path> -p
+# x -k <key>).
 label-exe.'^/opt/.*/bin/java$' = 'java'
 label-exe.'^/usr/lib/jvm/.*/bin/java$' = 'java'
 label-exe.'^/snap/amazon-ssm-agent/\d+/' = 'amazon-ssm-agent'
 
-# Labels can be attached to processes that have been identified as
+unlabel-exe."bin/php$" = "java"
+
+# Labels can be attached to or removed from processes that have been identified as
 # scripts.
 label-script."maint" = "^/root/maint-.*[.]sh$"
+
+# unlabel-script-"maint" = "…"
 
 # Process Labels can be propagated to spawned child processes. This is
 # useful for marking an entire subtree of children that have been

@@ -374,6 +374,12 @@ impl ProcTable {
             p.labels.insert(label.into());
         }
     }
+
+    pub fn remove_label(&mut self, pid: u32, label: &[u8]) {
+        if let Some(p) = self.processes.get_mut(&pid) {
+            p.labels.remove(label);
+        }
+    }
 }
 
 type Environment = Vec<(Vec<u8>, Vec<u8>)>;

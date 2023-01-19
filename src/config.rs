@@ -112,8 +112,12 @@ pub struct LabelProcess {
     pub label_keys: HashSet<String>,
     #[serde(default, rename = "label-exe")]
     pub label_exe: Option<LabelMatcher>,
+    #[serde(default, rename = "unlabel-exe")]
+    pub unlabel_exe: Option<LabelMatcher>,
     #[serde(default, rename = "label-script")]
     pub label_script: Option<LabelMatcher>,
+    #[serde(default, rename = "unlabel-script")]
+    pub unlabel_script: Option<LabelMatcher>,
     #[serde(default, rename = "propagate-labels")]
     pub propagate_labels: HashSet<String>,
 }
@@ -225,7 +229,9 @@ impl Config {
             translate_universal: self.translate.universal,
             translate_userdb: self.translate.userdb,
             label_exe: self.label_process.label_exe.as_ref(),
+            unlabel_exe: self.label_process.unlabel_exe.as_ref(),
             label_script: self.label_process.label_script.as_ref(),
+            unlabel_script: self.label_process.unlabel_script.as_ref(),
             filter_keys: self
                 .filter
                 .filter_keys
