@@ -72,7 +72,7 @@ jobs:
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build
-          make -C doc
+          make -C man
       - name: Show binary charcteristics
         run: |
           set -x
