@@ -106,5 +106,6 @@ The log lines from the Perl reverse shell execution above are processed by `laur
 # SEE ALSO
 `laurel(8)`, `auditd(8)`, `audit.rules(7)`
 
-# AUTHOR
+# AUTHORS
 - Hilko Bengen <<bengen@hilluzination.de>>
+- Sergej Schmidt <<sergej@msgpeek.net>>
