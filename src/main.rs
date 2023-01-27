@@ -190,7 +190,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
                 return Err(format!("Config file {} must not be world-writable", f_name).into());
             }
             let lines = fs::read(&f_name).map_err(|e| format!("read {}: {}", f_name, e))?;
-            toml::from_str(&String::from_utf8_lossy(&lines).into_owned())
+            toml::from_str(&String::from_utf8(lines)?)
                 .map_err(|e| format!("parse {}: {}", f_name, e))?
         }
         None => Config::default(),
