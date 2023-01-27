@@ -49,7 +49,7 @@ jobs:
           make -C man
       - name: Build tarball
         run: |
-          ln -f -t . target/release/laurel
+          ln -f target/release/laurel .
           tar -czf laurel.tar.gz laurel *.md man/
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
@@ -93,7 +93,7 @@ jobs:
           echo Minimum GNU libc version: $min_glibc_version
       - name: Build tarball
         run: |
-          ln -f -t . target/release/laurel
+          ln -f target/release/laurel .
           tar -czf laurel.tar.gz laurel *.md man/
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
