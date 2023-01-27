@@ -2,9 +2,8 @@
 title: laurel
 section: 8
 header: System Administration Utilities
-footer: laurel 0.5.1-pre2
+footer: laurel 0.5.1
 ---
-<!-- date: January 3, 2023 -->
 
 # NAME
 laurel(8) -- transform, enrich Linux audit logs
