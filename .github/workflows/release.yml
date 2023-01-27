@@ -46,11 +46,11 @@ jobs:
       - name: Build
         run: |
           RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
-          make -C doc
+          make -C man
       - name: Build tarball
         run: |
-          ln -f target/release/laurel doc/laurel.8 .
-          tar -czf laurel.tar.gz laurel laurel.8 *.md
+          ln -f -t . target/release/laurel
+          tar -czf laurel.tar.gz laurel *.md man/
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
@@ -82,7 +82,7 @@ jobs:
       - name: Build
         run: |
           scl enable llvm-toolset-7 "cargo build --release"
-          make -C doc
+          make -C man
       - name: Determine minimum GNU libc version
         run: |
           objdump -t target/release/laurel | sed -ne '/@GLIBC_/{s/^.*@GLIBC_//;p;}' | sort -uV
@@ -93,8 +93,8 @@ jobs:
           echo Minimum GNU libc version: $min_glibc_version
       - name: Build tarball
         run: |
-          ln -f target/release/laurel doc/laurel.8 .
-          tar -czf laurel.tar.gz laurel laurel.8 *.md
+          ln -f -t . target/release/laurel
+          tar -czf laurel.tar.gz laurel *.md man/
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
