@@ -17,7 +17,7 @@ While logs produced by the Linux Audit subsystem and _auditd(8)_ contain informa
 ### Format issues
 
 - All non-trivial events are split across multiple lines that have to be joined together using a message identifier, but current search-centric log analysis systems are quite limited when it comes to join operations.
-- Files and program executions are logged via `PATH` and `EXECVE` elements. No escaping mechanism is defined; if a string contains bytes that have special meaning in the format (even space or quote characters), the entire string is hex-encoded.
+- Files and program executions are logged via `PATH` and `EXECVE` elements. The character set for strings is a limited subset of ASCII no escaping mechanism exists: If a string contains bytes that have special meaning in the format (even space or quote characters), the entire string is hex-encoded.
 - Argument lists are preserved in `EXECVE` records, but with an `a0="…"`, `a1="…"`, `a2="…"`, `a3="…"` naming scheme, they are not easily accessible.
 - Long command lines may be spread across multiple `EXECVE` event lines.
 - For numeric values, there is no clear distinction whether they should be interpreted as decimal, octal, or hexadecimal values.
@@ -50,6 +50,24 @@ Log records carrying the same event ID (the `msg=audit(TIME:SEQUENCE):` part) ar
 [RfC8259]: https://datatracker.ietf.org/doc/html/rfc8259 'The JavaScript Object Notation (JSON) Data Interchange Format'
 
 [RfC3986]: https://datatracker.ietf.org/doc/html/rfc3986 'Uniform Resource Identifier (URI): Generic Syntax'
+
+### Structure
+
+Every audit log line produced by _LAUREL_ is one single JSON object consisting of key/value pairs that contains at least an `ID` field.
+
+- `SYSCALL`, `EXECVE`, `CWD`, `PROCTITLE` fields point to single JSON objects.
+- `PATH`, `SOCKADDR` fields point to lists of JSON objects.
+
+Every other kernel-produced audit message not mentioned above results in field pointing to a list of JSON objects. Details may change after the list of kernel audit message types has been reviewed.
+
+### Encoding of invalid UTF-8 strings and binary data
+
+- Most byte values that represent printable ASCII characters are reproduced as-is (but are subject to JSON string escaping rules).
+- Bytes that map to non-printable ASCII characters (less than 32/0x20; 127/0x7f) are percent-encoded.
+- Byte values that map to `%` (37/0x25) and `+` (42/0x2b) are percent-encoded.
+- Byte values outside of the ASCII range (greater than 127/0x7f) are reproduced as-is if they are part of a valid UTF-8 sequence. Otherwise, they are percent-encoded.
+
+Handling of special Unicode characters may change in the future.
 
 ### Translation / Enrichment
 
