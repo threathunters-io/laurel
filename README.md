@@ -24,8 +24,8 @@ This happens at the source because _LAUREL_ runs on the host where the audit eve
 
 ## Documentation
 
-Configuration and operational details are described in the [laurel(8)](docs/laurel.8.md) manual page.
-Details about the log format and rationales can be found in the [laurel-about(7)](docs/laurel-about.7.md) manual page. 
+Configuration and operational details are described in the [laurel(8)](man/laurel.8.md) manual page.
+Details about the log format and rationales can be found in the [laurel-about(7)](man/laurel-about.7.md) manual page. 
 
 The [_LAUREL_ installation instructions](INSTALL.md) contain instructions on how to build _LARUEL_ from source and how to install and configure it.a
 
