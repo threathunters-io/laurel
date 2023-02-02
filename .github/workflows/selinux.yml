@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Build
         run: |
-          make -C contrib/selinux
+          make -C contrib/selinux AUDITD_VERSIONS=2
       - name: Archive policy
         uses: actions/upload-artifact@v3
         with:
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Build
         run: |
-          make -C contrib/selinux
+          make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
         uses: actions/upload-artifact@v3
         with:
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Build
         run: |
-          make -C contrib/selinux
+          make -C contrib/selinux AUDITD_VERSIONS=2
       - name: Archive policy
         uses: actions/upload-artifact@v3
         with:
