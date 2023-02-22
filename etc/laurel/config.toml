@@ -84,7 +84,7 @@ container = true
 script = true
 
 # Deprecated. Use pid instead.
-# parent_info = false
+# parent-info = false
 
 [label-process]
 
