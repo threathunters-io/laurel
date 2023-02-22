@@ -186,12 +186,21 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 
     let config: Config = match matches.opt_str("c") {
         Some(f_name) => {
-            if fs::metadata(&f_name)?.permissions().mode() & 0o002 != 0 {
+            if fs::metadata(&f_name)
+                .map_err(|e| format!("stat {}: {}", &f_name, &e))?
+                .permissions()
+                .mode()
+                & 0o002
+                != 0
+            {
                 return Err(format!("Config file {} must not be world-writable", f_name).into());
             }
-            let lines = fs::read(&f_name).map_err(|e| format!("read {}: {}", f_name, e))?;
-            toml::from_str(&String::from_utf8(lines)?)
-                .map_err(|e| format!("parse {}: {}", f_name, e))?
+            let lines = fs::read(&f_name).map_err(|e| format!("read {}: {}", &f_name, &e))?;
+            toml::from_str(
+                &String::from_utf8(lines)
+                    .map_err(|_| format!("parse: {}: contains invalid UTF-8 sequences", &f_name))?,
+            )
+            .map_err(|e| format!("parse {}: {}", f_name, e))?
         }
         None => Config::default(),
     };
@@ -219,7 +228,14 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         if !dir.is_dir() {
             return Err(format!("{} is not a directory", dir.to_string_lossy()).into());
         }
-        if dir.metadata()?.permissions().mode() & 0o002 != 0 {
+        if dir
+            .metadata()
+            .map_err(|e| format!("stat {}: {}", dir.to_string_lossy(), &e))?
+            .permissions()
+            .mode()
+            & 0o002
+            != 0
+        {
             log_warn(&format!(
                 "Base directory {} must not be world-wirtable",
                 dir.to_string_lossy()
@@ -234,9 +250,12 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
         .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
 
-    let logger = std::cell::RefCell::new(Logger::new(&config.auditlog, &dir)?);
+    let logger = std::cell::RefCell::new(
+        Logger::new(&config.auditlog, &dir)
+            .map_err(|e| format!("can't create audit logger: {}", e))?,
+    );
     let mut debug_logger = if let Some(l) = &config.debug.log {
-        Some(Logger::new(l, &dir)?)
+        Some(Logger::new(l, &dir).map_err(|e| format!("can't create debug logger: {}", e))?)
     } else {
         None
     };
@@ -305,7 +324,11 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 
     loop {
         line.clear();
-        if input.read_until(b'\n', &mut line)? == 0 {
+        if input
+            .read_until(b'\n', &mut line)
+            .map_err(|e| format!("read from stdin: {}", e))?
+            == 0
+        {
             break;
         }
         stats.lines += 1;
@@ -314,8 +337,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             Err(e) => {
                 stats.errors += 1;
                 if let Some(ref mut l) = error_logger {
-                    l.write_all(&line)?;
-                    l.flush()?;
+                    l.write_all(&line)
+                        .and_then(|_| l.flush())
+                        .map_err(|e| format!("write log: {}", e))?;
                 }
                 let line = String::from_utf8_lossy(&line).replace('\n', "");
                 log_err(&format!("Error {} processing msg: {}", e, &line));
@@ -345,7 +369,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 
         if let (Some(dl), Some(p)) = (&mut debug_logger, &dump_state_period) {
             if dump_state_last_t.elapsed()? >= *p {
-                coalesce.dump_state(&mut dl.output)?;
+                coalesce
+                    .dump_state(&mut dl.output)
+                    .map_err(|e| format!("dump state: {}", e))?;
                 dump_state_last_t = SystemTime::now();
             }
         }
