@@ -1054,6 +1054,11 @@ impl<'a> Coalesce<'a> {
         Ok(())
     }
 
+    /// Flush all in-flight event data, including partial events
+    pub fn flush(&mut self) {
+        self.expire_inflight(u64::MAX);
+    }
+
     pub fn dump_state(&self, mut w: &mut dyn Write) -> Result<(), Box<dyn Error>> {
         serde_json::to_writer(
             &mut w,
@@ -1092,7 +1097,7 @@ impl<'a> Coalesce<'a> {
 
 impl Drop for Coalesce<'_> {
     fn drop(&mut self) {
-        self.expire_inflight(u64::MAX)
+        self.flush();
     }
 }
 

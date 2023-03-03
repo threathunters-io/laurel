@@ -12,9 +12,13 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::{Duration, SystemTime};
 
-use nix::unistd::{chown, setresgid, setresuid, Uid, User};
+use nix::unistd::{chown, execve, setresgid, setresuid, Uid, User};
 
 use caps::securebits::set_keepcaps;
 use caps::{CapSet, Capability};
@@ -64,11 +68,11 @@ fn drop_privileges(runas_user: &User) -> Result<(), Box<dyn Error>> {
     capabilities.insert(Capability::CAP_SYS_PTRACE);
     capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
     caps::set(None, CapSet::Permitted, &capabilities)
-        .map_err(|e| format!("set effective capabilities: {}", e))?;
+        .map_err(|e| format!("set permitted capabilities: {}", e))?;
     caps::set(None, CapSet::Effective, &capabilities)
         .map_err(|e| format!("set effective capabilities: {}", e))?;
-    caps::set(None, CapSet::Inheritable, &HashSet::new())
-        .map_err(|e| format!("set inherited capabilities: {}", e))?;
+    caps::set(None, CapSet::Inheritable, &capabilities)
+        .map_err(|e| format!("set inheritable capabilities: {}", e))?;
 
     set_keepcaps(false)?;
     Ok(())
@@ -270,6 +274,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         // Logged to syslog by caller
         return Err(e);
     }
+    if let Err(e) = caps::clear(None, CapSet::Ambient) {
+        log::warn!("could not set ambient capabilities: {}", e);
+    }
 
     // Initial setup is done at this point.
 
@@ -294,7 +301,42 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let dump_state_period = config.debug.dump_state_period.map(Duration::from_secs);
     let mut dump_state_last_t = SystemTime::now();
 
+    let hup = Arc::new(AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGHUP, Arc::clone(&hup))?;
+
     loop {
+        if hup.load(Ordering::Relaxed) {
+            let buf = input.buffer();
+            let lines = buf.split_inclusive(|c| *c == b'\n');
+            log::info!("Got SIGHUP.");
+            for line in lines {
+                if let Err(e) = coalesce.process_line(line.to_vec()) {
+                    if let Some(ref mut l) = error_logger {
+                        l.write_all(line)
+                            .and_then(|_| l.flush())
+                            .map_err(|e| format!("write log: {}", e))?;
+                    }
+                    let line = String::from_utf8_lossy(line).replace('\n', "");
+                    log::error!("Error {} processing msg: {}", e, &line);
+                }
+            }
+            coalesce.flush();
+            log::info!("Restarting...");
+            use std::ffi::CString;
+            let argv: Vec<CString> = env::args().map(|a| CString::new(a).unwrap()).collect();
+            let env: Vec<CString> = env::vars()
+                .map(|(k, v)| CString::new(format!("{}={}", k, v)).unwrap())
+                .collect();
+
+            let mut capabilities = HashSet::new();
+            capabilities.insert(Capability::CAP_SYS_PTRACE);
+            capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
+            if let Err(e) = caps::set(None, CapSet::Ambient, &capabilities) {
+                log::warn!("could not set ambient capabilities: {}", e);
+            }
+            execve(&argv[0], &argv, &env)?;
+        }
+
         line.clear();
         if input
             .read_until(b'\n', &mut line)
@@ -303,6 +345,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         {
             break;
         }
+
         stats.lines += 1;
         match coalesce.process_line(line.clone()) {
             Ok(()) => (),
