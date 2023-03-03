@@ -28,6 +28,7 @@ caps = "0.5"
 libc = "0.2"
 exacl = ">= 0.6"
 regex = "1"
+signal-hook = "0.3"
 tinyvec = { version = "1", features = ["alloc"] }
 
 log = "0.4"
