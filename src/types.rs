@@ -102,10 +102,7 @@ impl MessageType {
     ///
     /// This mimics auparse logic as of version 3.0.6
     pub fn is_multipart(&self) -> bool {
-        (1300..1406).contains(&self.0)
-            || (1420..2000).contains(&self.0)
-            || (2001..2100).contains(&self.0)
-            || self.0 == 1006
+        (1300..2100).contains(&self.0) || self == &msg_type::LOGIN
     }
 }
 
