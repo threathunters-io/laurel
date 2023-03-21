@@ -6,6 +6,9 @@ user = "_laurel"
 # Status report includes the running version, config and parsing stats.
 # Default is 0 --> no status reports.
 statusreport-period = 0
+# By default, audit events are read from stdin ("stdin"). Alternatively, they
+# can be consumed from an existing UNIX domain socket ("unix:/path/to/socket")
+input = "stdin"
 
 [auditlog]
 # Base file name for the JSONL-based log file. Set to "-" to log to stdout. In this case 
