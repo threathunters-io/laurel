@@ -305,6 +305,16 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
 /// Returns a script name from path if exe's dev / inode don't match
 ///
 /// This seems to work with Docker containers but not with Podman.
+/// The executable's device and inode are inspected throguh the
+/// /proc/<pid>/root/ symlink. This may fail for
+///
+/// - very short-lived processes
+/// - container setups where the container's filesystem is constructed
+///   using fuse-overlayfs (observed with
+///   podman+fuse-overlayfs/1.4.0-1 on Debian/buster).
+///
+/// As an extra sanity check, exe is compared with normalized
+/// PATH.name. If they are equal, no script is returned.
 fn path_script_name(path: &Record, pid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
     let mut proc_exe_path = Vec::from(format!("/proc/{}/root", pid).as_bytes());
     proc_exe_path.extend(exe);
