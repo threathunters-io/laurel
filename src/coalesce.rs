@@ -360,7 +360,7 @@ fn path_script_name(path: &Record, pid: u32, cwd: &[u8], exe: &[u8]) -> Option<N
     }
     match (p_dev, p_inode, name) {
         (Some(p_dev), Some(p_inode), _) if p_dev == e_dev && p_inode == e_inode => None,
-        (Some(_), Some(_), Some(name)) => Some(name),
+        (Some(_), Some(_), Some(name)) if name != exe => Some(name),
         _ => None,
     }
 }
