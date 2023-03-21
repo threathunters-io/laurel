@@ -6,10 +6,11 @@ use std::collections::HashSet;
 use std::env;
 use std::error::Error;
 use std::fs;
-use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::ops::AddAssign;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::FromRawFd;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
@@ -21,7 +22,7 @@ use caps::{CapSet, Capability};
 use serde::Serialize;
 
 use laurel::coalesce::Coalesce;
-use laurel::config::{Config, Logfile};
+use laurel::config::{Config, Input, Logfile};
 use laurel::logger;
 use laurel::rotate::FileRotate;
 
@@ -169,6 +170,22 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         None => Config::default(),
     };
 
+    // Set up input before dropping privileges.
+    let raw_input: Box<dyn Read> = match &config.input {
+        // safety: File descriptor 0 is readable. (If it isn't, the
+        // first read will cause the appropriate error.) We don't use
+        // file descriptor 0 anywhere else.
+        Input::Stdin => Box::new(unsafe { std::fs::File::from_raw_fd(0) }),
+        Input::Unix(path) => Box::new(
+            UnixStream::connect(path)
+                .map_err(|e| format!("connect: {}: {}", path.to_string_lossy(), e))?,
+        ),
+    };
+
+    // std::io::Stdin's buffer is only 8KB, so we construct our own.
+    // 1MB ought to be enough for anybody.
+    let mut input = BufReader::with_capacity(1 << 20, raw_input);
+
     let runas_user = match config.user {
         Some(ref username) => {
             User::from_name(username)?.ok_or_else(|| format!("user {} not found", username))?
@@ -270,12 +287,6 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();
     let mut overall_stats = Stats::default();
-
-    // std::io::Stdin's buffer is only 8KB, so we construct our own.
-    // 1MB ought to be enough for anybody.
-    //
-    // TODO: Check that fd#0 is actually valid, open?
-    let mut input = BufReader::with_capacity(1 << 20, unsafe { std::fs::File::from_raw_fd(0) });
 
     let statusreport_period = config.statusreport_period.map(Duration::from_secs);
     let mut statusreport_last_t = SystemTime::now();

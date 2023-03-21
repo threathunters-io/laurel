@@ -44,6 +44,21 @@ path = /usr/sbin/laurel
 args = --config /etc/laurel/config.toml
 ```
 
+An alternative setup consists of an AF_UNIX socket to whcih
+`auditd(8)` writes events. A connection is then established by
+`laurel` (see `input` setting below). In this case, the operator is
+responsible for starting and restarting `laurel`.
+
+Example configuration file:
+```
+active = yes
+direction = out
+path = builtin_af_unix
+type = builtin
+args = 0600 /var/run/laurel.sock
+format = string
+```
+
 # CONFIGURATION
 
 Configuration of `laurel` itself is done through a single
@@ -59,6 +74,9 @@ This section contains basic operation parameters.
   Default: `.` (current directory)
 - `statusreport-period`: How often stats are written to Syslog, in
   seconds. Default: unset
+- `input`: `laurel` can consume audit events from standard input or
+  connect to a listening socket specified as `unix:/path/to/socket` at
+  start. Defaulkt: `stdin`
 
 <!-- `user` and `directory` are unset by default for debugging -->
 

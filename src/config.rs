@@ -1,7 +1,11 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::fmt;
+use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, Deserializer, Visitor},
+    Deserialize, Serialize,
+};
 
 use crate::coalesce::Settings;
 use crate::label_matcher::LabelMatcher;
@@ -130,10 +134,63 @@ pub struct Filter {
     pub filter_labels: HashSet<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub enum Input {
+    Stdin,
+    Unix(PathBuf),
+}
+
+impl Default for Input {
+    fn default() -> Self {
+        Input::Stdin
+    }
+}
+
+impl std::fmt::Display for Input {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            Input::Stdin => write!(fmt, "stdin"),
+            Input::Unix(p) => write!(fmt, "unix:{}", p.to_string_lossy()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Input {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_str(InputVisitor {})
+    }
+}
+
+struct InputVisitor {}
+
+impl<'de> Visitor<'de> for InputVisitor {
+    type Value = Input;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "an input specification string")
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        if s == "stdin" {
+            Ok(Input::Stdin)
+        } else if let Some(s) = s.strip_prefix("unix:") {
+            let p = Path::new(s).to_path_buf();
+            Ok(Input::Unix(p))
+        } else {
+            Err(de::Error::custom("unrecognized input specification"))
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub user: Option<String>,
     pub directory: Option<PathBuf>,
+    #[serde(default)]
+    pub input: Input,
     #[serde(default, rename = "statusreport-period")]
     pub statusreport_period: Option<u64>,
     #[serde(default)]
@@ -157,6 +214,7 @@ impl Default for Config {
         Config {
             user: None,
             directory: Some(".".into()),
+            input: Input::Stdin,
             statusreport_period: None,
             auditlog: Logfile {
                 file: "audit.log".into(),
