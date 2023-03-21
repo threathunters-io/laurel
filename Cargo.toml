@@ -26,7 +26,7 @@ toml = "0.5"
 nix = "0.22"
 caps = "0.5"
 libc = "0.2"
-exacl = "0.6"
+exacl = ">= 0.6"
 regex = "1"
 tinyvec = { version = "1", features = ["alloc"] }
 
