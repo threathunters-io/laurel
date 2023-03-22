@@ -128,6 +128,8 @@ pub struct Filter {
     pub filter_keys: HashSet<String>,
     #[serde(default, rename = "filter-labels")]
     pub filter_labels: HashSet<String>,
+    #[serde(default, rename = "filter-null-keys")]
+    pub filter_null_keys: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -244,6 +246,7 @@ impl Config {
                 .iter()
                 .map(|s| s.as_bytes().to_vec())
                 .collect(),
+            filter_null_keys: self.filter.filter_null_keys,
         }
     }
 }

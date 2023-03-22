@@ -116,6 +116,7 @@ pub struct Settings<'a> {
 
     pub filter_keys: HashSet<Vec<u8>>,
     pub filter_labels: HashSet<Vec<u8>>,
+    pub filter_null_keys: bool,
 }
 
 impl Default for Settings<'_> {
@@ -139,6 +140,7 @@ impl Default for Settings<'_> {
             unlabel_script: None,
             filter_keys: HashSet::new(),
             filter_labels: HashSet::new(),
+            filter_null_keys: false,
         }
     }
 }
@@ -789,6 +791,11 @@ impl<'a> Coalesce<'a> {
                 ev.filter = true;
                 return;
             }
+        } else {
+            if self.settings.filter_null_keys {
+                ev.filter = true;
+                return;
+            }
         }
 
         let proc: Option<Process> = pid.and_then(|pid| self.processes.get_process(pid));
@@ -1362,6 +1369,15 @@ mod test {
             .insert(Vec::from(&b"filter-this"[..]));
         c.settings.filter_keys.insert(Vec::from(&b"this-too"[..]));
         process_record(&mut c, include_bytes!("testdata/record-syscall-key.txt"))?;
+        drop(c);
+        assert!(ec.borrow().as_ref().is_none());
+
+        let mut c = Coalesce::new(emitter);
+        c.settings.filter_null_keys = true;
+        process_record(
+            &mut c,
+            include_bytes!("testdata/record-syscall-nullkey.txt"),
+        )?;
         drop(c);
         assert!(ec.borrow().as_ref().is_none());
 
