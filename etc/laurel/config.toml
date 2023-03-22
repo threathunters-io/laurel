@@ -133,3 +133,7 @@ propagate-labels = [ "software_mgmt", "amazon-ssm-agent" ]
 # filtering. This alows the possibility to filter based on parent processes.
 
 # filter-labels = ["software_mgmt"]
+
+# Filter events without specified key
+
+filter-null-keys = false
