@@ -44,7 +44,7 @@ path = /usr/sbin/laurel
 args = --config /etc/laurel/config.toml
 ```
 
-An alternative setup consists of an AF_UNIX socket to whcih
+An alternative setup consists of an AF_UNIX socket to which
 `auditd(8)` writes events. A connection is then established by
 `laurel` (see `input` setting below). In this case, the operator is
 responsible for starting and restarting `laurel`.
