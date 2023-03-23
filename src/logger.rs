@@ -27,7 +27,7 @@ impl Default for Logger {
                 .into(),
             pid: std::process::id(),
         })
-        .map(|sl| syslog::BasicLogger::new(sl))
+        .map(syslog::BasicLogger::new)
         .ok();
 
         Logger { simple, syslog }
@@ -40,10 +40,14 @@ impl log::Log for Logger {
     }
     fn log(&self, record: &log::Record<'_>) {
         self.simple.log(record);
-        self.syslog.as_ref().map(|l| l.log(record));
+        if let Some(l) = self.syslog.as_ref() {
+            l.log(record)
+        }
     }
     fn flush(&self) {
         self.simple.flush();
-        self.syslog.as_ref().map(|l| l.flush());
+        if let Some(l) = self.syslog.as_ref() {
+            l.flush()
+        }
     }
 }
