@@ -27,7 +27,6 @@ lazy_static! {
 }
 
 /// Read contents of file, return buffer.
-/// Time out after 100m, this ought to be enough for everything in /proc.
 fn slurp_file(path: impl AsRef<Path>) -> Result<Vec<u8>, Box<dyn Error>> {
     let f = File::open(path)?;
     let mut r = BufReader::with_capacity(1 << 16, f);
