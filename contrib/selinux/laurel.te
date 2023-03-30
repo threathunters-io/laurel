@@ -13,7 +13,7 @@ init_daemon_domain(laurel_t, laurel_exec_t)
 
 gen_require(`type passwd_file_t;')
 
-# auditd (auditd 3+) -> laurel
+# Transition auditd (auditd 3+) -> laurel
 ifdef(`audit3',`
 	gen_require(`type auditd_t;')
 
@@ -23,7 +23,7 @@ ifdef(`audit3',`
 	allow auditd_t laurel_t:process { transition signal };
 ')
 
-# audispd (auditd 2.x) -> laurel
+# Transition audispd (auditd 2.x) -> laurel
 ifdef(`audit2',`
 	gen_require(`type audisp_t;')
 
@@ -35,9 +35,9 @@ ifdef(`audit2',`
 
 # Set / retain capabilities
 allow laurel_t self:process { getcap setcap };
-# ability to set permissions at initialization time
+# Set permissions at initialization time
 allow laurel_t self:capability { chown fowner fsetid setuid setgid };
-# ability to inspect process environments, override UNIX read permissions
+# Inspect process environments, override UNIX read permissions
 allow laurel_t self:capability { sys_ptrace dac_read_search };
 
 # Write to Syslog
