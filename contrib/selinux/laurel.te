@@ -47,6 +47,9 @@ logging_send_syslog_msg(laurel_t)
 domain_read_all_domains_state(laurel_t)
 list_dirs_pattern(laurel_t, proc_t, proc_t);
 
+# stat() for every file (for enrich.script)
+files_getattr_all_files(laurel_t)
+
 # Access user database or SSSD
 allow laurel_t passwd_file_t:file { open read };
 sssd_read_public_files(laurel_t)
