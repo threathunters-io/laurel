@@ -59,3 +59,20 @@ jobs:
         with:
           name: selinux-al2
           path: contrib/selinux/laurel.pp
+
+  build-al2023:
+    runs-on: ubuntu-latest
+    container: amazonlinux:2023
+    steps:
+      - name: Prepare
+        run: |
+          yum install -y selinux-policy-devel findutils tar
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v3
+        with:
+          name: selinux-al2
+          path: contrib/selinux/laurel.pp
