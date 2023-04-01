@@ -31,6 +31,14 @@ The [_LAUREL_ installation instructions](INSTALL.md) contain instructions on how
 
 We developed _LAUREL_ because we were not content with feature sets and performance characteristics of existing projects and products. Please refer to the [Performance](performance.md) document for details.
 
+## Container Image
+
+From v0.5.2 on laurel is able to connect to a socket for forwarded auditd messages and can be executed in a container this way. A basic container image is published in this repository to `ghcr.io/threathunters-io/laurel` with tags `latest` and the respective version tag.
+
+The provided container image build includes default labels via docker buildx from the pipeline. These labels are not included in the provided Dockerfile but are considered good practice. If you use a custom build with another tooling, consider adding the default labels to the Dockerfile.
+
+The provided container image contains the default configuration, with one modification: Laurel connects to `/var/run/audispd_events` (the default path specified for the `builtin_af_unix` _auditd(8)_ plug-in. The plug-in needs to be enabled and the socket must be accessible from within the container. The rest of the configuration file should be customized as needed before deploying.
+
 ## License
 
 GNU General Public License, version 3
