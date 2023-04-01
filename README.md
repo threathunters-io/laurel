@@ -33,7 +33,7 @@ We developed _LAUREL_ because we were not content with feature sets and performa
 
 ## Container Image
 
-From v0.5.2 on laurel is able to listen on an socket for forwarded auditd messages and can be executed in a container this way. A basic container image is published in this repository to `ghcr.io/threathunters.io/laurel` with tags latest and the respective version tag.
+From v0.5.2 on laurel is able to listen on an socket for forwarded auditd messages and can be executed in a container this way. A basic container image is published in this repository to `ghcr.io/threathunters-io/laurel` with tags latest and the respective version tag.
 
 The provided container image build includes default labels via docker buildx from the pipeline. These labels are not included in the provided Dockerfile but are considered good practice. If you use a custom build with another tooling, consider adding the default labels to the Dockerfile.
 
