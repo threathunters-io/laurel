@@ -31,6 +31,14 @@ The [_LAUREL_ installation instructions](INSTALL.md) contain instructions on how
 
 We developed _LAUREL_ because we were not content with feature sets and performance characteristics of existing projects and products. Please refer to the [Performance](performance.md) document for details.
 
+## Container Image
+
+From v0.5.2 on laurel is able to listen on an socket for forwarded auditd messages and can be executed in a container this way. A basic container image is published in this repository to `ghcr.io/threathunters.io/laurel` with tags latest and the respective version tag.
+
+The provided container image build includes default labels via docker buildx from the pipeline. These labels are not included in the provided Dockerfile but are considered good practice. If you use a custom build with another tooling, consider adding the default labels to the Dockerfile.
+
+The container image currently contains the default configuration, which does not include the socket connection and other container specifics. Please replace this configuration with the configuration of your choice, it is meant as a placeholder.
+
 ## License
 
 GNU General Public License, version 3
