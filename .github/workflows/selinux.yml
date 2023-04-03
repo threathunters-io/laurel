@@ -74,5 +74,5 @@ jobs:
       - name: Archive policy
         uses: actions/upload-artifact@v3
         with:
-          name: selinux-al2
+          name: selinux-al2023
           path: contrib/selinux/laurel.pp
