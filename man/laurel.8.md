@@ -127,8 +127,8 @@ Options that can be configured here actually add information to events
   assumed if the first `PATH` entry does not correspond to file
   mentioned  in `SYSCALL.exe`. Default: true
 - `parent-info`: Add `PARENT_INFO` record corresponding to
-  `SYSCALL.ppid`. Deprecated, use `pid` instead in new setups.
-  Default: false
+  `SYSCALL.ppid`. Deprecated, use `pid` configuration option instead
+  in new setups. Default: false
 
 ## `[label-process]` section
 
@@ -158,6 +158,7 @@ using them for internal processing such as process tracking.
 
 - `filter-keys`: A list of strings that are matched against
   `SYSCALL.key` to drop the event. Default: empty
+- `filter-null-keys`: Filter events without specified key. Default: false
 - `filter-labels`: A list of strings that are matched against process
   labels. Default: empty
 
