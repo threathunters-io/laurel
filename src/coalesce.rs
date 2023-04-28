@@ -1144,7 +1144,14 @@ mod test {
     where
         T: AsRef<[u8]>,
     {
-        for line in BufReader::new(text.as_ref()).lines() {
+        for line in BufReader::new(text.as_ref())
+            .lines()
+            .filter(|line| match line {
+                Ok(l) if l.len() == 0 => false,
+                Ok(l) if l.starts_with("#") => false,
+                _ => true,
+            })
+        {
             let mut line = line.unwrap().clone();
             line.push('\n');
             c.process_line(line.as_bytes().to_vec())?;
@@ -1499,5 +1506,45 @@ mod test {
         }
 
         Ok(())
+    }
+
+    #[test]
+    #[ignore = "bug needs fixing"]
+    fn shell_proc_trace() {
+        let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+        let mut c = Coalesce::new(|e| events.borrow_mut().push(e.clone()));
+
+        c.settings.proc_label_keys = [b"test-script".to_vec()].into();
+        c.settings.proc_propagate_labels = [b"test-script".to_vec()].into();
+
+        process_record(&mut c, include_bytes!("testdata/shell-proc-trace.txt")).unwrap();
+
+        let events = events.borrow();
+
+        let fork_ev = events
+            .iter()
+            .find(|e| e.id.to_string() == "1682609045.530:29241")
+            .unwrap();
+        assert!(event_to_json(&fork_ev).contains(r#""LABELS":["test-script"]"#));
+        let script_ev = events
+            .iter()
+            .find(|e| e.id.to_string() == "1682609045.526:29238")
+            .unwrap();
+        assert!(event_to_json(&script_ev).contains(r#""LABELS":["test-script"]"#));
+        let grep_ev = events
+            .iter()
+            .find(|e| e.id.to_string() == "1682609045.530:29242")
+            .unwrap();
+        assert!(event_to_json(&grep_ev).contains(r#""LABELS":["test-script"]"#));
+        let echo_ev = events
+            .iter()
+            .find(|e| e.id.to_string() == "1682609045.530:29244")
+            .unwrap();
+        assert!(event_to_json(&echo_ev).contains(r#""LABELS":["test-script"]"#));
+        let sed_ev = events
+            .iter()
+            .find(|e| e.id.to_string() == "1682609045.534:29245")
+            .unwrap();
+        assert!(event_to_json(&sed_ev).contains(r#""LABELS":["test-script"]"#));
     }
 }
