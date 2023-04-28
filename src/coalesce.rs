@@ -714,22 +714,24 @@ impl<'a> Coalesce<'a> {
         // parent if applicable
         let parent: Option<Process> = ppid.and_then(|ppid| self.processes.get_process(ppid));
 
-        if let (Some(pid), Some(ppid), true) = (pid, ppid, syscall_is_exec) {
-            self.processes.add_process(
-                pid,
-                ppid,
-                ev.id,
-                comm.as_ref().map(|s| s.to_vec()),
-                exe.as_ref().map(|s| s.to_vec()),
-            );
+        if let (Some(pid), Some(ppid)) = (pid, ppid) {
+            if syscall_is_exec || self.processes.get_process(pid).is_none() {
+                self.processes.add_process(
+                    pid,
+                    ppid,
+                    ev.id,
+                    comm.as_ref().map(|s| s.to_vec()),
+                    exe.as_ref().map(|s| s.to_vec()),
+                );
 
-            if let Some(parent) = &parent {
-                for l in self
-                    .settings
-                    .proc_propagate_labels
-                    .intersection(&parent.labels)
-                {
-                    self.processes.add_label(pid, l);
+                if let Some(parent) = &parent {
+                    for l in self
+                        .settings
+                        .proc_propagate_labels
+                        .intersection(&parent.labels)
+                    {
+                        self.processes.add_label(pid, l);
+                    }
                 }
             }
         }
@@ -1509,7 +1511,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "bug needs fixing"]
     fn shell_proc_trace() {
         let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
         let mut c = Coalesce::new(|e| events.borrow_mut().push(e.clone()));
