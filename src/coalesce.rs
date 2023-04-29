@@ -793,11 +793,9 @@ impl<'a> Coalesce<'a> {
                 ev.filter = true;
                 return;
             }
-        } else {
-            if self.settings.filter_null_keys {
-                ev.filter = true;
-                return;
-            }
+        } else if self.settings.filter_null_keys {
+            ev.filter = true;
+            return;
         }
 
         let proc: Option<Process> = pid.and_then(|pid| self.processes.get_process(pid));
