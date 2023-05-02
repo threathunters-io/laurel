@@ -5,6 +5,7 @@ on:
       - audit-specs/**
       - build.rs
       - Cargo.toml
+      - Cargo.lock
       - .github/workflows/build.yml
     tags-ignore:
       - "v*"
@@ -14,6 +15,7 @@ on:
       - audit-specs/**
       - build.rs
       - Cargo.toml
+      - Cargo.lock
       - .github/workflows/build.yml
 
 jobs:
