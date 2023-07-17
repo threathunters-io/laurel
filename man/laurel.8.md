@@ -162,6 +162,12 @@ using them for internal processing such as process tracking.
 - `filter-labels`: A list of strings that are matched against process
   labels. Default: empty
 
+# SIGNALS
+
+`SIGHUP` causes `laurel` to process any buffered input and restart. It
+can be used to reconfigure `laurel` without having restarting
+`auditd(8)` which would likely lead to lost audit messages.
+
 # AUTHORS
 - Hilko Bengen <<bengen@hilluzination.de>>
 - Sergej Schmidt <<sergej@msgpeek.net>>
