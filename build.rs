@@ -136,7 +136,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allowlist_type("^sockaddr_.*")
         .allowlist_var("^AF_.*")
         .layout_tests(false)
-        .rustfmt_bindings(false)
         .generate()
         .expect("unable to generate bindings")
         .write_to_file(PathBuf::from(env::var("OUT_DIR").unwrap()).join("sockaddr.rs"))
