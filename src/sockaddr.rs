@@ -6,7 +6,6 @@ include!(concat!(env!("OUT_DIR"), "/sockaddr.rs"));
 
 use std::convert::TryInto;
 use std::error::Error;
-use std::mem::{size_of, transmute};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
 /*
@@ -74,11 +73,11 @@ pub enum SocketAddr {
     VM(SocketAddrVM),
 }
 
-fn get_sock<T>(buf: &[u8]) -> Result<&T, String> {
-    if buf.len() < size_of::<T>() {
+fn get_sock<T: Sized>(buf: &[u8]) -> Result<T, String> {
+    if buf.len() < std::mem::size_of::<T>() {
         Err("buffer too short".into())
     } else {
-        let sa = unsafe { &*transmute::<_, *const T>(&buf[0] as *const _) };
+        let sa = unsafe { std::ptr::read(&buf[0] as *const _ as _) };
         Ok(sa)
     }
 }
