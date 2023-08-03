@@ -37,9 +37,9 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install dependency
       run: |
-        apt-get -q update
-        apt-get -qy dist-upgrade
-        apt-get -qy install curl build-essential libclang-dev libacl1-dev selinux-policy-dev libgoogle-perftools-dev
+        apt-get -qq update
+        apt-get -qqy dist-upgrade
+        apt-get -qqy install curl build-essential libclang-dev libacl1-dev selinux-policy-dev libgoogle-perftools-dev
 
     - uses: actions-rs/toolchain@v1
       with:
@@ -89,13 +89,13 @@ jobs:
 
   build_dynamic_glibc:
     runs-on: ubuntu-latest
-    container: debian:bullseye-slim
+    container: debian:bookworm-slim
     steps:
       - name: Prepare
         run: |
-          apt-get -q update
-          apt-get -qy upgrade
-          apt-get -qy install ca-certificates rustc-mozilla cargo-mozilla clang libacl1-dev jq file
+          apt-get -qq update
+          apt-get -qqy upgrade
+          apt-get -qqy install ca-certificates rustc cargo clang libacl1-dev jq file
       - uses: actions/checkout@v2
       - name: Build
         run: |
