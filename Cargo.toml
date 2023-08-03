@@ -36,7 +36,7 @@ simple_logger = "1"
 syslog = "6"
 
 [build-dependencies]
-bindgen = "0.60"
+bindgen = ">= 0.60"
 
 [dev-dependencies]
 bencher = "0"
