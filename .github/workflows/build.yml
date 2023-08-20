@@ -62,27 +62,26 @@ jobs:
 
   build_static_musl:
     runs-on: ubuntu-latest
-    container: alpine:3.16
+    container: alpine:3.18
     steps:
       - name: Prepare
         run: |
-          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers
-          wget $(sed -ne '/community$/{;s/v3[.]16/v3.17/;p;q;}' /etc/apk/repositories)/x86_64/pandoc-2.19.2-r0.apk
-          apk add make pandoc-2.19.2-r0.apk
+          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers make pandoc
           apk add binutils file jq
       - uses: actions/checkout@v2
       - name: Build
         run: |
-          RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build
+          RUSTFLAGS='-C target-feature=+crt-static -L /lib -l static=acl' \
+              cargo build --target x86_64-alpine-linux-musl
           make -C man
       - name: Show binary charcteristics
         run: |
           set -x
-          file target/debug/laurel
-          ldd  target/debug/laurel
-          objdump -x target/debug/laurel | grep NEEDED || true
+          file target/x86_64-alpine-linux-musl/debug/laurel
+          ldd  target/x86_64-alpine-linux-musl/debug/laurel
+          objdump -x target/x86_64-alpine-linux-musl/debug/laurel | grep NEEDED || true
           set +x
-          if [ -n "$(objdump -x target/debug/laurel | grep NEEDED)" ]; then
+          if [ -n "$(objdump -x target/x86_64-alpine-linux-musl/debug/laurel | grep NEEDED)" ]; then
               echo "laurel is linked against shared libraries" >&2
               exit 1
           fi
