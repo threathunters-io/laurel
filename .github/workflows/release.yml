@@ -39,21 +39,20 @@ jobs:
   build-musl:
     needs: prep
     runs-on: ubuntu-latest
-    container: alpine:3.16
+    container: alpine:3.18
     steps:
       - name: Prepare
         run: |
-          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers
-          wget $(sed -ne '/community$/{;s/v3[.]16/v3.17/;p;q;}' /etc/apk/repositories)/x86_64/pandoc-2.19.2-r0.apk
-          apk add make pandoc-2.19.2-r0.apk
+          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers pandoc
       - uses: actions/checkout@v2
       - name: Build
         run: |
-          RUSTC=$(pwd)/contrib/musl-static-build/rustc-wrapper cargo build --release
+          RUSTFLAGS='-C target-feature=+crt-static -L /lib -l static=acl' \
+              cargo build --target x86_64-alpine-linux-musl --release
           make -C man
       - name: Build tarball
         run: |
-          ln -f target/release/laurel .
+          ln -f target/x86_64-alpine-linux-musl/release/laurel .
           tar -czf laurel.tar.gz laurel *.md man/
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
