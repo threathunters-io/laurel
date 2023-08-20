@@ -804,7 +804,7 @@ impl<'a> Coalesce<'a> {
             match tv {
                 (&SYSCALL, EventValues::Single(_)) | (&EXECVE, EventValues::Single(_)) => {}
                 (&SOCKADDR, EventValues::Multi(rvs)) => {
-                    for mut rv in rvs {
+                    for rv in rvs {
                         let mut new = Vec::with_capacity(rv.elems.len());
                         let mut nrv = Record::default();
                         for (k, v) in &rv.elems {
