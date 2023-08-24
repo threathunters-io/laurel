@@ -41,12 +41,7 @@ impl Display for EventID {
 impl Serialize for EventID {
     #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.collect_str(&format_args!(
-            "{}.{:03}:{}",
-            self.timestamp / 1000,
-            self.timestamp % 1000,
-            self.sequence
-        ))
+        s.collect_str(&format_args!("{}", self))
     }
 }
 
