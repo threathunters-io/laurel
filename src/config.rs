@@ -82,10 +82,6 @@ fn true_value() -> bool {
     true
 }
 
-fn false_value() -> bool {
-    false
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Enrich {
     #[serde(default = "execve_env_default", rename = "execve-env")]
@@ -94,8 +90,6 @@ pub struct Enrich {
     pub container: bool,
     #[serde(default = "true_value")]
     pub pid: bool,
-    #[serde(default = "false_value", rename = "parent-info")]
-    pub parent_info: bool,
     #[serde(default = "true_value")]
     pub script: bool,
 }
@@ -106,7 +100,6 @@ impl Default for Enrich {
             execve_env: execve_env_default(),
             container: true,
             pid: true,
-            parent_info: false,
             script: true,
         }
     }
@@ -316,7 +309,6 @@ impl Config {
                 .collect(),
             enrich_container: self.enrich.container,
             enrich_pid: self.enrich.pid,
-            enrich_parent_info: self.enrich.parent_info,
             enrich_script: self.enrich.script,
             proc_label_keys: self
                 .label_process

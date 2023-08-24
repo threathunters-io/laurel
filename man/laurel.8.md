@@ -134,9 +134,6 @@ Options that can be configured here actually add information to events
   binary), add a `SCRIPT` entry to the `SYSCALL` record. A script is
   assumed if the first `PATH` entry does not correspond to file
   mentioned  in `SYSCALL.exe`. Default: true
-- `parent-info`: Add `PARENT_INFO` record corresponding to
-  `SYSCALL.ppid`. Deprecated, use `pid` configuration option instead
-  in new setups. Default: false
 
 ## `[label-process]` section
 
