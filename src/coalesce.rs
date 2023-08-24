@@ -9,87 +9,15 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 
-use indexmap::IndexMap;
-
-use serde::ser::SerializeMap;
-use serde::{Serialize, Serializer};
 use serde_json::json;
 
 use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
 use crate::label_matcher::LabelMatcher;
 use crate::parser::parse;
 use crate::proc::{get_environ, ProcTable, Process};
-use crate::quoted_string::ToQuotedString;
 use crate::sockaddr::SocketAddr;
 use crate::types::*;
 use crate::userdb::UserDB;
-
-/// Collect records in [`EventBody`] context as single or multiple
-/// instances.
-///
-/// Examples for single instances are `SYSCALL`,`EXECVE` (even if the
-/// latter can be split across multiple lines). An example for
-/// multiple instances is `PATH`.
-///
-/// "Multi" records are serialized as list-of-maps (`[ { "key":
-/// "value", … }, { "key": "value", … } … ]`)
-#[derive(Debug, Clone)]
-pub enum EventValues {
-    // e.g SYSCALL, EXECVE
-    Single(Record),
-    // e.g. PATH
-    Multi(Vec<Record>),
-}
-
-impl Serialize for EventValues {
-    #[inline(always)]
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match self {
-            EventValues::Single(rv) => rv.serialize(s),
-            EventValues::Multi(rvs) => s.collect_seq(rvs),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Event {
-    pub node: Option<Vec<u8>>,
-    pub id: EventID,
-    pub body: IndexMap<MessageType, EventValues>,
-    pub filter: bool,
-}
-
-impl Event {
-    fn new(node: Option<Vec<u8>>, id: EventID) -> Self {
-        Event {
-            node,
-            id,
-            body: IndexMap::with_capacity(5),
-            filter: false,
-        }
-    }
-}
-
-impl Serialize for Event {
-    #[inline(always)]
-    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let length = self.body.len() + if self.node.is_some() { 2 } else { 1 };
-        let mut map = s.serialize_map(Some(length))?;
-        map.serialize_key("ID")?;
-        map.serialize_value(&self.id)?;
-        if let Some(node) = &self.node {
-            map.serialize_key("NODE")?;
-            map.serialize_value(&node.as_slice().to_quoted_string())?;
-        }
-        for (k, v) in &self.body {
-            map.serialize_entry(&k, &v)?;
-        }
-        map.end()
-    }
-}
 
 pub struct Settings<'a> {
     /// Generate ARGV and ARGV_STR from EXECVE

@@ -7,6 +7,8 @@ use std::ops::Range;
 use std::str;
 use std::string::*;
 
+use indexmap::IndexMap;
+
 use lazy_static::lazy_static;
 
 use serde::ser::SerializeMap;
@@ -14,6 +16,73 @@ use serde::{Serialize, Serializer};
 
 use crate::constants::*;
 use crate::quoted_string::ToQuotedString;
+
+/// Collect records in [`EventBody`] context as single or multiple
+/// instances.
+///
+/// Examples for single instances are `SYSCALL`,`EXECVE` (even if the
+/// latter can be split across multiple lines). An example for
+/// multiple instances is `PATH`.
+///
+/// "Multi" records are serialized as list-of-maps (`[ { "key":
+/// "value", … }, { "key": "value", … } … ]`)
+#[derive(Debug, Clone)]
+pub enum EventValues {
+    // e.g SYSCALL, EXECVE
+    Single(Record),
+    // e.g. PATH
+    Multi(Vec<Record>),
+}
+
+impl Serialize for EventValues {
+    #[inline(always)]
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            EventValues::Single(rv) => rv.serialize(s),
+            EventValues::Multi(rvs) => s.collect_seq(rvs),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Event {
+    pub node: Option<Vec<u8>>,
+    pub id: EventID,
+    pub body: IndexMap<MessageType, EventValues>,
+    pub filter: bool,
+}
+
+impl Event {
+    pub fn new(node: Option<Vec<u8>>, id: EventID) -> Self {
+        Event {
+            node,
+            id,
+            body: IndexMap::with_capacity(5),
+            filter: false,
+        }
+    }
+}
+
+impl Serialize for Event {
+    #[inline(always)]
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let length = self.body.len() + if self.node.is_some() { 2 } else { 1 };
+        let mut map = s.serialize_map(Some(length))?;
+        map.serialize_key("ID")?;
+        map.serialize_value(&self.id)?;
+        if let Some(node) = &self.node {
+            map.serialize_key("NODE")?;
+            map.serialize_value(&node.as_slice().to_quoted_string())?;
+        }
+        for (k, v) in &self.body {
+            map.serialize_entry(&k, &v)?;
+        }
+        map.end()
+    }
+}
 
 /// The identifier of an audit event, corresponding to the
 /// `msg=audit(…)` part of every _auditd(8)_ log line.
