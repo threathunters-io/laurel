@@ -28,7 +28,6 @@ pub struct Settings {
     pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
     pub enrich_pid: bool,
-    pub enrich_parent_info: bool,
     pub enrich_script: bool,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
@@ -58,7 +57,6 @@ impl Default for Settings {
             execve_argv_limit_bytes: None,
             enrich_container: false,
             enrich_pid: true,
-            enrich_parent_info: false,
             enrich_script: true,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
@@ -817,28 +815,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     rvs.iter_mut().for_each(|rv| self.enrich_generic(rv))
                 }
             }
-        }
-
-        // PARENT_INFO
-        if let (true, Some(parent)) = (self.settings.enrich_parent_info, &parent) {
-            let mut pi = Record::with_capacity(4);
-            if let ProcessKey::Event(id) = parent.key {
-                let r = format!("{}", id);
-                pi.push((Key::Literal("ID"), Value::Str(r.as_bytes(), Quote::None)));
-            }
-            if let Some(comm) = &parent.comm {
-                let r = comm;
-                pi.push((Key::Literal("comm"), Value::Str(r, Quote::None)));
-            }
-            if let Some(exe) = &parent.exe {
-                let r = exe;
-                pi.push((Key::Literal("exe"), Value::Str(r, Quote::None)));
-            }
-            pi.push((
-                Key::Literal("ppid"),
-                Value::Number(Number::Dec(parent.ppid as i64)),
-            ));
-            ev.body.insert(PARENT_INFO, EventValues::Single(pi));
         }
 
         if let Some(EventValues::Single(sc)) = ev.body.get_mut(&SYSCALL) {
