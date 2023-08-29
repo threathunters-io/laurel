@@ -178,7 +178,7 @@ fn parse_body(
     skip_enriched: bool,
 ) -> IResult<&[u8], Vec<(Key, PValue)>> {
     let (input, special) = opt(alt((
-        map_res(
+        map(
             tuple((
                 tuple((tag("avc:"), space0)),
                 alt((tag("granted"), tag("denied"))),
@@ -186,13 +186,11 @@ fn parse_body(
                 many1(terminated(parse_identifier, space0)),
                 tuple((tag("}"), space0, tag("for"), space0)),
             )),
-            |(_, k, _, v, _)| -> Result<_, ()> { Ok((Key::Name(NVec::from(k)), PValue::List(v))) },
+            |(_, k, _, v, _)| (Key::Name(NVec::from(k)), PValue::List(v)),
         ),
-        map_res(
+        map(
             tuple((tag("netlabel"), tag(":"), space0)),
-            |(s, _, _): (&[u8], _, _)| -> Result<_, ()> {
-                Ok((Key::Name(NVec::from(s)), PValue::Empty))
-            },
+            |(s, _, _): (&[u8], _, _)| (Key::Name(NVec::from(s)), PValue::Empty),
         ),
     )))(input)?;
 
@@ -242,16 +240,16 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (Key, PValue)> {
     }?;
 
     let (input, value) = match (ty, &key) {
-        (msg_type::SYSCALL, Key::Arg(_, None)) => map_res(
+        (msg_type::SYSCALL, Key::Arg(_, None)) => map(
             recognize(terminated(
                 many1_count(take_while1(is_hex_digit)),
                 peek(take_while1(is_sep)),
             )),
-            |s| -> Result<_, ()> {
+            |s| {
                 let ps = unsafe { str::from_utf8_unchecked(s) };
                 match u64::from_str_radix(ps, 16) {
-                    Ok(n) => Ok(PValue::Number(Number::Hex(n))),
-                    Err(_) => Ok(PValue::Str(s, Quote::None)),
+                    Ok(n) => PValue::Number(Number::Hex(n)),
+                    Err(_) => PValue::Str(s, Quote::None),
                 }
             },
         )(input)?,
@@ -312,19 +310,17 @@ fn parse_common(input: &[u8], ty: MessageType, c: Common) -> IResult<&[u8], PVal
 #[inline(always)]
 fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
     alt((
-        map_res(parse_str_dq_safe, |s| -> Result<_, ()> {
-            Ok(PValue::Str(s, Quote::Double))
-        }),
-        map_res(
-            terminated(
+        map(parse_str_dq_safe, |s| PValue::Str(s, Quote::Double)),
+        terminated(
+            map(
                 recognize(many1_count(take_while_m_n(2, 2, is_hex_digit))),
-                peek(take_while1(is_sep)),
+                PValue::HexStr,
             ),
-            |s| -> Result<_, ()> { Ok(PValue::HexStr(s)) },
+            peek(take_while1(is_sep)),
         ),
-        map_res(
-            terminated(alt((tag("(null)"), tag("?"))), peek(take_while1(is_sep))),
-            |_| -> Result<_, ()> { Ok(PValue::Empty) },
+        terminated(
+            map(alt((tag("(null)"), tag("?"))), |_| PValue::Empty),
+            peek(take_while1(is_sep)),
         ),
     ))(input)
 }
@@ -398,28 +394,18 @@ fn parse_unspec_value<'a>(
     };
 
     alt((
-        map_res(
-            terminated(take_while1(is_safe_unquoted_chr), peek(take_while1(is_sep))),
-            |s| -> Result<_, ()> { Ok(PValue::Str(s, Quote::None)) },
+        terminated(
+            map(take_while1(is_safe_unquoted_chr), |s| {
+                PValue::Str(s, Quote::None)
+            }),
+            peek(take_while1(is_sep)),
         ),
-        map_res(parse_kv_sq, |s| -> Result<_, ()> {
-            Ok(PValue::Str(s, Quote::Single))
-        }),
-        map_res(parse_str_sq, |s| -> Result<_, ()> {
-            Ok(PValue::Str(s, Quote::Single))
-        }),
-        map_res(parse_str_dq, |s| -> Result<_, ()> {
-            Ok(PValue::Str(s, Quote::Double))
-        }),
-        map_res(parse_kv_braced, |s| -> Result<_, ()> {
-            Ok(PValue::Str(s, Quote::Braces))
-        }),
-        map_res(parse_str_braced, |s| -> Result<_, ()> {
-            Ok(PValue::Str(s, Quote::Braces))
-        }),
-        map_res(peek(take_while1(is_sep)), |_| -> Result<_, ()> {
-            Ok(PValue::Empty)
-        }),
+        map(parse_kv_sq, |s| PValue::Str(s, Quote::Single)),
+        map(parse_str_sq, |s| PValue::Str(s, Quote::Single)),
+        map(parse_str_dq, |s| PValue::Str(s, Quote::Double)),
+        map(parse_kv_braced, |s| PValue::Str(s, Quote::Braces)),
+        map(parse_str_braced, |s| PValue::Str(s, Quote::Braces)),
+        map(peek(take_while1(is_sep)), |_| PValue::Empty),
     ))(input)
 }
 
@@ -490,17 +476,17 @@ fn parse_kv_braced(input: &[u8]) -> IResult<&[u8], &[u8]> {
 /// Recognize regular keys of key/value pairs
 #[inline(always)]
 fn parse_key(input: &[u8]) -> IResult<&[u8], Key> {
-    map_res(
+    map(
         recognize(pair(alpha1, many0_count(alt((alphanumeric1, is_a("-_")))))),
-        |s: &[u8]| -> Result<_, ()> {
+        |s: &[u8]| {
             if let Ok(c) = Common::try_from(s) {
-                Ok(Key::Common(c))
+                Key::Common(c)
             } else if s.ends_with(b"uid") {
-                Ok(Key::NameUID(NVec::from(s)))
+                Key::NameUID(NVec::from(s))
             } else if s.ends_with(b"gid") {
-                Ok(Key::NameGID(NVec::from(s)))
+                Key::NameGID(NVec::from(s))
             } else {
-                Ok(Key::Name(NVec::from(s)))
+                Key::Name(NVec::from(s))
             }
         },
     )(input)
