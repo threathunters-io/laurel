@@ -1,6 +1,6 @@
 use std::convert::{From, TryFrom};
 use std::ops::Range;
-use std::str::{self, FromStr};
+use std::str;
 
 use crate::constants::*;
 use crate::types::*;
@@ -9,6 +9,8 @@ use nom::{
     branch::*, bytes::complete::*, character::complete::*, character::*, combinator::*, multi::*,
     sequence::*, IResult, Offset,
 };
+
+use nom::character::complete::{i64 as dec_i64, u16 as dec_u16, u32 as dec_u32, u64 as dec_u64};
 
 /// Parse a single log line as produced by _auditd(8)_
 ///
@@ -128,10 +130,7 @@ fn parse_type(input: &[u8]) -> IResult<&[u8], MessageType> {
                         .map(|n| MessageType(*n))
                 },
             ),
-            map_res(
-                delimited(tag("UNKNOWN["), is_a("0123456789"), tag("]")),
-                |s| str::from_utf8(s).unwrap().parse::<u32>().map(MessageType),
-            ),
+            map(delimited(tag("UNKNOWN["), dec_u32, tag("]")), MessageType),
         )),
     )(input)
 }
@@ -139,24 +138,20 @@ fn parse_type(input: &[u8]) -> IResult<&[u8], MessageType> {
 /// Recognize the "msg=audit(…):" event identifier
 #[inline(always)]
 fn parse_msgid(input: &[u8]) -> IResult<&[u8], EventID> {
-    map_res(
+    map(
         tuple((
             tag("msg=audit("),
-            digit1,
+            dec_u64,
             tag("."),
-            digit1,
+            dec_u64,
             tag(":"),
-            digit1,
+            dec_u32,
             tag("):"),
             take_while(is_space),
         )),
-        |(_, sec, _, msec, _, seq, _, _)| -> Result<EventID, std::num::ParseIntError> {
-            Ok(EventID {
-                // safety: captured strings contain only ASCII digits
-                timestamp: 1000 * unsafe { str::from_utf8_unchecked(sec) }.parse::<u64>()?
-                    + unsafe { str::from_utf8_unchecked(msec) }.parse::<u64>()?,
-                sequence: unsafe { str::from_utf8_unchecked(seq) }.parse::<u32>()?,
-            })
+        |(_, sec, _, msec, _, sequence, _, _)| EventID {
+            timestamp: 1000 * sec + msec,
+            sequence,
         },
     )(input)
 }
@@ -342,17 +337,9 @@ fn parse_hex(input: &[u8]) -> IResult<&[u8], PValue> {
 /// Recognize decimal value
 #[inline(always)]
 fn parse_dec(input: &[u8]) -> IResult<&[u8], PValue> {
-    map_res(
-        terminated(
-            pair(opt(tag("-")), take_while1(is_digit)),
-            peek(take_while1(is_sep)),
-        ),
-        |(sign, digits)| -> Result<_, std::num::ParseIntError> {
-            let sign = if sign.is_some() { -1 } else { 1 };
-            let digits = unsafe { str::from_utf8_unchecked(digits) };
-            Ok(PValue::Number(Number::Dec(sign * i64::from_str(digits)?)))
-        },
-    )(input)
+    map(terminated(dec_i64, peek(take_while1(is_sep))), |n| {
+        PValue::Number(Number::Dec(n))
+    })(input)
 }
 
 /// Recognize octal value
@@ -495,38 +482,22 @@ fn parse_key(input: &[u8]) -> IResult<&[u8], Key> {
 /// Recognize length specifier for EXECVE split arguments, e.g. a1_len
 #[inline(always)]
 fn parse_key_a_x_len(input: &[u8]) -> IResult<&[u8], Key> {
-    map_res(
-        delimited(tag("a"), digit1, tag("_len")),
-        |x| -> Result<_, std::num::ParseIntError> {
-            let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
-            Ok(Key::ArgLen(x))
-        },
-    )(input)
+    map(delimited(tag("a"), dec_u16, tag("_len")), Key::ArgLen)(input)
 }
 
 /// Recognize EXECVE split arguments, e.g. a1[3]
 #[inline(always)]
 fn parse_key_a_xy(input: &[u8]) -> IResult<&[u8], Key> {
-    map_res(
-        tuple((tag("a"), digit1, tag("["), digit1, tag("]"))),
-        |(_, x, _, y, _)| -> Result<Key, std::num::ParseIntError> {
-            let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
-            let y = unsafe { str::from_utf8_unchecked(y) }.parse()?;
-            Ok(Key::Arg(x, Some(y)))
-        },
+    map(
+        tuple((tag("a"), dec_u16, tag("["), dec_u16, tag("]"))),
+        |(_, x, _, y, _)| Key::Arg(x, Some(y)),
     )(input)
 }
 
 /// Recognize SYSCALL, EXECVE regular argument keys, e.g. a1, a2, a3…
 #[inline(always)]
 fn parse_key_a_x(input: &[u8]) -> IResult<&[u8], Key> {
-    map_res(
-        preceded(tag("a"), digit1),
-        |x| -> Result<Key, std::num::ParseIntError> {
-            let x = unsafe { str::from_utf8_unchecked(x) }.parse()?;
-            Ok(Key::Arg(x, None))
-        },
-    )(input)
+    map(preceded(tag("a"), u16), |x| Key::Arg(x, None))(input)
 }
 
 /// Recognize identifiers (used in some irregular messages)
