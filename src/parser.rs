@@ -156,6 +156,7 @@ fn parse_msgid(input: &[u8]) -> IResult<&[u8], EventID> {
     )(input)
 }
 
+#[derive(Clone)]
 enum PValue<'a> {
     Empty,
     HexStr(&'a [u8]),
@@ -314,7 +315,7 @@ fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
             peek(take_while1(is_sep)),
         ),
         terminated(
-            map(alt((tag("(null)"), tag("?"))), |_| PValue::Empty),
+            value(PValue::Empty, alt((tag("(null)"), tag("?")))),
             peek(take_while1(is_sep)),
         ),
     ))(input)
@@ -392,7 +393,7 @@ fn parse_unspec_value<'a>(
         map(parse_str_dq, |s| PValue::Str(s, Quote::Double)),
         map(parse_kv_braced, |s| PValue::Str(s, Quote::Braces)),
         map(parse_str_braced, |s| PValue::Str(s, Quote::Braces)),
-        map(peek(take_while1(is_sep)), |_| PValue::Empty),
+        value(PValue::Empty, peek(take_while1(is_sep))),
     ))(input)
 }
 
