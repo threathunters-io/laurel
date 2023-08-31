@@ -140,16 +140,11 @@ fn parse_type(input: &[u8]) -> IResult<&[u8], MessageType> {
 fn parse_msgid(input: &[u8]) -> IResult<&[u8], EventID> {
     map(
         tuple((
-            tag("msg=audit("),
-            dec_u64,
-            tag("."),
-            dec_u64,
-            tag(":"),
-            dec_u32,
-            tag("):"),
-            take_while(is_space),
+            preceded(tag("msg=audit("), dec_u64),
+            delimited(tag("."), dec_u64, tag(":")),
+            terminated(dec_u32, pair(tag("):"), space0)),
         )),
-        |(_, sec, _, msec, _, sequence, _, _)| EventID {
+        |(sec, msec, sequence)| EventID {
             timestamp: 1000 * sec + msec,
             sequence,
         },
@@ -176,18 +171,21 @@ fn parse_body(
     let (input, special) = opt(alt((
         map(
             tuple((
-                tuple((tag("avc:"), space0)),
-                alt((tag("granted"), tag("denied"))),
-                tuple((space0, tag("{"), space0)),
-                many1(terminated(parse_identifier, space0)),
-                tuple((tag("}"), space0, tag("for"), space0)),
+                preceded(
+                    pair(tag("avc:"), space0),
+                    alt((tag("granted"), tag("denied"))),
+                ),
+                delimited(
+                    tuple((space0, tag("{"), space0)),
+                    many1(terminated(parse_identifier, space0)),
+                    tuple((tag("}"), space0, tag("for"), space0)),
+                ),
             )),
-            |(_, k, _, v, _)| (Key::Name(NVec::from(k)), PValue::List(v)),
+            |(k, v)| (Key::Name(NVec::from(k)), PValue::List(v)),
         ),
-        map(
-            tuple((tag("netlabel"), tag(":"), space0)),
-            |(s, _, _): (&[u8], _, _)| (Key::Name(NVec::from(s)), PValue::Empty),
-        ),
+        map(terminated(tag("netlabel"), pair(tag(":"), space0)), |s| {
+            (Key::Name(NVec::from(s)), PValue::Empty)
+        }),
     )))(input)?;
 
     let (input, _) = match ty {
@@ -490,8 +488,11 @@ fn parse_key_a_x_len(input: &[u8]) -> IResult<&[u8], Key> {
 #[inline(always)]
 fn parse_key_a_xy(input: &[u8]) -> IResult<&[u8], Key> {
     map(
-        tuple((tag("a"), dec_u16, tag("["), dec_u16, tag("]"))),
-        |(_, x, _, y, _)| Key::Arg(x, Some(y)),
+        pair(
+            preceded(tag("a"), dec_u16),
+            delimited(tag("["), dec_u16, tag("]")),
+        ),
+        |(x, y)| Key::Arg(x, Some(y)),
     )(input)
 }
 
