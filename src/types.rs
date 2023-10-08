@@ -110,7 +110,7 @@ impl Display for EventID {
 impl Serialize for EventID {
     #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.collect_str(&format_args!("{}", self))
+        s.collect_str(&self)
     }
 }
 
