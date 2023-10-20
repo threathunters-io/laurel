@@ -1,4 +1,4 @@
-TGTS := laurel.8 laurel-about.7
+TGTS := laurel.8 laurel-about.7 laurel2audit.8
 SRCS := $(patsibst %,%.md,$(TGTS))
 
 .PHONY: all
