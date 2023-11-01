@@ -2,19 +2,16 @@ use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::io::Write;
 use std::ops::Range;
-use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use std::ffi::OsStr;
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
 
 use serde_json::json;
 
 use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
 use crate::label_matcher::LabelMatcher;
 use crate::parser::parse;
-use crate::proc::{get_environ, ProcTable, Process};
+use crate::proc::{ProcTable, Process};
+#[cfg(feature = "procfs")]
+use crate::procfs;
 use crate::sockaddr::SocketAddr;
 use crate::types::*;
 use crate::userdb::UserDB;
@@ -245,11 +242,16 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
 ///
 /// As an extra sanity check, exe is compared with normalized
 /// PATH.name. If they are equal, no script is returned.
+#[cfg(feature = "procfs")]
 fn path_script_name(path: &Record, pid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
-    let mut proc_exe_path = Vec::from(format!("/proc/{}/root", pid).as_bytes());
-    proc_exe_path.extend(exe);
+    use std::{
+        ffi::OsStr,
+        os::unix::{ffi::OsStrExt, fs::MetadataExt},
+        path::{Component, Path, PathBuf},
+    };
 
-    let meta = std::fs::metadata(OsStr::from_bytes(&proc_exe_path)).ok()?;
+    let meta = procfs::pid_path_metadata(pid, exe).ok()?;
+
     let (e_dev, e_inode) = (meta.dev(), meta.ino());
 
     let mut p_dev: Option<u64> = None;
@@ -607,9 +609,12 @@ impl<'a> Coalesce<'a> {
             }
 
             // ENV
+            #[cfg(feature = "procfs")]
             match pid {
                 Some(pid) if !self.settings.execve_env.is_empty() => {
-                    if let Ok(vars) = get_environ(pid, |k| self.settings.execve_env.contains(k)) {
+                    if let Ok(vars) =
+                        procfs::get_environ(pid, |k| self.settings.execve_env.contains(k))
+                    {
                         let map = vars
                             .iter()
                             .map(|(k, v)| (SimpleKey::Str(rv.put(k)), SimpleValue::Str(rv.put(v))))
@@ -683,6 +688,7 @@ impl<'a> Coalesce<'a> {
             }
         }
 
+        #[cfg(feature = "procfs")]
         let script: Option<NVec> = match (self.settings.enrich_script, self.settings.label_script) {
             (false, None) => None,
             _ => match (&exe, pid, ev.body.get(&PATH), syscall_is_exec) {
@@ -701,6 +707,7 @@ impl<'a> Coalesce<'a> {
             },
         };
 
+        #[cfg(feature = "procfs")]
         if let (Some(pid), Some(script)) = (pid, &script) {
             if let Some(label_script) = self.settings.label_script {
                 for label in label_script.matches(script.as_ref()) {
@@ -857,6 +864,7 @@ impl<'a> Coalesce<'a> {
                 sc.elems.push((Key::Literal("PPID"), Value::Map(m)));
             }
 
+            #[cfg(featuree = "procfs")]
             if let (true, Some(script)) = (self.settings.enrich_script, script) {
                 let (k, v) = (
                     Key::Literal("SCRIPT"),
@@ -890,6 +898,7 @@ impl<'a> Coalesce<'a> {
                     sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
                 }
 
+                #[cfg(feature = "procfs")]
                 if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                     let mut ci = Record::default();
                     let r = ci.put(&c.id);
