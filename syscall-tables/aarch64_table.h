@@ -1,5 +1,5 @@
 /* aarch64_table.h --
- * Copyright 2013-21 Red Hat Inc.
+ * Copyright 2013-23 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -326,4 +326,6 @@ _S(447, "memfd_secret")
 _S(448, "process_mrelease")
 _S(449, "futex_waitv")
 _S(450, "set_mempolicy_home_node")
+_S(451, "cachestat")
+_S(452, "fchmodat2")
 

@@ -446,4 +446,6 @@ _S(446, "landlock_restrict_self")
 _S(448, "process_mrelease")
 _S(449, "futex_waitv")
 _S(450, "set_mempolicy_home_node")
+_S(451, "cachestat")
+_S(452, "fchmodat2")
 
