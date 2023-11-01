@@ -65,8 +65,11 @@ fn drop_privileges(runas_user: &User) -> Result<(), Box<dyn Error>> {
     setresuid(uid, uid, uid).map_err(|e| format!("setresuid({}): {}", gid, e))?;
 
     let mut capabilities = HashSet::new();
-    capabilities.insert(Capability::CAP_SYS_PTRACE);
-    capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
+    #[cfg(feature = "procfs")]
+    {
+        capabilities.insert(Capability::CAP_SYS_PTRACE);
+        capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
+    }
     caps::set(None, CapSet::Permitted, &capabilities)
         .map_err(|e| format!("set permitted capabilities: {}", e))?;
     caps::set(None, CapSet::Effective, &capabilities)

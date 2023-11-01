@@ -42,6 +42,10 @@ bindgen = ">= 0.60"
 bencher = "0"
 gperftools = "0"
 
+[features]
+procfs = []
+default = ["procfs"]
+
 [[bench]]
 name = "coalesce_execve"
 harness = false
