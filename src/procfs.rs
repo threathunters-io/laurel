@@ -69,7 +69,10 @@ pub fn pid_path_metadata(pid: u32, path: &[u8]) -> Result<Metadata, std::io::Err
     std::fs::metadata(OsStr::from_bytes(&proc_path))
 }
 
+#[derive(Debug)]
 pub(crate) struct ProcPidInfo {
+    /// /proc/<pid>/stat field 1
+    pub pid: u32,
     /// /proc/<pid>/stat field 4
     pub ppid: u32,
     /// /proc/<pid>/stat field 22, converted to milliseconds since epoch
@@ -87,6 +90,14 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, Box<dyn Error>> {
     let buf = slurp_file(format!("/proc/{}/stat", pid))
         .map_err(|e| format!("read /proc/{}/stat: {}", pid, e))?;
     // comm may contain whitespace and ")", skip over it.
+    let pid_end = buf
+        .iter()
+        .enumerate()
+        .find(|(_, c)| **c == b' ')
+        .ok_or("end of 'pid' field not found")?
+        .0;
+    let stat_pid = &buf[..pid_end];
+
     let comm_end = buf
         .iter()
         .enumerate()
@@ -108,9 +119,8 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, Box<dyn Error>> {
         .map(|p| Vec::from(p.as_os_str().as_bytes()))
         .ok();
 
-    // see proc(5), /proc/[pid]/stat (4)
+    let pid = u32::from_str(String::from_utf8_lossy(stat_pid).as_ref())?;
     let ppid = u32::from_str(String::from_utf8_lossy(stat[1]).as_ref())?;
-    // see proc(5), /proc/[pid]/stat (22)
     let starttime = u64::from_str(String::from_utf8_lossy(stat[19]).as_ref())?;
 
     // Use the boottime-based clock to calculate process start
@@ -132,6 +142,7 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, Box<dyn Error>> {
     let container_id = parse_proc_pid_cgroup(pid)?;
 
     Ok(ProcPidInfo {
+        pid,
         ppid,
         starttime,
         comm,
@@ -180,13 +191,21 @@ fn parse_cgroup_buf(buf: &[u8]) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    #[test]
+    fn parse_self() {
+        let pid = std::process::id();
+        let proc = parse_proc_pid(pid).expect(&format!("parse entry for {pid}"));
+        println!("{:?}", proc);
+    }
+
     #[test]
     fn parse_cgroup() -> Result<(), Box<dyn std::error::Error>> {
         let testdata = br#"0::/system.slice/docker-47335b04ebb4aefdc353dda62ddd38e5e1e00fc1372f0c8d0138417f0ccb9e6c.scope
 0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-974a75c8cf45648fcc6e718ba92ee1f2034463674f0d5b0c50f5cab041a4cbd6.scope/container
 "#;
         {
-            super::parse_cgroup_buf(testdata).map_err(|e| -> Box<dyn std::error::Error> {
+            parse_cgroup_buf(testdata).map_err(|e| -> Box<dyn std::error::Error> {
                 format!("{}: {}", String::from_utf8_lossy(testdata), e).into()
             })?;
         }
