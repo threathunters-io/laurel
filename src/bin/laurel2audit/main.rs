@@ -1,8 +1,6 @@
 use indexmap::IndexMap;
 
 use serde::Deserialize;
-// use serde::de::Deserialize;
-use serde_json;
 
 use std::io::BufRead;
 
@@ -111,7 +109,7 @@ fn main() {
                         Some(n) => r2.0.insert("argc".into(), n.clone()),
                     };
                     if let Some(serde_json::Value::String(s)) = r.0.get("ARGV_STR") {
-                        for (n, arg) in s.split(" ").enumerate() {
+                        for (n, arg) in s.split(' ').enumerate() {
                             r2.0.insert(format!("a{}", n), serde_json::Value::String(arg.into()));
                         }
                     } else if let Some(serde_json::Value::Array(a)) = r.0.get("ARGV") {
@@ -126,12 +124,12 @@ fn main() {
                 }
                 (_, EventValues::Single(r)) => {
                     print!("type={typ} {prefix}");
-                    print_record(typ, &r);
+                    print_record(typ, r);
                 }
                 (_, EventValues::Multi(rs)) => {
                     for r in rs {
                         print!("type={typ} {prefix}");
-                        print_record(typ, &r);
+                        print_record(typ, r);
                     }
                 }
             };
