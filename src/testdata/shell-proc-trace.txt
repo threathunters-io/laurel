@@ -25,7 +25,7 @@
 # The script execution has been marked with the key "test-script".
 
 # fork + exec by parent shell
-type=SYSCALL msg=audit(1682609045.526:29237): arch=c000003e syscall=56 success=yes exit=71505 a0=1200011 a1=0 a2=0 a3=7fb30981aa10 items=0 ppid=3505xo pid=71432 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="bash" exe="/usr/bin/bash" subj=unconfined key=(null)
+type=SYSCALL msg=audit(1682609045.526:29237): arch=c000003e syscall=56 success=yes exit=71505 a0=1200011 a1=0 a2=0 a3=7fb30981aa10 items=0 ppid=3505 pid=71432 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="bash" exe="/usr/bin/bash" subj=unconfined key=(null)
 type=EOE msg=audit(1682609045.526:29237): 
 
 type=SYSCALL msg=audit(1682609045.526:29238): arch=c000003e syscall=59 success=yes exit=0 a0=55fdabf92380 a1=55fdabf99b20 a2=55fdabf2f2d0 a3=6ba537a8c6848fb8 items=4 ppid=71432 pid=71505 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="test-script.sh" exe="/usr/bin/dash" subj=unconfined key="test-script"
