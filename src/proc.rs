@@ -217,20 +217,30 @@ impl ProcTable {
         );
     }
 
+    /// Retrieves a process by pid.
+    pub fn get_process(&self, pid: u32) -> Option<Process> {
+        self.processes.get(&pid).cloned()
+    }
+
     /// Retrieves a process by pid. If the process is not found in the
     /// shadow process table, an attempt is made to fetch the
     /// information from /proc.
-    pub fn get_process(&mut self, pid: u32) -> Option<Process> {
-        if let Some(p) = self.processes.get(&pid) {
-            return Some(p.clone());
-        }
-        #[cfg(feature = "procfs")]
-        if let Ok(p) = Process::parse_proc(pid) {
-            self.processes.insert(pid, p.clone());
-            return Some(p);
-        }
+    #[cfg(feature = "procfs")]
+    pub fn get_or_insert_from_procfs(&mut self, pid: u32) -> Option<Process> {
+        self.get_process(pid)
+            .or_else(|| self.insert_from_procfs(pid))
+    }
 
-        None
+    /// Fetch process information from procfs, insert into shadow
+    /// process table.
+    #[cfg(feature = "procfs")]
+    pub fn insert_from_procfs(&mut self, pid: u32) -> Option<Process> {
+        Process::parse_proc(pid)
+            .map(|p| {
+                self.processes.insert(pid, p.clone());
+                p
+            })
+            .ok()
     }
 
     /// Removes a process from the table

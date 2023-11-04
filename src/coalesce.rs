@@ -423,6 +423,9 @@ impl<'a> Coalesce<'a> {
         match &k {
             Key::Name(r) if r.ends_with(b"pid") => {
                 let key = Key::NameTranslated(r.clone());
+                #[cfg(feature = "procfs")]
+                let proc = self.processes.get_or_insert_from_procfs(pid as _)?;
+                #[cfg(not(feature = "procfs"))]
                 let proc = self.processes.get_process(pid as _)?;
                 if proc.event_id.is_none() && proc.exe.is_none() && proc.ppid == 0 {
                     None
@@ -645,10 +648,18 @@ impl<'a> Coalesce<'a> {
 
         // register process, add propagated labels from
         // parent if applicable
+        #[cfg(feature = "procfs")]
+        let parent: Option<Process> =
+            ppid.and_then(|ppid| self.processes.get_or_insert_from_procfs(ppid));
+        #[cfg(not(feature = "procfs"))]
         let parent: Option<Process> = ppid.and_then(|ppid| self.processes.get_process(ppid));
 
         if let (Some(pid), Some(ppid)) = (pid, ppid) {
-            if syscall_is_exec || self.processes.get_process(pid).is_none() {
+            #[cfg(feature = "procfs")]
+            let cond = syscall_is_exec || self.processes.get_or_insert_from_procfs(pid).is_none();
+            #[cfg(not(feature = "procfs"))]
+            let cond = syscall_is_exec || self.processes.get_process(pid).is_none();
+            if cond {
                 self.processes.add_process(
                     pid,
                     ppid,
@@ -733,6 +744,10 @@ impl<'a> Coalesce<'a> {
             return;
         }
 
+        #[cfg(feature = "procfs")]
+        let proc: Option<Process> =
+            pid.and_then(|pid| self.processes.get_or_insert_from_procfs(pid));
+        #[cfg(not(feature = "procfs"))]
         let proc: Option<Process> = pid.and_then(|pid| self.processes.get_process(pid));
 
         for tv in ev.body.iter_mut() {
