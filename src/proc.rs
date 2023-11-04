@@ -1,6 +1,8 @@
 use std::boxed::Box;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
+use std::fmt::{self, Display};
 use std::iter::Iterator;
 use std::vec::Vec;
 
@@ -8,7 +10,7 @@ use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 
 use crate::label_matcher::LabelMatcher;
-use crate::types::{EventID, Number, Record, Value};
+use crate::types::EventID;
 
 #[cfg(feature = "procfs")]
 use crate::procfs;
@@ -18,74 +20,108 @@ pub struct ContainerInfo {
     pub id: Vec<u8>,
 }
 
-#[cfg(feature = "procfs")]
-impl ContainerInfo {
-    fn parse_proc(pid: u32) -> Result<ContainerInfo, Box<dyn Error>> {
-        procfs::parse_proc_pid_cgroup(pid).map(|id| ContainerInfo {
-            id: id.unwrap_or_default(),
-        })
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Process {
-    /// Unix timestamp with millisecond precision
-    pub launch_time: u64,
-    /// parent process id
-    pub ppid: u32,
-    pub labels: HashSet<Vec<u8>>,
-    /// Event ID containing the event spawning this process entry
-    /// (should be EXECVE).
-    pub event_id: Option<EventID>,
-    pub comm: Option<Vec<u8>>,
-    pub exe: Option<Vec<u8>>,
-    #[cfg(feature = "procfs")]
-    pub container_info: Option<ContainerInfo>,
-}
-
-// This is a lossy serializer that is intended to be used for debugging only.
-impl Serialize for Process {
+impl Serialize for ContainerInfo {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let mut map = s.serialize_map(Some(7))?;
-        map.serialize_entry("launch_time", &self.launch_time)?;
-        map.serialize_entry("ppid", &self.ppid)?;
-        map.serialize_entry(
-            "labels",
-            &self
-                .labels
-                .iter()
-                .map(|v| String::from_utf8_lossy(v))
-                .collect::<Vec<_>>(),
-        )?;
-        map.serialize_entry("event_id", &self.event_id)?;
-        map.serialize_entry(
-            "comm",
-            &self
-                .comm
-                .clone()
-                .map(|v| String::from_utf8_lossy(&v).to_string()),
-        )?;
-        map.serialize_entry(
-            "exe",
-            &self
-                .exe
-                .clone()
-                .map(|v| String::from_utf8_lossy(&v).to_string()),
-        )?;
+        let mut map = s.serialize_map(Some(1))?;
+        // safety: id contains entirely of hex-digits
+        let converted = unsafe { std::str::from_utf8_unchecked(&self.id) };
+        map.serialize_entry("id", converted)?;
         map.end()
     }
+}
+
+/// Host-unique identifier for processes
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProcessKey {
+    Event(EventID),
+    Observed { time: u64, pid: u32 },
+}
+
+impl Display for ProcessKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ProcessKey::Event(id) => {
+                write!(f, "id[{id}]")
+            }
+            ProcessKey::Observed { time: t, pid: p } => {
+                write!(f, "ob[{t},{p}]")
+            }
+        }
+    }
+}
+
+impl Serialize for ProcessKey {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(&self)
+    }
+}
+
+impl Default for ProcessKey {
+    fn default() -> Self {
+        ProcessKey::Observed { time: 0, pid: 0 }
+    }
+}
+
+impl Ord for ProcessKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::Event(s), Self::Event(o)) => s
+                .timestamp
+                .cmp(&o.timestamp)
+                .then(s.sequence.cmp(&o.sequence)),
+            (Self::Observed { time: s, pid: _ }, Self::Event(o)) => {
+                s.partial_cmp(&o.timestamp).unwrap_or(Ordering::Less)
+            }
+            (Self::Event(s), Self::Observed { time: o, pid: _ }) => {
+                s.timestamp.partial_cmp(o).unwrap_or(Ordering::Greater)
+            }
+            (Self::Observed { time: st, pid: sp }, Self::Observed { time: ot, pid: op }) => {
+                st.cmp(ot).then(sp.cmp(op))
+            }
+        }
+    }
+}
+
+impl PartialOrd for ProcessKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct Process {
+    /// "primary key", unique per host
+    pub key: ProcessKey,
+    /// parent's key, if a parent has been recorded.
+    pub parent: Option<ProcessKey>,
+    /// process ID
+    pub pid: u32,
+    /// parent's porocess ID
+    pub ppid: u32,
+    /// path to binary
+    pub exe: Option<Vec<u8>>,
+    /// process-settable argv[0]
+    pub comm: Option<Vec<u8>>,
+    /// Labels assigned to process
+    pub labels: HashSet<Vec<u8>>,
+    #[cfg(feature = "procfs")]
+    pub container_info: Option<ContainerInfo>,
 }
 
 #[cfg(feature = "procfs")]
 impl From<procfs::ProcPidInfo> for Process {
     fn from(p: procfs::ProcPidInfo) -> Self {
         Self {
-            launch_time: p.starttime,
+            key: ProcessKey::Observed {
+                time: p.starttime,
+                pid: p.pid,
+            },
+            parent: None,
+            pid: p.pid,
             ppid: p.ppid,
             labels: HashSet::new(),
-            event_id: None,
-            comm: p.comm,
             exe: p.exe,
+            comm: p.comm,
             container_info: p.container_id.map(|id| ContainerInfo { id }),
         }
     }
@@ -97,32 +133,6 @@ impl Process {
     pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
         procfs::parse_proc_pid(pid).map(|p| p.into())
     }
-
-    /// Use a processed EXECVE event to generate a shadow process table entry
-    pub fn parse_execve(id: &EventID, rsyscall: &Record) -> Result<(u32, Process), Box<dyn Error>> {
-        let mut p = Process {
-            launch_time: id.timestamp,
-            ..Process::default()
-        };
-        let pid: u32;
-        if let Some(v) = rsyscall.get(b"pid") {
-            match v.value {
-                Value::Number(Number::Dec(n)) => pid = *n as u32,
-                _ => return Err("pid field is not numeric".into()),
-            }
-        } else {
-            return Err("pid field not found".into());
-        }
-        if let Some(v) = rsyscall.get(b"ppid") {
-            match v.value {
-                Value::Number(Number::Dec(n)) => p.ppid = *n as u32,
-                _ => return Err("ppid field is not numeric".into()),
-            }
-        } else {
-            return Err("ppid field not found".into());
-        }
-        Ok((pid, p))
-    }
 }
 
 /// Shadow process table
@@ -131,7 +141,8 @@ impl Process {
 /// from /proc entries.
 #[derive(Debug, Default, Serialize)]
 pub struct ProcTable {
-    pub processes: BTreeMap<u32, Process>,
+    processes: BTreeMap<ProcessKey, Process>,
+    current: BTreeMap<u32, ProcessKey>,
 }
 
 impl ProcTable {
@@ -145,108 +156,79 @@ impl ProcTable {
     ) -> Result<ProcTable, Box<dyn Error>> {
         let mut pt = ProcTable {
             processes: BTreeMap::new(),
+            current: BTreeMap::new(),
         };
 
         #[cfg(feature = "procfs")]
-        for pid in procfs::get_pids()? {
-            // /proc/<pid> access is racy. Ignore errors here.
-            if let Ok(mut proc) = Process::parse_proc(pid) {
-                if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
-                    proc.labels
-                        .extend(label_exe.matches(exe).iter().map(|v| Vec::from(*v)));
+        {
+            for pid in procfs::get_pids()? {
+                // /proc/<pid> access is racy. Ignore errors here.
+                if let Ok(mut proc) = Process::parse_proc(pid) {
+                    if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
+                        proc.labels
+                            .extend(label_exe.matches(exe).iter().map(|v| Vec::from(*v)));
+                    }
+                    pt.insert(proc);
                 }
-                pt.processes.insert(pid, proc);
+            }
+            // build parent/child relationships
+            for proc in pt.processes.values_mut() {
+                if proc.parent.is_none() {
+                    proc.parent = pt.current.get(&proc.pid).cloned();
+                }
             }
         }
 
-        if label_exe.is_some() {
-            // Collect propagated labels from parent processes
-            for pid in pt.processes.keys().cloned().collect::<Vec<_>>() {
-                let mut collect = BTreeSet::new();
-                let mut ppid = pid;
-                for _ in 1..64 {
-                    if let Some(proc) = pt.get_process(ppid) {
-                        collect.extend(proc.labels.intersection(propagate_labels).cloned());
-                        ppid = proc.ppid;
-                        if ppid <= 1 {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-
-                if let Some(proc) = pt.processes.get_mut(&pid) {
-                    proc.labels.extend(collect);
+        if let Some(label_exe) = label_exe {
+            for proc in pt.processes.values_mut() {
+                if let Some(exe) = &proc.exe {
+                    proc.labels
+                        .extend(label_exe.matches(exe).into_iter().map(|c| c.into()))
                 }
             }
+            if !propagate_labels.is_empty() { /* TODO */ }
         }
 
         Ok(pt)
     }
 
-    /// Adds a Process to the process table
-    pub fn add_process(
-        &mut self,
-        pid: u32,
-        ppid: u32,
-        id: EventID,
-        comm: Option<Vec<u8>>,
-        exe: Option<Vec<u8>>,
-    ) {
-        let labels = HashSet::new();
-        let launch_time = id.timestamp;
-        let event_id = Some(id);
-        #[cfg(feature = "procfs")]
-        let container_info = ContainerInfo::parse_proc(pid)
-            .ok()
-            .or_else(|| self.get_process(ppid)?.container_info);
+    pub fn insert(&mut self, proc: Process) {
+        self.processes.insert(proc.key, proc.clone());
+        self.current.insert(proc.pid, proc.key);
+    }
 
-        self.processes.insert(
-            pid,
-            Process {
-                launch_time,
-                ppid,
-                labels,
-                event_id,
-                comm,
-                exe,
-                #[cfg(feature = "procfs")]
-                container_info,
-            },
-        );
+    /// Retrieves a process by key.
+    pub fn get_key(&self, key: &ProcessKey) -> Option<&Process> {
+        self.processes.get(key)
     }
 
     /// Retrieves a process by pid.
-    pub fn get_process(&self, pid: u32) -> Option<Process> {
-        self.processes.get(&pid).cloned()
+    pub fn get_pid(&self, pid: u32) -> Option<&Process> {
+        self.current.get(&pid).and_then(|pk| self.get_key(pk))
     }
 
     /// Retrieves a process by pid. If the process is not found in the
     /// shadow process table, an attempt is made to fetch the
-    /// information from /proc.
-    #[cfg(feature = "procfs")]
-    pub fn get_or_insert_from_procfs(&mut self, pid: u32) -> Option<Process> {
-        self.get_process(pid)
-            .or_else(|| self.insert_from_procfs(pid))
+    /// information from another source, i.e. /proc.
+    pub fn get_or_retrieve(&mut self, pid: u32) -> Option<&Process> {
+        #[cfg(feature = "procfs")]
+        if self.get_pid(pid).is_none() {
+            self.insert_from_procfs(pid);
+        }
+        self.get_pid(pid)
     }
 
     /// Fetch process information from procfs, insert into shadow
     /// process table.
     #[cfg(feature = "procfs")]
-    pub fn insert_from_procfs(&mut self, pid: u32) -> Option<Process> {
-        Process::parse_proc(pid)
-            .map(|p| {
-                self.processes.insert(pid, p.clone());
-                p
-            })
-            .ok()
-    }
-
-    /// Removes a process from the table
-    #[allow(dead_code)]
-    pub fn remove_process(&mut self, pid: u32) {
-        self.processes.remove(&pid);
+    pub fn insert_from_procfs(&mut self, pid: u32) -> Option<&Process> {
+        if let Ok(p) = Process::parse_proc(pid) {
+            let key = p.key;
+            self.insert(p);
+            self.processes.get(&key)
+        } else {
+            None
+        }
     }
 
     /// Remove processes that are no longer running and that were not
@@ -254,42 +236,64 @@ impl ProcTable {
     ///
     /// It should be possible to run this every few seconds without
     /// incurring load.
+    #[cfg(feature = "procfs")]
     pub fn expire(&mut self) {
-        // Expire is a no-op if parsing /proc is not enabled!
-        #[cfg(feature = "procfs")]
-        {
-            // initialize prune list with all known processes
-            let mut prune: HashSet<u32> = self.processes.keys().cloned().collect();
-            let live_processes = match procfs::get_pids() {
-                Ok(p) => p,
-                Err(_) => return,
+        use std::collections::BTreeSet;
+
+        let mut proc_prune: BTreeSet<ProcessKey> = self.processes.keys().cloned().collect();
+        let mut pid_prune: Vec<u32> = vec![];
+
+        let live_processes = match procfs::get_pids() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        // unmark latest instance in by_pids and all its parents
+        for seed_pid in live_processes {
+            let mut key = match self.current.get(&seed_pid) {
+                None => continue,
+                Some(&key) => key,
             };
-            // remove from prune list all live processes and their
-            // parents, excluding pid1
-            for seed_pid in live_processes {
-                let mut pid = seed_pid;
-                while let Some(proc) = self.processes.get(&pid) {
-                    if pid <= 1 || !prune.remove(&pid) {
-                        break;
-                    }
-                    pid = proc.ppid;
+
+            // keep all parents of live processes => remove them from
+            // the prune list.
+            loop {
+                if !proc_prune.remove(&key) {
+                    break;
                 }
+
+                key = match self.processes.get(&key) {
+                    Some(Process {
+                        pid,
+                        parent: Some(parent_key),
+                        ..
+                    }) if *pid >= 1 => *parent_key,
+                    _ => break,
+                };
             }
-            prune.iter().for_each(|pid| {
-                self.processes.remove(pid);
-            });
+        }
+        // remove entries from primary process list
+        for key in &proc_prune {
+            self.processes.remove(key);
+        }
+        // remove pidi entries for processes that have disappeared
+        for (pid, pk) in &self.current {
+            if proc_prune.contains(pk) {
+                pid_prune.push(*pid);
+            }
+        }
+        for pid in pid_prune {
+            self.current.remove(&pid);
         }
     }
 
-    pub fn add_label(&mut self, pid: u32, label: &[u8]) {
-        if let Some(p) = self.processes.get_mut(&pid) {
-            p.labels.insert(label.into());
-        }
-    }
+    /// No expire mechanism has been implemented for the case where
+    /// there's no procfs support.
+    #[cfg(not(feature = "procfs"))]
+    pub fn expire(&self) {}
 
-    pub fn remove_label(&mut self, pid: u32, label: &[u8]) {
-        if let Some(p) = self.processes.get_mut(&pid) {
-            p.labels.remove(label);
+    pub fn set_labels(&mut self, key: &ProcessKey, labels: &HashSet<Vec<u8>>) {
+        if let Some(p) = self.processes.get_mut(key) {
+            p.labels = labels.clone();
         }
     }
 }
