@@ -1515,4 +1515,53 @@ mod test {
             }
         }
     }
+
+    #[test]
+    #[should_panic(expected = "Did not get correct parent for 1697091526.357:2638035")]
+    fn shell_proc_trace_confusion() {
+        let s1 = Settings {
+            proc_label_keys: [b"test-script".to_vec()].into(),
+            proc_propagate_labels: [b"test-script".to_vec()].into(),
+            ..Settings::default()
+        };
+        let s2 = Settings {
+            filter_keys: [b"fork".to_vec()].into(),
+            ..s1.clone()
+        };
+
+        for (n, s) in [s1, s2].iter().enumerate() {
+            let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+            let mut c = Coalesce::new(|e| events.borrow_mut().push(e.clone()));
+
+            c.settings = s.clone();
+
+            println!("Using configuration #{n}");
+            process_record(
+                &mut c,
+                include_bytes!("testdata/shell-proc-trace-confusion.txt"),
+            )
+            .unwrap();
+
+            let events = events.borrow();
+
+            for id in ["1697091525.582:2588684", "1697091526.357:2638035"] {
+                let event = events
+                    .iter()
+                    .find(|e| e.id.to_string() == id)
+                    .expect(&format!("Did not find {id}"));
+                println!("{}", event_to_json(&event));
+            }
+
+            let id = "1697091526.357:2638035";
+            let event = events
+                .iter()
+                .find(|e| e.id.to_string() == id)
+                .expect(&format!("Did not find {id}"));
+            assert!(
+                event_to_json(&event).contains(
+                    r#""PPID":{"EVENT_ID":"1697091526.357:2638033","comm":"csh","exe":"/bin/tcsh","ppid":2542}"#),
+                "Did not get correct parent for {}",id);
+            println!("{}", event_to_json(&event));
+        }
+    }
 }

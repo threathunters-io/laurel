@@ -1,0 +1,196 @@
+# Problem:
+
+# Event 1697091526.357:2638035 refers an execve("id", …) call
+# performed by tcsh which was started directlyy before. However,
+# Laurel has enriched ppid=2655 to:
+#
+# {
+#   "EVENT_ID": "1697091525.582:2588684",
+#   "comm": "rm",
+#   "exe": "/usr/bin/rm",
+#   "ppid": 2643
+# }
+#
+# Note: In the real log, the observed "rm" happened about 10min
+# beforee "id", but the process entry for "rm" was not expired before
+# "id" was executed. For testing, the message ID has been edited so it
+# is not cleaned up by the expire mechanism.
+#
+# Also, other, unrelated entries have been edited out.
+
+type=SYSCALL msg=audit(1697091525.582:2588684): arch=c000003e syscall=59 success="yes" exit=0 a0=2479518 a1=247ffc8 a2=2480e00 a3=fc2c9fc5 items=2 ppid=2643 pid=2655 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty="(none)" ses=4294967295 comm="rm" exe="/usr/bin/rm" key=(null)
+type=EXECVE msg=audit(1697091525.582:2588684): argc=5 a0="rm" a1="-f" a2="/tmp/2643A1" a3="/tmp/2643A2" a4="/tmp/2643XX"
+type=CWD msg=audit(1697091525.582:2588684): cwd="/opt/REDACTED"
+type=PATH msg=audit(1697091525.582:2588684): item=0 name="/bin/rm" inode=1233 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=PATH msg=audit(1697091525.582:2588684): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=137909 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=EOE msg=audit(1697091525.582:2588684): 
+
+type=SYSCALL msg=audit(1697091526.189:2637841): arch=c000003e syscall=59 success="yes" exit=0 a0=2b3be35 a1=7ffcc496e3a0 a2=2b53050 a3=fc2c9fc5 items=2 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key=(null)
+type=EXECVE msg=audit(1697091526.189:2637841): argc=3 a0="-csh" a1="-c" a2="/tmp/REDACTED.csh"
+type=CWD msg=audit(1697091526.189:2637841): cwd="/home/redacted/"
+type=PATH msg=audit(1697091526.189:2637841): item=0 name="/bin/csh" inode=144740 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=PATH msg=audit(1697091526.189:2637841): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=137909 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=EOE msg=audit(1697091526.189:2637841): 
+type=SYSCALL msg=audit(1697091526.193:2637845): arch=c000003e syscall=56 success="yes" exit=2549 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.193:2637845): 
+type=SYSCALL msg=audit(1697091526.193:2637853): arch=c000003e syscall=56 success="yes" exit=2552 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.193:2637853): 
+type=SYSCALL msg=audit(1697091526.193:2637855): arch=c000003e syscall=56 success="yes" exit=2555 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.193:2637855): 
+type=SYSCALL msg=audit(1697091526.201:2637859): arch=c000003e syscall=56 success="yes" exit=2556 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.201:2637859): 
+type=SYSCALL msg=audit(1697091526.209:2637862): arch=c000003e syscall=56 success="yes" exit=2557 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.209:2637862): 
+type=SYSCALL msg=audit(1697091526.213:2637866): arch=c000003e syscall=56 success="yes" exit=2559 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.213:2637866): 
+type=SYSCALL msg=audit(1697091526.217:2637870): arch=c000003e syscall=56 success="yes" exit=2561 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.217:2637870): 
+type=SYSCALL msg=audit(1697091526.229:2637874): arch=c000003e syscall=56 success="yes" exit=2564 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.229:2637874): 
+type=SYSCALL msg=audit(1697091526.245:2637879): arch=c000003e syscall=56 success="yes" exit=2566 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.245:2637879): 
+type=SYSCALL msg=audit(1697091526.249:2637885): arch=c000003e syscall=56 success="yes" exit=2571 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.249:2637885): 
+type=SYSCALL msg=audit(1697091526.249:2637888): arch=c000003e syscall=56 success="yes" exit=2573 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.249:2637888): 
+type=SYSCALL msg=audit(1697091526.249:2637891): arch=c000003e syscall=56 success="yes" exit=2574 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.249:2637891): 
+type=SYSCALL msg=audit(1697091526.253:2637894): arch=c000003e syscall=56 success="yes" exit=2576 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.253:2637894): 
+type=SYSCALL msg=audit(1697091526.269:2637907): arch=c000003e syscall=56 success="yes" exit=2582 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.269:2637907): 
+type=SYSCALL msg=audit(1697091526.269:2637909): arch=c000003e syscall=56 success="yes" exit=2583 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.269:2637909): 
+type=SYSCALL msg=audit(1697091526.273:2637911): arch=c000003e syscall=56 success="yes" exit=2584 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.273:2637911): 
+type=SYSCALL msg=audit(1697091526.273:2637913): arch=c000003e syscall=56 success="yes" exit=2585 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.273:2637913): 
+type=SYSCALL msg=audit(1697091526.273:2637915): arch=c000003e syscall=56 success="yes" exit=2586 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.273:2637915): 
+type=SYSCALL msg=audit(1697091526.277:2637917): arch=c000003e syscall=56 success="yes" exit=2587 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.277:2637917): 
+type=SYSCALL msg=audit(1697091526.277:2637919): arch=c000003e syscall=56 success="yes" exit=2588 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.277:2637919): 
+type=SYSCALL msg=audit(1697091526.281:2637921): arch=c000003e syscall=56 success="yes" exit=2589 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.281:2637921): 
+type=SYSCALL msg=audit(1697091526.281:2637922): arch=c000003e syscall=56 success="yes" exit=2590 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.281:2637922): 
+type=SYSCALL msg=audit(1697091526.281:2637924): arch=c000003e syscall=56 success="yes" exit=2591 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.281:2637924): 
+type=SYSCALL msg=audit(1697091526.285:2637926): arch=c000003e syscall=56 success="yes" exit=2592 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.285:2637926): 
+type=SYSCALL msg=audit(1697091526.285:2637928): arch=c000003e syscall=56 success="yes" exit=2593 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.285:2637928): 
+type=SYSCALL msg=audit(1697091526.289:2637930): arch=c000003e syscall=56 success="yes" exit=2594 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.289:2637930): 
+type=SYSCALL msg=audit(1697091526.289:2637932): arch=c000003e syscall=56 success="yes" exit=2597 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.289:2637932): 
+type=SYSCALL msg=audit(1697091526.293:2637936): arch=c000003e syscall=56 success="yes" exit=2598 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.293:2637936): 
+type=SYSCALL msg=audit(1697091526.293:2637938): arch=c000003e syscall=56 success="yes" exit=2599 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.293:2637938): 
+type=SYSCALL msg=audit(1697091526.297:2637940): arch=c000003e syscall=56 success="yes" exit=2600 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.297:2637940): 
+type=SYSCALL msg=audit(1697091526.297:2637947): arch=c000003e syscall=56 success="yes" exit=2604 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.297:2637947): 
+type=SYSCALL msg=audit(1697091526.301:2637955): arch=c000003e syscall=56 success="yes" exit=2608 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.301:2637955): 
+type=SYSCALL msg=audit(1697091526.309:2637962): arch=c000003e syscall=56 success="yes" exit=2612 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.309:2637962): 
+type=SYSCALL msg=audit(1697091526.309:2637965): arch=c000003e syscall=56 success="yes" exit=2613 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.309:2637965): 
+type=SYSCALL msg=audit(1697091526.313:2637968): arch=c000003e syscall=56 success="yes" exit=2615 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.313:2637968): 
+type=SYSCALL msg=audit(1697091526.313:2637977): arch=c000003e syscall=56 success="yes" exit=2622 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.313:2637977): 
+type=SYSCALL msg=audit(1697091526.317:2637980): arch=c000003e syscall=56 success="yes" exit=2623 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.317:2637980): 
+type=SYSCALL msg=audit(1697091526.317:2637982): arch=c000003e syscall=56 success="yes" exit=2624 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.317:2637982): 
+type=SYSCALL msg=audit(1697091526.321:2637984): arch=c000003e syscall=56 success="yes" exit=2625 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.321:2637984): 
+type=SYSCALL msg=audit(1697091526.321:2637986): arch=c000003e syscall=56 success="yes" exit=2626 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.321:2637986): 
+type=SYSCALL msg=audit(1697091526.325:2637988): arch=c000003e syscall=56 success="yes" exit=2627 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.325:2637988): 
+type=SYSCALL msg=audit(1697091526.329:2637990): arch=c000003e syscall=56 success="yes" exit=2628 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.329:2637990): 
+type=SYSCALL msg=audit(1697091526.329:2637992): arch=c000003e syscall=56 success="yes" exit=2629 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.329:2637992): 
+type=SYSCALL msg=audit(1697091526.333:2637995): arch=c000003e syscall=56 success="yes" exit=2631 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.333:2637995): 
+type=SYSCALL msg=audit(1697091526.333:2638000): arch=c000003e syscall=56 success="yes" exit=2636 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.333:2638000): 
+type=SYSCALL msg=audit(1697091526.337:2638002): arch=c000003e syscall=56 success="yes" exit=2637 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.337:2638002): 
+type=SYSCALL msg=audit(1697091526.337:2638004): arch=c000003e syscall=56 success="yes" exit=2638 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.337:2638004): 
+type=SYSCALL msg=audit(1697091526.337:2638006): arch=c000003e syscall=56 success="yes" exit=2639 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.337:2638006): 
+type=SYSCALL msg=audit(1697091526.341:2638008): arch=c000003e syscall=56 success="yes" exit=2640 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.341:2638008): 
+type=SYSCALL msg=audit(1697091526.341:2638010): arch=c000003e syscall=56 success="yes" exit=2641 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.341:2638010): 
+type=SYSCALL msg=audit(1697091526.341:2638011): arch=c000003e syscall=56 success="yes" exit=2642 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.341:2638011): 
+type=SYSCALL msg=audit(1697091526.345:2638013): arch=c000003e syscall=56 success="yes" exit=2643 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.345:2638013): 
+type=SYSCALL msg=audit(1697091526.345:2638014): arch=c000003e syscall=59 success="yes" exit=0 a0=964920 a1=99c520 a2=9b46f0 a3=f663360 items=2 ppid=2542 pid=2643 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="hostname" exe="/bin/hostname" key=(null)
+type=EXECVE msg=audit(1697091526.345:2638014): argc=1 a0="hostname"
+type=CWD msg=audit(1697091526.345:2638014): cwd="/home/redacted/"
+type=PATH msg=audit(1697091526.345:2638014): item=0 name="/bin/hostname" inode=131095 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=PATH msg=audit(1697091526.345:2638014): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=137909 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=EOE msg=audit(1697091526.345:2638014): 
+type=SYSCALL msg=audit(1697091526.345:2638015): arch=c000003e syscall=56 success="yes" exit=2644 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.345:2638015): 
+type=SYSCALL msg=audit(1697091526.345:2638017): arch=c000003e syscall=56 success="yes" exit=2645 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.345:2638017): 
+type=SYSCALL msg=audit(1697091526.349:2638019): arch=c000003e syscall=56 success="yes" exit=2646 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.349:2638019): 
+type=SYSCALL msg=audit(1697091526.349:2638021): arch=c000003e syscall=56 success="yes" exit=2647 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.349:2638021): 
+type=SYSCALL msg=audit(1697091526.353:2638023): arch=c000003e syscall=56 success="yes" exit=2648 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.353:2638023): 
+type=SYSCALL msg=audit(1697091526.353:2638025): arch=c000003e syscall=56 success="yes" exit=2649 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.353:2638025): 
+type=SYSCALL msg=audit(1697091526.357:2638032): arch=c000003e syscall=56 success="yes" exit=2655 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.357:2638032): 
+type=SYSCALL msg=audit(1697091526.357:2638033): arch=c000003e syscall=56 success="yes" exit=2656 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2542 pid=2655 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.357:2638033): 
+type=SYSCALL msg=audit(1697091526.357:2638034): arch=c000003e syscall=56 success="yes" exit=2657 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2542 pid=2655 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.357:2638034): 
+
+# This is the problematic entry. The enriched PPID should be
+# {
+#   "EVENT_ID": "1697091526.357:2638033",
+#   "comm": "csh",
+#   "exe": "/bin/tcsh",
+#   "ppid": 2542
+# }
+
+type=SYSCALL msg=audit(1697091526.357:2638035): arch=c000003e syscall=59 success="yes" exit=0 a0=964920 a1=98cfa0 a2=99d400 a3=f663360 items=2 ppid=2655 pid=2656 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="id" exe="/usr/bin/id" key=(null)
+type=EXECVE msg=audit(1697091526.357:2638035): argc=1 a0="id"
+type=CWD msg=audit(1697091526.357:2638035): cwd="/home/redacted/"
+type=PATH msg=audit(1697091526.357:2638035): item=0 name="/usr/bin/id" inode=989 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=PATH msg=audit(1697091526.357:2638035): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=137909 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=EOE msg=audit(1697091526.357:2638035): 
+
+
+type=SYSCALL msg=audit(1697091526.357:2638036): arch=c000003e syscall=59 success="yes" exit=0 a0=964920 a1=987f70 a2=99d400 a3=f663360 items=2 ppid=2542 pid=2655 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="awk" exe="/usr/bin/gawk" key=(null)
+type=EXECVE msg=audit(1697091526.357:2638036): argc=3 a0="awk" a1="-F)" a2=7B7072696E742024317D
+type=CWD msg=audit(1697091526.357:2638036): cwd="/home/redacted/"
+type=PATH msg=audit(1697091526.357:2638036): item=0 name="/bin/awk" inode=9629 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=PATH msg=audit(1697091526.357:2638036): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=137909 dev="103:05" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL"
+type=EOE msg=audit(1697091526.357:2638036): 
+type=SYSCALL msg=audit(1697091526.357:2638040): arch=c000003e syscall=56 success="yes" exit=2659 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.357:2638040): 
+type=SYSCALL msg=audit(1697091526.361:2638046): arch=c000003e syscall=56 success="yes" exit=2664 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.361:2638046): 
+type=SYSCALL msg=audit(1697091526.361:2638056): arch=c000003e syscall=56 success="yes" exit=2670 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.361:2638056): 
+type=SYSCALL msg=audit(1697091526.365:2638058): arch=c000003e syscall=56 success="yes" exit=2671 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.365:2638058): 
+type=SYSCALL msg=audit(1697091526.365:2638061): arch=c000003e syscall=56 success="yes" exit=2673 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.365:2638061): 
+type=SYSCALL msg=audit(1697091526.369:2638064): arch=c000003e syscall=56 success="yes" exit=2675 a0=1200011 a1=0 a2=0 a3=7fcfb71699d0 items=0 ppid=2532 pid=2542 auid=4294967295 uid=11178 gid=201 euid=11178 suid=11178 fsuid=11178 egid=201 sgid=201 fsgid=201 tty="(none)" ses=4294967295 comm="csh" exe="/bin/tcsh" key="fork"
+type=EOE msg=audit(1697091526.369:2638064): 
