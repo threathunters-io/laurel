@@ -16,6 +16,7 @@ use crate::sockaddr::SocketAddr;
 use crate::types::*;
 use crate::userdb::UserDB;
 
+#[derive(Clone)]
 pub struct Settings<'a> {
     /// Generate ARGV and ARGV_STR from EXECVE
     pub execve_argv_list: bool,
@@ -1467,40 +1468,51 @@ mod test {
 
     #[test]
     fn shell_proc_trace() {
-        let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
-        let mut c = Coalesce::new(|e| events.borrow_mut().push(e.clone()));
+        let s1 = Settings {
+            proc_label_keys: [b"test-script".to_vec()].into(),
+            proc_propagate_labels: [b"test-script".to_vec()].into(),
+            ..Settings::default()
+        };
+        let s2 = Settings {
+            filter_keys: [b"fork".to_vec()].into(),
+            ..s1.clone()
+        };
 
-        c.settings.proc_label_keys = [b"test-script".to_vec()].into();
-        c.settings.proc_propagate_labels = [b"test-script".to_vec()].into();
+        for (n, s) in [s1, s2].iter().enumerate() {
+            let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+            let mut c = Coalesce::new(|e| events.borrow_mut().push(e.clone()));
 
-        process_record(&mut c, include_bytes!("testdata/shell-proc-trace.txt")).unwrap();
+            c.settings = s.clone();
 
-        let events = events.borrow();
+            println!("Using configuration #{n}");
+            process_record(&mut c, include_bytes!("testdata/shell-proc-trace.txt")).unwrap();
 
-        let fork_ev = events
-            .iter()
-            .find(|e| e.id.to_string() == "1682609045.530:29241")
-            .unwrap();
-        assert!(event_to_json(&fork_ev).contains(r#""LABELS":["test-script"]"#));
-        let script_ev = events
-            .iter()
-            .find(|e| e.id.to_string() == "1682609045.526:29238")
-            .unwrap();
-        assert!(event_to_json(&script_ev).contains(r#""LABELS":["test-script"]"#));
-        let grep_ev = events
-            .iter()
-            .find(|e| e.id.to_string() == "1682609045.530:29242")
-            .unwrap();
-        assert!(event_to_json(&grep_ev).contains(r#""LABELS":["test-script"]"#));
-        let echo_ev = events
-            .iter()
-            .find(|e| e.id.to_string() == "1682609045.530:29244")
-            .unwrap();
-        assert!(event_to_json(&echo_ev).contains(r#""LABELS":["test-script"]"#));
-        let sed_ev = events
-            .iter()
-            .find(|e| e.id.to_string() == "1682609045.534:29245")
-            .unwrap();
-        assert!(event_to_json(&sed_ev).contains(r#""LABELS":["test-script"]"#));
+            let events = events.borrow();
+
+            let mut ids = vec![
+                "1682609045.526:29238",
+                "1682609045.530:29242",
+                "1682609045.530:29244",
+                "1682609045.534:29245",
+            ];
+            if n == 0 {
+                ids.extend([
+                    "1682609045.530:29240",
+                    "1682609045.530:29241",
+                    "1682609045.530:29243",
+                ]);
+            }
+
+            for id in ids {
+                let event = events
+                    .iter()
+                    .find(|e| e.id.to_string() == id)
+                    .expect(&format!("Did not find {id}"));
+                assert!(
+                    event_to_json(&event).contains(r#""LABELS":["test-script"]"#),
+                    "{id} was not labelled correctly."
+                );
+            }
+        }
     }
 }
