@@ -86,7 +86,7 @@ fn false_value() -> bool {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Enrich {
-    #[serde(default, rename = "execve-env")]
+    #[serde(default = "execve_env_default", rename = "execve-env")]
     pub execve_env: HashSet<String>,
     #[serde(default = "true_value")]
     pub container: bool,
@@ -127,6 +127,13 @@ pub struct LabelProcess {
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
+pub enum FilterAction {
+    #[default]
+    Drop,
+    Log,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Filter {
     #[serde(default, rename = "filter-keys")]
     pub filter_keys: HashSet<String>,
@@ -134,6 +141,8 @@ pub struct Filter {
     pub filter_labels: HashSet<String>,
     #[serde(default, rename = "filter-null-keys")]
     pub filter_null_keys: bool,
+    #[serde(default, rename = "filter-action")]
+    pub filter_action: FilterAction,
 }
 
 #[derive(Debug, Serialize)]
@@ -198,6 +207,8 @@ pub struct Config {
     #[serde(default)]
     pub auditlog: Logfile,
     #[serde(default)]
+    pub filterlog: Logfile,
+    #[serde(default)]
     pub debug: Debug,
     #[serde(default)]
     pub transform: Transform,
@@ -220,6 +231,13 @@ impl Default for Config {
             statusreport_period: None,
             auditlog: Logfile {
                 file: "audit.log".into(),
+                users: None,
+                size: Some(10 * 1024 * 1024),
+                generations: Some(5),
+                line_prefix: None,
+            },
+            filterlog: Logfile {
+                file: "filtered.log".into(),
                 users: None,
                 size: Some(10 * 1024 * 1024),
                 generations: Some(5),
@@ -348,11 +366,15 @@ read-users = ["splunk"]
 
     #[test]
     fn parse_defaults() {
-        toml::de::from_str::<Config>("").unwrap();
+        let cfg_default = toml::de::from_str::<Config>("").unwrap();
+        println!("{}", toml::to_string(&cfg_default).unwrap());
 
-        toml::de::from_str::<Config>(
+        println!("--------------------");
+
+        let cfg_empty_sections = toml::de::from_str::<Config>(
             r#"
 [auditlog]
+[filterlog]
 [debug]
 [transform]
 [translate]
@@ -362,5 +384,9 @@ read-users = ["splunk"]
 "#,
         )
         .unwrap();
+        println!("{}", toml::to_string(&cfg_empty_sections).unwrap());
+
+        // FIXME This does not work because HashSet ordering is not stable.
+        // assert!(toml::to_string(&cfg_default) == toml::to_string(&cfg_empty_sections));
     }
 }
