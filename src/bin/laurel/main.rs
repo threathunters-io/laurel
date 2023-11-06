@@ -29,6 +29,7 @@ use laurel::coalesce::Coalesce;
 use laurel::config::{Config, Input, Logfile};
 use laurel::logger;
 use laurel::rotate::FileRotate;
+use laurel::types::Event;
 
 #[derive(Default, Serialize)]
 struct Stats {
@@ -238,17 +239,13 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
         .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
 
-    let logger = std::cell::RefCell::new(
-        Logger::new(&config.auditlog, &dir)
-            .map_err(|e| format!("can't create audit logger: {}", e))?,
-    );
     let mut debug_logger = if let Some(l) = &config.debug.log {
         Some(Logger::new(l, &dir).map_err(|e| format!("can't create debug logger: {}", e))?)
     } else {
         None
     };
     let mut error_logger = if let Some(def) = &config.debug.parse_error_log {
-        let mut filename = dir;
+        let mut filename = dir.clone();
         filename.push(&def.file);
         let mut rot = FileRotate::new(filename);
         for user in &def.clone().users.unwrap_or_default() {
@@ -290,11 +287,38 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         &config
     );
 
-    let mut coalesce = Coalesce::new(|e| {
-        if !e.filter {
-            logger.borrow_mut().log(e)
-        }
-    });
+    let mut coalesce;
+
+    // The two variants produce different types, presumably because
+    // they capture different environments.
+    let emit_fn_drop;
+    let emit_fn_log;
+
+    let mut logger = Logger::new(&config.auditlog, &dir)
+        .map_err(|e| format!("can't create audit logger: {}", e))?;
+
+    if let laurel::config::FilterAction::Log = config.filter.filter_action {
+        log::info!("Logging filtered audit records");
+        let mut filter_logger = Logger::new(&config.filterlog, &dir)
+            .map_err(|e| format!("can't create filterlog logger: {}", e))?;
+        emit_fn_log = move |e: &Event| {
+            if e.filter {
+                filter_logger.log(&e)
+            } else {
+                logger.log(&e)
+            }
+        };
+        coalesce = Coalesce::new(emit_fn_log);
+    } else {
+        log::info!("Dropping filtered audit records");
+        emit_fn_drop = move |e: &Event| {
+            if !e.filter {
+                logger.log(&e)
+            }
+        };
+        coalesce = Coalesce::new(emit_fn_drop);
+    }
+
     coalesce.settings = config.make_coalesce_settings();
     coalesce.initialize()?;
 
