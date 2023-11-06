@@ -932,9 +932,7 @@ impl<'a> Coalesce<'a> {
         self.done.insert((ev.node.clone(), ev.id));
 
         self.transform_event(&mut ev);
-        if !ev.filter {
-            (self.emit_fn)(&ev)
-        }
+        (self.emit_fn)(&ev)
     }
 
     /// Ingest a log line and add it to the coalesce object.
@@ -1120,9 +1118,7 @@ mod test {
     #[test]
     fn coalesce() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(Vec::new()));
-        let mut c = Coalesce::new(|e: &Event| {
-            ec.borrow_mut().push(e.clone());
-        });
+        let mut c = Coalesce::new(mk_emit_vec(&ec));
 
         process_record(&mut c, include_bytes!("testdata/line-user-acct.txt"))?;
         assert_eq!(
@@ -1167,7 +1163,7 @@ mod test {
     fn duplicate_uids() {
         let ec = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
+        let mut c = Coalesce::new(mk_emit(&ec));
         c.settings.translate_userdb = true;
         c.settings.translate_universal = true;
         process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
@@ -1189,7 +1185,7 @@ mod test {
     fn keep_enriched_syscalls() {
         let ec = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
+        let mut c = Coalesce::new(mk_emit(&ec));
         process_record(&mut c, include_bytes!("testdata/record-execve.txt")).unwrap();
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#""ARCH":"x86_64""#));
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#""SYSCALL":"execve""#));
@@ -1269,9 +1265,7 @@ mod test {
     fn key_label() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new(|e| {
-            *ec.borrow_mut() = Some(e.clone());
-        });
+        let mut c = Coalesce::new(mk_emit(&ec));
         c.settings
             .proc_label_keys
             .insert(Vec::from(&b"software_mgmt"[..]));
@@ -1302,16 +1296,15 @@ mod test {
     #[test]
     fn label_exe() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
-        let emitter = |e: &Event| *ec.borrow_mut() = Some(e.clone());
         let lm = LabelMatcher::new(&[("whoami", "recon")])?;
 
-        let mut c = Coalesce::new(emitter);
+        let mut c = Coalesce::new(mk_emit(&ec));
         c.settings.label_exe = Some(&lm);
         process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
         drop(c);
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["recon"]"#));
 
-        let mut c = Coalesce::new(emitter);
+        let mut c = Coalesce::new(mk_emit(&ec));
         c.settings.label_exe = Some(&lm);
         process_record(
             &mut c,
@@ -1323,12 +1316,29 @@ mod test {
         Ok(())
     }
 
+    // Returns an emitter function that puts the event into an Option
+    fn mk_emit(ec: &Rc<RefCell<Option<Event>>>) -> impl FnMut(&Event) + '_ {
+        return |ev: &Event| {
+            if !ev.filter {
+                *ec.borrow_mut() = Some(ev.clone());
+            }
+        };
+    }
+
+    // Returns an emitter function that appends the event onto a Vec
+    fn mk_emit_vec(ec: &Rc<RefCell<Vec<Event>>>) -> impl FnMut(&Event) + '_ {
+        return |ev: &Event| {
+            if !ev.filter {
+                ec.borrow_mut().push(ev.clone());
+            }
+        };
+    }
+
     #[test]
     fn filter_key() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
-        let emitter = |e: &Event| *ec.borrow_mut() = Some(e.clone());
 
-        let mut c = Coalesce::new(emitter);
+        let mut c = Coalesce::new(mk_emit(&ec));
         c.settings
             .filter_keys
             .insert(Vec::from(&b"filter-this"[..]));
@@ -1337,7 +1347,7 @@ mod test {
         drop(c);
         assert!(ec.borrow().as_ref().is_none());
 
-        let mut c = Coalesce::new(emitter);
+        let mut c = Coalesce::new(mk_emit(&ec));
         c.settings.filter_null_keys = true;
         process_record(
             &mut c,
@@ -1346,7 +1356,7 @@ mod test {
         drop(c);
         assert!(ec.borrow().as_ref().is_none());
 
-        let mut c = Coalesce::new(emitter);
+        let mut c = Coalesce::new(mk_emit(&ec));
         c.settings
             .filter_keys
             .insert(Vec::from(&b"random-filter"[..]));
@@ -1361,9 +1371,7 @@ mod test {
     fn filter_label() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new(|e| {
-            *ec.borrow_mut() = Some(e.clone());
-        });
+        let mut c = Coalesce::new(mk_emit(&ec));
         c.settings
             .proc_label_keys
             .insert(Vec::from(&b"software_mgmt"[..]));
@@ -1398,9 +1406,7 @@ mod test {
     fn strip_long_argv() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
 
-        let mut c = Coalesce::new(|e| {
-            *ec.borrow_mut() = Some(e.clone());
-        });
+        let mut c = Coalesce::new(mk_emit(&ec));
 
         c.settings.execve_argv_limit_bytes = Some(10000);
         let mut buf = vec![];
@@ -1480,7 +1486,7 @@ mod test {
 
         for (n, s) in [s1, s2].iter().enumerate() {
             let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
-            let mut c = Coalesce::new(|e| events.borrow_mut().push(e.clone()));
+            let mut c = Coalesce::new(mk_emit_vec(&events));
 
             c.settings = s.clone();
 
@@ -1531,7 +1537,7 @@ mod test {
 
         for (n, s) in [s1, s2].iter().enumerate() {
             let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
-            let mut c = Coalesce::new(|e| events.borrow_mut().push(e.clone()));
+            let mut c = Coalesce::new(mk_emit_vec(&events));
 
             c.settings = s.clone();
 

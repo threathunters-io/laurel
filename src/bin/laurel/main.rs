@@ -290,7 +290,11 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         &config
     );
 
-    let mut coalesce = Coalesce::new(|e| logger.borrow_mut().log(e));
+    let mut coalesce = Coalesce::new(|e| {
+        if !e.filter {
+            logger.borrow_mut().log(e)
+        }
+    });
     coalesce.settings = config.make_coalesce_settings();
     coalesce.initialize()?;
 
