@@ -95,6 +95,12 @@ own log file rotation, just like `auditd(8)`.
 - `line-prefix`: A string that is prepended to every line. Default:
   unset
 
+## `[filterlog]` section
+
+This section describes the log file for filtered-out log events (see
+below). The `file`, `size`, `generations`, `read-users`, `line-prefix`
+configuration items work just like for the audit log.
+
 ## `[transform]` section
 
 - `execve-argv`: The list of `EXECVE.a*` fields are transformed to an
@@ -161,6 +167,8 @@ using them for internal processing such as process tracking.
 - `filter-null-keys`: Filter events without specified key. Default: false
 - `filter-labels`: A list of strings that are matched against process
   labels. Default: empty
+- `filter-action`: What to do with filtered events? `drop` or `log` to the
+  filterlog defined above.
 
 # SIGNALS
 
