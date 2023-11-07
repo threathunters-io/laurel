@@ -40,6 +40,14 @@ read-users = [ "splunk" ]
 # size = 1000000
 # generations = 3
 
+# [filterlog]
+# # If filter.filter-action is set to "log", filtered evens are
+# # written to this log. It is configured just like [auditlog].
+# file = "filtered.log"
+# size = 1000000
+# generations = 3
+# read-users = [ "splunk" ]
+
 [transform]
 
 # "array" (the default) causes EXECVE a0, a1, a2 … arguments to be
@@ -137,3 +145,7 @@ propagate-labels = [ "software_mgmt", "amazon-ssm-agent" ]
 # Filter events without specified key
 
 filter-null-keys = false
+
+# What to do with filtered events? "drop" or "log" to the filterlog
+# defined above.
+filter-action = "drop"
