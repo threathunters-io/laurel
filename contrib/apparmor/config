@@ -1,0 +1,34 @@
+abi <abi/3.0>,
+
+include <tunables/global>
+
+/usr/local/sbin/laurel flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+
+  capability chown,
+  capability dac_read_search,
+  capability fowner,
+  capability fsetid,
+  capability setgid,
+  capability setpcap,
+  capability setuid,
+  capability sys_ptrace,
+
+  network unix stream,
+
+  ptrace read,
+
+  /proc/ r,
+  /proc/*/cgroup r,
+  /proc/*/comm r,
+  /proc/*/environ r,
+  /proc/*/stat r,
+  /usr/local/sbin/laurel mrix,
+  /var/log/laurel/ w,
+  owner /etc/laurel/config.toml r,
+  owner /etc/ld.so.cache r,
+  owner /etc/nsswitch.conf r,
+  owner /etc/passwd r,
+  owner /var/log/laurel/* rw,
+}
