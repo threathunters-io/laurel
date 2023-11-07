@@ -34,6 +34,7 @@ pub struct Settings<'a> {
 
     pub translate_universal: bool,
     pub translate_userdb: bool,
+    pub drop_translated: bool,
 
     pub label_exe: Option<&'a LabelMatcher>,
     pub unlabel_exe: Option<&'a LabelMatcher>,
@@ -60,6 +61,7 @@ impl Default for Settings<'_> {
             proc_propagate_labels: HashSet::new(),
             translate_universal: false,
             translate_userdb: false,
+            drop_translated: false,
             label_exe: None,
             unlabel_exe: None,
             label_script: None,
@@ -521,6 +523,9 @@ impl<'a> Coalesce<'a> {
                     _ => {
                         if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
                             nrv.elems.push((k, v));
+                            if self.settings.drop_translated {
+                                continue;
+                            }
                         }
                     }
                 };
@@ -820,6 +825,9 @@ impl<'a> Coalesce<'a> {
                     for (k, v) in &rv.elems {
                         if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
                             nrv.elems.push((k, v));
+                            if self.settings.drop_translated {
+                                continue;
+                            }
                         } else if let Some((k, v)) = self.enrich_generic_pid(&mut nrv, k, v) {
                             nrv.elems.push((k, v));
                         }
@@ -832,6 +840,9 @@ impl<'a> Coalesce<'a> {
                         for (k, v) in &rv.elems {
                             if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
                                 nrv.elems.push((k, v));
+                                if self.settings.drop_translated {
+                                    continue;
+                                }
                             } else if let Some((k, v)) = self.enrich_generic_pid(&mut nrv, k, v) {
                                 nrv.elems.push((k, v));
                             }
@@ -1174,6 +1185,32 @@ mod test {
         process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
         process_record(&mut c, include_bytes!("testdata/record-adjntpval.txt"))?;
         process_record(&mut c, include_bytes!("testdata/record-avc-apparmor.txt"))?;
+
+        let mut c = Coalesce::new(mk_emit_vec(&ec));
+        c.settings.translate_userdb = true;
+        c.settings.drop_translated = true;
+        process_record(
+            &mut c,
+            strip_enriched(include_bytes!("testdata/record-execve.txt")),
+        )?;
+        let output = event_to_json(ec.borrow().last().unwrap());
+        println!("{}", output);
+        assert!(
+            output.contains(r#""UID":"root","#),
+            "output contains translated UID"
+        );
+        assert!(
+            output.contains(r#""EGID":"root","#),
+            "output contains translated EGID"
+        );
+        assert!(
+            !output.contains(r#""uid":"0,"#),
+            "output does not contain raw uid"
+        );
+        assert!(
+            !output.contains(r#""egid":0,"#),
+            "output does not contain raw egid"
+        );
 
         Ok(())
     }

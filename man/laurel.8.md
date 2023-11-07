@@ -118,6 +118,8 @@ does when configured with `log_format=ENRICHED`.
 - `userdb`: Add translations for `uid` and `gid` fields. Default: false
 - `universal`: Add translations for everything else: `SYSCALL.arch`,
   `SYSCALL.syscall`, `SOCKADDR.saddr`
+- `drop-raw`: Drop raw (numeric) UID, GID values if they are
+  translated. Default: false
 
 ## `[enrich]` section
 
