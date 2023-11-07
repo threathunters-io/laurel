@@ -67,6 +67,8 @@ pub struct Translate {
     pub universal: bool,
     #[serde(default, rename = "user-db")]
     pub userdb: bool,
+    #[serde(default, rename = "drop-raw")]
+    pub drop_raw: bool,
 }
 
 fn execve_env_default() -> HashSet<String> {
@@ -306,6 +308,7 @@ impl Config {
                 .collect(),
             translate_universal: self.translate.universal,
             translate_userdb: self.translate.userdb,
+            drop_translated: self.translate.drop_raw,
             label_exe: self.label_process.label_exe.as_ref(),
             unlabel_exe: self.label_process.unlabel_exe.as_ref(),
             label_script: self.label_process.label_script.as_ref(),
