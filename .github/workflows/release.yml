@@ -43,7 +43,7 @@ jobs:
     steps:
       - name: Prepare
         run: |
-          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers pandoc
+          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers make pandoc
       - uses: actions/checkout@v2
       - name: Build
         run: |
@@ -52,8 +52,8 @@ jobs:
           make -C man
       - name: Build tarball
         run: |
-          ln -f target/x86_64-alpine-linux-musl/release/laurel .
-          tar -czf laurel.tar.gz laurel *.md man/
+          ln -f target/x86_64-alpine-linux-musl/release/laurel target/x86_64-alpine-linux-musl/release/laurel2audit .
+          tar -czf laurel.tar.gz laurel laurel2audit *.md man/
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
@@ -102,8 +102,8 @@ jobs:
           echo Minimum GNU libc version: $min_glibc_version
       - name: Build tarball
         run: |
-          ln -f target/release/laurel .
-          tar -czf laurel.tar.gz laurel *.md man/
+          ln -f target/release/laurel target/release/laurel2audit .
+          tar -czf laurel.tar.gz laurel laurel2audit *.md man/
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
@@ -146,9 +146,7 @@ jobs:
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
         if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@f3c664df7af409cb4873aa5068053ba9d61a57b6 #v2.6.0
-        with:
-          cosign-release: 'v1.13.1'
+        uses: sigstore/cosign-installer@v2
 
       # Workaround: https://github.com/docker/build-push-action/issues/461
       - name: Setup Docker buildx
