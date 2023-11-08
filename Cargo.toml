@@ -21,9 +21,9 @@ lazy_static = "1"
 getopts = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-indexmap = { version = "1", features = ["serde-1"] }
+indexmap = { version = "2", features = ["serde"] }
 toml = "0.5"
-nix = "0.22"
+nix = "0.26"
 caps = "0.5"
 libc = "0.2"
 exacl = ">= 0.6"
@@ -32,7 +32,7 @@ signal-hook = "0.3"
 tinyvec = { version = "1", features = ["alloc"] }
 
 log = "0.4"
-simple_logger = "1"
+simple_logger = ">= 1"
 syslog = "6"
 
 [build-dependencies]
