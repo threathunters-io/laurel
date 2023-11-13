@@ -129,9 +129,12 @@ pub struct LabelProcess {
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum FilterAction {
     #[default]
+    #[serde(alias="Drop")]
     Drop,
+    #[serde(alias="Log")]
     Log,
 }
 
