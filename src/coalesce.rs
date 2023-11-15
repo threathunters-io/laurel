@@ -434,11 +434,20 @@ impl<'a> Coalesce<'a> {
                     None
                 } else {
                     let mut m = Vec::with_capacity(3);
-                    if let ProcessKey::Event(id) = proc.key {
-                        m.push((
-                            SimpleKey::Literal("ID"),
-                            SimpleValue::Str(rv.put(format!("{}", id))),
-                        ));
+                    match &proc.key {
+                        ProcessKey::Event(id) => {
+                            m.push((
+                                SimpleKey::Literal("EVENT_ID"),
+                                SimpleValue::Str(rv.put(format!("{id}"))),
+                            ));
+                        }
+                        ProcessKey::Observed { time, pid: _ } => {
+                            let (sec, msec) = (time / 1000, time % 1000);
+                            m.push((
+                                SimpleKey::Literal("START_TIME"),
+                                SimpleValue::Str(rv.put(format!("{sec}.{msec:03}"))),
+                            ));
+                        }
                     }
                     if let Some(exe) = &proc.exe {
                         m.push((SimpleKey::Literal("exe"), SimpleValue::Str(rv.put(exe))));
@@ -889,11 +898,20 @@ impl<'a> Coalesce<'a> {
 
             if let (true, Some(parent)) = (self.settings.enrich_pid, &parent) {
                 let mut m = Vec::with_capacity(4);
-                if let ProcessKey::Event(id) = &parent.key {
-                    m.push((
-                        SimpleKey::Literal("EVENT_ID"),
-                        SimpleValue::Str(sc.put(format!("{}", id))),
-                    ));
+                match &parent.key {
+                    ProcessKey::Event(id) => {
+                        m.push((
+                            SimpleKey::Literal("EVENT_ID"),
+                            SimpleValue::Str(sc.put(format!("{}", id))),
+                        ));
+                    }
+                    ProcessKey::Observed { time, pid: _ } => {
+                        let (sec, msec) = (time / 1000, time % 1000);
+                        m.push((
+                            SimpleKey::Literal("START_TIME"),
+                            SimpleValue::Str(sc.put(format!("{sec}.{msec:03}"))),
+                        ));
+                    }
                 }
                 if let Some(comm) = &parent.comm {
                     m.push((SimpleKey::Literal("comm"), SimpleValue::Str(sc.put(comm))));
