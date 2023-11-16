@@ -309,4 +309,42 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    #[should_panic]
+    fn proc_key_ord() {
+        let e1 = ProcessKey::Event(EventID{timestamp:1700000000000, sequence:1000});
+        let e2 = ProcessKey::Event(EventID{timestamp:1700000000000, sequence:1001});
+        let e3 = ProcessKey::Event(EventID{timestamp:1700000000001, sequence:1002});
+        let o1 = ProcessKey::Observed{time:1700000000000, pid: 1000};
+        let o2 = ProcessKey::Observed{time:1700000000000, pid: 1001};
+        let o3 = ProcessKey::Observed{time:1700000000001, pid: 1002};
+
+        for e in [e1, e2, e3] {
+            for o in [o1, o2, o3] {
+                assert!(e.cmp(&o).is_ne(), "{e} should not be equal to {o}");
+                assert!(o.cmp(&e).is_ne(), "{o} should not be equal to {e}");
+            }
+        }
+
+        assert!(e1.cmp(&e2).is_lt());
+        assert!(e1.cmp(&e3).is_lt());
+        assert!(e2.cmp(&e3).is_lt());
+
+        assert!(o1.cmp(&o2).is_lt());
+        assert!(o1.cmp(&o3).is_lt());
+        assert!(o2.cmp(&o3).is_lt());
+
+        assert!(e1.cmp(&o1).is_gt());
+        assert!(e1.cmp(&o2).is_gt());
+        assert!(e1.cmp(&o3).is_lt());
+
+        assert!(e2.cmp(&o1).is_gt());
+        assert!(e2.cmp(&o2).is_gt());
+        assert!(e2.cmp(&o3).is_lt());
+
+        assert!(e3.cmp(&o1).is_gt());
+        assert!(e3.cmp(&o2).is_gt());
+        assert!(e3.cmp(&o3).is_gt());
+    }
 }
