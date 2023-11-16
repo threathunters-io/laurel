@@ -68,15 +68,15 @@ impl Ord for ProcessKey {
             (Self::Event(s), Self::Event(o)) => s
                 .timestamp
                 .cmp(&o.timestamp)
-                .then(s.sequence.cmp(&o.sequence)),
+                .then_with(|| s.sequence.cmp(&o.sequence)),
             (Self::Observed { time: s, pid: _ }, Self::Event(o)) => {
-                s.partial_cmp(&o.timestamp).unwrap_or(Ordering::Less)
+                s.cmp(&o.timestamp).then(Ordering::Less)
             }
             (Self::Event(s), Self::Observed { time: o, pid: _ }) => {
-                s.timestamp.partial_cmp(o).unwrap_or(Ordering::Greater)
+                s.timestamp.cmp(o).then(Ordering::Greater)
             }
             (Self::Observed { time: st, pid: sp }, Self::Observed { time: ot, pid: op }) => {
-                st.cmp(ot).then(sp.cmp(op))
+                st.cmp(ot).then_with(|| sp.cmp(op))
             }
         }
     }
@@ -311,7 +311,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn proc_key_ord() {
         let e1 = ProcessKey::Event(EventID{timestamp:1700000000000, sequence:1000});
         let e2 = ProcessKey::Event(EventID{timestamp:1700000000000, sequence:1001});
