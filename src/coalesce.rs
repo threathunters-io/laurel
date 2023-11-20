@@ -509,9 +509,17 @@ impl<'a> Coalesce<'a> {
                     }
                     (Key::ArgLen(_), _) => continue,
                     (Key::Common(c), Value::Number(n)) => match (c, n) {
-                        (Common::Arch, Number::Hex(n)) if arch.is_none() => arch = Some(*n as u32),
+                        (Common::Arch, Number::Hex(n)) if arch.is_none() => {
+                            arch = Some(*n as u32);
+                            if self.settings.translate_universal && self.settings.drop_translated {
+                                continue;
+                            }
+                        }
                         (Common::Syscall, Number::Dec(n)) if syscall.is_none() => {
-                            syscall = Some(*n as u32)
+                            syscall = Some(*n as u32);
+                            if self.settings.translate_universal && self.settings.drop_translated {
+                                continue;
+                            }
                         }
                         (Common::Pid, Number::Dec(n)) => proc.pid = *n as u32,
                         (Common::PPid, Number::Dec(n)) => proc.ppid = *n as u32,

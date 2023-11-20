@@ -79,7 +79,7 @@ execve-argv = [ "array" ]
 universal = false
 # UID, GID values
 user-db = false
-# Drop raw (numeric) UID, GID values if they are translated
+# Drop raw (numeric) syscall, arch, UID, GID values if they are translated
 drop-raw = false
 
 [enrich]
