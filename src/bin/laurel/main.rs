@@ -62,8 +62,8 @@ fn drop_privileges(runas_user: &User) -> Result<(), Box<dyn Error>> {
     let uid = runas_user.uid;
     let gid = runas_user.gid;
 
-    setresgid(gid, gid, gid).map_err(|e| format!("setresgid({}): {}", uid, e))?;
-    setresuid(uid, uid, uid).map_err(|e| format!("setresuid({}): {}", gid, e))?;
+    setresgid(gid, gid, gid).map_err(|e| format!("setresgid({}): {}", gid, e))?;
+    setresuid(uid, uid, uid).map_err(|e| format!("setresuid({}): {}", uid, e))?;
 
     let mut capabilities = HashSet::new();
     #[cfg(feature = "procfs")]
