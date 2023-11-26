@@ -879,12 +879,12 @@ impl<'a> Coalesce<'a> {
                     .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
             }
             if let Some(comm) = &parent.comm {
-                let r = pi.put(&comm);
+                let r = pi.put(comm);
                 pi.elems
                     .push((Key::Literal("comm"), Value::Str(r, Quote::None)));
             }
             if let Some(exe) = &parent.exe {
-                let r = pi.put(&exe);
+                let r = pi.put(exe);
                 pi.elems
                     .push((Key::Literal("exe"), Value::Str(r, Quote::None)));
             }

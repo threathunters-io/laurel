@@ -3,7 +3,7 @@ use std::fs;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::iter::FromIterator;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::string::String;
 
 extern crate bindgen;
@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .replace("/* @SYSCALL_BUILD@ */", &gen_syscall()?)
         .into_bytes();
 
-    fs::write(&dest_path, &buf)?;
+    fs::write(dest_path, buf)?;
 
     // sockaddr
     bindgen::Builder::default()
@@ -138,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layout_tests(false)
         .generate()
         .expect("unable to generate bindings")
-        .write_to_file(PathBuf::from(env::var("OUT_DIR").unwrap()).join("sockaddr.rs"))
+        .write_to_file(std::path::PathBuf::from(env::var("OUT_DIR").unwrap()).join("sockaddr.rs"))
         .expect("Couldn't write bindings!");
 
     println!("cargo:rerun-if-changed=build.rs");

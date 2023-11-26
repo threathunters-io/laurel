@@ -103,7 +103,7 @@ impl Logger {
                 prefix: def.line_prefix.clone(),
                 output: BufWriter::new(Box::new(io::stdout())),
             }),
-            p if p.has_root() && p.parent() != None => Err(format!(
+            p if p.has_root() && p.parent().is_none() => Err(format!(
                 "invalid file directory={} file={}",
                 dir.to_string_lossy(),
                 p.to_string_lossy()
@@ -111,7 +111,7 @@ impl Logger {
             .into()),
             p => {
                 let mut filename = dir.to_path_buf();
-                filename.push(&p);
+                filename.push(p);
                 let mut rot = FileRotate::new(filename);
                 for user in &def.clone().users.unwrap_or_default() {
                     rot = rot.with_uid(
@@ -303,9 +303,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             .map_err(|e| format!("can't create filterlog logger: {}", e))?;
         emit_fn_log = move |e: &Event| {
             if e.filter {
-                filter_logger.log(&e)
+                filter_logger.log(e)
             } else {
-                logger.log(&e)
+                logger.log(e)
             }
         };
         coalesce = Coalesce::new(emit_fn_log);
@@ -313,7 +313,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         log::info!("Dropping filtered audit records");
         emit_fn_drop = move |e: &Event| {
             if !e.filter {
-                logger.log(&e)
+                logger.log(e)
             }
         };
         coalesce = Coalesce::new(emit_fn_drop);
@@ -442,7 +442,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn main() {
-    log::set_boxed_logger(Box::new(logger::Logger::default())).unwrap();
+    log::set_boxed_logger(Box::<logger::Logger>::default()).unwrap();
     log::set_max_level(log::LevelFilter::Info);
 
     {
