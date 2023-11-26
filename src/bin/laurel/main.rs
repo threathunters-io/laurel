@@ -2,7 +2,6 @@
 //! the Linux Audit daemon and reformats events as JSON lines.
 
 use getopts::Options;
-use std::collections::HashSet;
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -18,10 +17,12 @@ use std::sync::{
 };
 use std::time::{Duration, SystemTime};
 
-use nix::unistd::{chown, execve, setresgid, setresuid, Uid, User};
+use nix::unistd::{chown, execve, Uid, User};
+#[cfg(target_os = "linux")]
+use nix::unistd::{setresgid, setresuid};
 
-use caps::securebits::set_keepcaps;
-use caps::{CapSet, Capability};
+#[cfg(target_os = "linux")]
+use caps::{securebits::set_keepcaps, CapSet, Capability};
 
 use serde::Serialize;
 
@@ -56,27 +57,26 @@ impl AddAssign for Stats {
 /// - CAP_DAC_READ_SEARCH+CAP_SYS_PTRACE are required for accessing
 ///   environment variables from arbitrary processes
 ///   (/proc/$PID/environ).
+#[cfg(target_os = "linux")]
 fn drop_privileges(runas_user: &User) -> Result<(), Box<dyn Error>> {
     set_keepcaps(true)?;
-
     let uid = runas_user.uid;
     let gid = runas_user.gid;
-
     setresgid(gid, gid, gid).map_err(|e| format!("setresgid({}): {}", gid, e))?;
     setresuid(uid, uid, uid).map_err(|e| format!("setresuid({}): {}", uid, e))?;
 
-    let mut capabilities = HashSet::new();
     #[cfg(feature = "procfs")]
     {
+        let mut capabilities = std::collections::HashSet::new();
         capabilities.insert(Capability::CAP_SYS_PTRACE);
         capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
+        caps::set(None, CapSet::Permitted, &capabilities)
+            .map_err(|e| format!("set permitted capabilities: {}", e))?;
+        caps::set(None, CapSet::Effective, &capabilities)
+            .map_err(|e| format!("set effective capabilities: {}", e))?;
+        caps::set(None, CapSet::Inheritable, &capabilities)
+            .map_err(|e| format!("set inheritable capabilities: {}", e))?;
     }
-    caps::set(None, CapSet::Permitted, &capabilities)
-        .map_err(|e| format!("set permitted capabilities: {}", e))?;
-    caps::set(None, CapSet::Effective, &capabilities)
-        .map_err(|e| format!("set effective capabilities: {}", e))?;
-    caps::set(None, CapSet::Inheritable, &capabilities)
-        .map_err(|e| format!("set inheritable capabilities: {}", e))?;
 
     set_keepcaps(false)?;
     Ok(())
@@ -270,10 +270,11 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         log::warn!("Not dropping privileges -- not running as root");
     } else if runas_user.uid.is_root() {
         log::warn!("Not dropping privileges -- no user configured");
-    } else if let Err(e) = drop_privileges(&runas_user) {
-        // Logged to syslog by caller
-        return Err(e);
+    } else {
+        #[cfg(target_os = "linux")]
+        drop_privileges(&runas_user)?;
     }
+    #[cfg(target_os = "linux")]
     if let Err(e) = caps::clear(None, CapSet::Ambient) {
         log::warn!("could not set ambient capabilities: {}", e);
     }
@@ -359,11 +360,14 @@ fn run_app() -> Result<(), Box<dyn Error>> {
                 .map(|(k, v)| CString::new(format!("{}={}", k, v)).unwrap())
                 .collect();
 
-            let mut capabilities = HashSet::new();
-            capabilities.insert(Capability::CAP_SYS_PTRACE);
-            capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
-            if let Err(e) = caps::set(None, CapSet::Ambient, &capabilities) {
-                log::warn!("could not set ambient capabilities: {}", e);
+            #[cfg(target_os = "linux")]
+            {
+                let mut capabilities = std::collections::HashSet::new();
+                capabilities.insert(Capability::CAP_SYS_PTRACE);
+                capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
+                if let Err(e) = caps::set(None, CapSet::Ambient, &capabilities) {
+                    log::warn!("could not set ambient capabilities: {}", e);
+                }
             }
             execve(&argv[0], &argv, &env)?;
         }

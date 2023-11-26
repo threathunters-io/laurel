@@ -24,7 +24,6 @@ serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = { version = "2", features = ["serde"] }
 toml = "0.5"
 nix = "0.26"
-caps = "0.5"
 libc = "0.2"
 exacl = ">= 0.6"
 regex = "1"
@@ -34,6 +33,9 @@ tinyvec = { version = "1", features = ["alloc"] }
 log = "0.4"
 simple_logger = ">= 1"
 syslog = "6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+caps = "0.5"
 
 [build-dependencies]
 bindgen = ">= 0.60"
