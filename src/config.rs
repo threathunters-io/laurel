@@ -132,9 +132,9 @@ pub struct LabelProcess {
 #[serde(rename_all = "lowercase")]
 pub enum FilterAction {
     #[default]
-    #[serde(alias="Drop")]
+    #[serde(alias = "Drop")]
     Drop,
-    #[serde(alias="Log")]
+    #[serde(alias = "Log")]
     Log,
 }
 
