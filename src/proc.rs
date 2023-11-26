@@ -12,7 +12,7 @@ use serde::{Serialize, Serializer};
 use crate::label_matcher::LabelMatcher;
 use crate::types::EventID;
 
-#[cfg(feature = "procfs")]
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 
 #[derive(Clone, Debug, Default)]
@@ -104,11 +104,11 @@ pub struct Process {
     pub comm: Option<Vec<u8>>,
     /// Labels assigned to process
     pub labels: HashSet<Vec<u8>>,
-    #[cfg(feature = "procfs")]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub container_info: Option<ContainerInfo>,
 }
 
-#[cfg(feature = "procfs")]
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 impl From<procfs::ProcPidInfo> for Process {
     fn from(p: procfs::ProcPidInfo) -> Self {
         Self {
@@ -129,7 +129,7 @@ impl From<procfs::ProcPidInfo> for Process {
 
 impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
-    #[cfg(feature = "procfs")]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
         procfs::parse_proc_pid(pid).map(|p| p.into())
     }
@@ -159,7 +159,7 @@ impl ProcTable {
             current: BTreeMap::new(),
         };
 
-        #[cfg(feature = "procfs")]
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
         {
             for pid in procfs::get_pids()? {
                 // /proc/<pid> access is racy. Ignore errors here.
@@ -211,7 +211,7 @@ impl ProcTable {
     /// shadow process table, an attempt is made to fetch the
     /// information from another source, i.e. /proc.
     pub fn get_or_retrieve(&mut self, pid: u32) -> Option<&Process> {
-        #[cfg(feature = "procfs")]
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
         if self.get_pid(pid).is_none() {
             self.insert_from_procfs(pid);
         }
@@ -220,7 +220,7 @@ impl ProcTable {
 
     /// Fetch process information from procfs, insert into shadow
     /// process table.
-    #[cfg(feature = "procfs")]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub fn insert_from_procfs(&mut self, pid: u32) -> Option<&Process> {
         if let Ok(p) = Process::parse_proc(pid) {
             let key = p.key;
@@ -236,7 +236,7 @@ impl ProcTable {
     ///
     /// It should be possible to run this every few seconds without
     /// incurring load.
-    #[cfg(feature = "procfs")]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub fn expire(&mut self) {
         use std::collections::BTreeSet;
 
@@ -288,7 +288,7 @@ impl ProcTable {
 
     /// No expire mechanism has been implemented for the case where
     /// there's no procfs support.
-    #[cfg(not(feature = "procfs"))]
+    #[cfg(not(all(feature = "procfs", target_os = "linux")))]
     pub fn expire(&self) {}
 
     pub fn set_labels(&mut self, key: &ProcessKey, labels: &HashSet<Vec<u8>>) {

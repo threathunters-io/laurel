@@ -10,8 +10,9 @@ use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
 use crate::label_matcher::LabelMatcher;
 use crate::parser::parse;
 use crate::proc::{ContainerInfo, ProcTable, Process, ProcessKey};
-#[cfg(feature = "procfs")]
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
+#[cfg(target_os = "linux")]
 use crate::sockaddr::SocketAddr;
 use crate::types::*;
 use crate::userdb::UserDB;
@@ -97,6 +98,7 @@ const EXPIRE_DONE_TIMEOUT: u64 = 120_000;
 
 /// generate translation of SocketAddr enum to a format similar to
 /// what auditd log_format=ENRICHED produces
+#[cfg(target_os = "linux")]
 fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
     let f = SimpleKey::Literal("saddr_fam");
     let m = match sa {
@@ -245,7 +247,7 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
 ///
 /// As an extra sanity check, exe is compared with normalized
 /// PATH.name. If they are equal, no script is returned.
-#[cfg(feature = "procfs")]
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 fn path_script_name(path: &Record, pid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
     use std::{
         ffi::OsStr,
@@ -587,7 +589,7 @@ impl<'a> Coalesce<'a> {
                                 proc.key = pr.key;
                                 proc.parent = pr.parent;
                                 proc.labels = pr.labels.clone();
-                                #[cfg(feature = "procfs")]
+                                #[cfg(all(feature = "procfs", target_os = "linux"))]
                                 {
                                     proc.container_info = pr.container_info.clone();
                                 }
@@ -606,7 +608,7 @@ impl<'a> Coalesce<'a> {
                                         .cloned();
                                     proc.labels.extend(propagated_labels);
                                 }
-                                #[cfg(feature = "procfs")]
+                                #[cfg(all(feature = "procfs", target_os = "linux"))]
                                 if self.settings.enrich_container {
                                     if let Ok(Some(id)) = procfs::parse_proc_pid_cgroup(proc.pid) {
                                         proc.container_info = Some(ContainerInfo { id });
@@ -725,7 +727,7 @@ impl<'a> Coalesce<'a> {
             }
 
             // ENV
-            #[cfg(feature = "procfs")]
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
             if let (Some(proc), false) = (&current_process, self.settings.execve_env.is_empty()) {
                 if let Ok(vars) =
                     procfs::get_environ(proc.pid, |k| self.settings.execve_env.contains(k))
@@ -742,7 +744,7 @@ impl<'a> Coalesce<'a> {
         }
 
         // Handle script enrichment
-        #[cfg(feature = "procfs")]
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
         let script: Option<NVec> = match (self.settings.enrich_script, self.settings.label_script) {
             (false, None) => None,
             _ => match (&current_process, ev.body.get(&PATH), syscall_is_exec) {
@@ -766,7 +768,7 @@ impl<'a> Coalesce<'a> {
             },
         };
 
-        #[cfg(feature = "procfs")]
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let (Some(ref mut proc), Some(script)) = (&mut current_process, &script) {
             if let Some(label_script) = self.settings.label_script {
                 for label in label_script.matches(script.as_ref()) {
@@ -803,6 +805,7 @@ impl<'a> Coalesce<'a> {
                             if let (Key::Name(name), Value::Str(vr, _)) = (k, v) {
                                 match name.as_ref() {
                                     b"saddr" if self.settings.translate_universal => {
+                                        #[cfg(target_os = "linux")]
                                         if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
                                             let kv = (
                                                 Key::Literal("SADDR"),
@@ -936,7 +939,7 @@ impl<'a> Coalesce<'a> {
                 sc.elems.push((Key::Literal("PPID"), Value::Map(m)));
             }
 
-            #[cfg(featuree = "procfs")]
+            #[cfg(all(featuree = "procfs", target_os = "linux"))]
             if let (true, Some(script)) = (self.settings.enrich_script, script) {
                 let (k, v) = (
                     Key::Literal("SCRIPT"),
@@ -970,7 +973,7 @@ impl<'a> Coalesce<'a> {
                     sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
                 }
 
-                #[cfg(feature = "procfs")]
+                #[cfg(all(feature = "procfs", target_os = "linux"))]
                 if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                     let mut ci = Record::default();
                     let r = ci.put(&c.id);
@@ -1219,6 +1222,10 @@ mod test {
             &mut c,
             strip_enriched(include_bytes!("testdata/record-execve.txt")),
         )?;
+        let gid0name = nix::unistd::Group::from_gid(0.into())
+            .unwrap()
+            .unwrap()
+            .name;
         let output = event_to_json(ec.borrow().last().unwrap());
         println!("{}", output);
         assert!(
@@ -1226,7 +1233,7 @@ mod test {
             "output contains translated UID"
         );
         assert!(
-            output.contains(r#""EGID":"root","#),
+            output.contains(&format!(r#""EGID":"{gid0name}","#)),
             "output contains translated EGID"
         );
         assert!(
@@ -1277,6 +1284,11 @@ mod test {
     fn translate_uids() {
         let ec = Rc::new(RefCell::new(None));
 
+        let gid0name = nix::unistd::Group::from_gid(0.into())
+            .unwrap()
+            .unwrap()
+            .name;
+
         let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
         c.settings.translate_userdb = true;
         c.settings.translate_universal = true;
@@ -1296,7 +1308,7 @@ mod test {
                 }
                 if k.to_string().ends_with("GID") {
                     gids += 1;
-                    assert!(&v == "root", "Got {}={:?}, expected root", k, v);
+                    assert!(&v == gid0name.as_str(), "Got {}={:?}, expected root", k, v);
                 }
             }
             assert!(

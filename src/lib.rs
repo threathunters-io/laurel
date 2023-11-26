@@ -5,10 +5,11 @@ pub mod label_matcher;
 pub mod logger;
 pub mod parser;
 pub mod proc;
-#[cfg(feature = "procfs")]
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 pub mod procfs;
 pub mod quoted_string;
 pub mod rotate;
+#[cfg(target_os = "linux")]
 pub mod sockaddr;
 pub mod types;
 pub mod userdb;

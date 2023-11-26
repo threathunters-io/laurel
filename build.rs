@@ -129,7 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     fs::write(dest_path, buf)?;
 
-    // sockaddr
+    #[cfg(target_os = "linux")]
     bindgen::Builder::default()
         .header("src/sockaddr.h")
         .rust_target(bindgen::RustTarget::Stable_1_47)
@@ -143,6 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=const.rs.in");
+    #[cfg(target_os = "linux")]
     println!("cargo:rerun-if-changed=src/sockaddr.h");
     println!("cargo:rerun-if-changed={}", msg_file);
     println!("cargo:rerun-if-changed={}", fields_file);
