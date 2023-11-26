@@ -446,7 +446,7 @@ impl Debug for Record {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut seq = f.debug_struct("Record");
         for (k, v) in self {
-            seq.field(&*k.to_string(), &v);
+            seq.field(&k.to_string(), &v);
         }
         seq.finish()
     }
