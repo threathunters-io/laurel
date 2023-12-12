@@ -3,7 +3,7 @@
 
 use getopts::Options;
 use std::env;
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::ops::AddAssign;
@@ -16,6 +16,8 @@ use std::sync::{
     Arc,
 };
 use std::time::{Duration, SystemTime};
+
+use anyhow::{anyhow, Context};
 
 use nix::unistd::{chown, execve, Uid, User};
 #[cfg(target_os = "linux")]
@@ -58,24 +60,22 @@ impl AddAssign for Stats {
 ///   environment variables from arbitrary processes
 ///   (/proc/$PID/environ).
 #[cfg(target_os = "linux")]
-fn drop_privileges(runas_user: &User) -> Result<(), Box<dyn Error>> {
+fn drop_privileges(runas_user: &User) -> anyhow::Result<()> {
     set_keepcaps(true)?;
     let uid = runas_user.uid;
     let gid = runas_user.gid;
-    setresgid(gid, gid, gid).map_err(|e| format!("setresgid({}): {}", gid, e))?;
-    setresuid(uid, uid, uid).map_err(|e| format!("setresuid({}): {}", uid, e))?;
+    setresgid(gid, gid, gid).with_context(|| format!("setresgid({gid})"))?;
+    setresuid(uid, uid, uid).with_context(|| format!("setresuid({uid})"))?;
 
     #[cfg(feature = "procfs")]
     {
         let mut capabilities = std::collections::HashSet::new();
         capabilities.insert(Capability::CAP_SYS_PTRACE);
         capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
-        caps::set(None, CapSet::Permitted, &capabilities)
-            .map_err(|e| format!("set permitted capabilities: {}", e))?;
-        caps::set(None, CapSet::Effective, &capabilities)
-            .map_err(|e| format!("set effective capabilities: {}", e))?;
+        caps::set(None, CapSet::Permitted, &capabilities).context("set permitted capabilities")?;
+        caps::set(None, CapSet::Effective, &capabilities).context("set effective capabilities")?;
         caps::set(None, CapSet::Inheritable, &capabilities)
-            .map_err(|e| format!("set inheritable capabilities: {}", e))?;
+            .context("set inheritable capabilities")?;
     }
 
     set_keepcaps(false)?;
@@ -97,18 +97,17 @@ impl Logger {
         self.output.flush().unwrap();
     }
 
-    fn new(def: &Logfile, dir: &Path) -> Result<Self, Box<dyn Error>> {
+    fn new(def: &Logfile, dir: &Path) -> anyhow::Result<Self> {
         match &def.file {
             p if p.as_os_str() == "-" => Ok(Logger {
                 prefix: def.line_prefix.clone(),
                 output: BufWriter::new(Box::new(io::stdout())),
             }),
-            p if p.has_root() && p.parent().is_none() => Err(format!(
+            p if p.has_root() && p.parent().is_none() => Err(anyhow!(
                 "invalid file directory={} file={}",
                 dir.to_string_lossy(),
                 p.to_string_lossy()
-            )
-            .into()),
+            )),
             p => {
                 let mut filename = dir.to_path_buf();
                 filename.push(p);
@@ -116,7 +115,7 @@ impl Logger {
                 for user in &def.clone().users.unwrap_or_default() {
                     rot = rot.with_uid(
                         User::from_name(user)?
-                            .ok_or_else(|| format!("user {} not found", &user))?
+                            .ok_or_else(|| anyhow!("user {user} not found"))?
                             .uid,
                     );
                 }
@@ -135,7 +134,7 @@ impl Logger {
     }
 }
 
-fn run_app() -> Result<(), Box<dyn Error>> {
+fn run_app() -> Result<(), Box<dyn StdError>> {
     let args: Vec<String> = env::args().collect();
 
     let mut opts = Options::new();
@@ -158,7 +157,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let config: Config = match matches.opt_str("c") {
         Some(f_name) => {
             if fs::metadata(&f_name)
-                .map_err(|e| format!("stat {}: {}", &f_name, &e))?
+                .with_context(|| format!("stat: {f_name}"))?
                 .permissions()
                 .mode()
                 & 0o002
@@ -166,12 +165,9 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             {
                 return Err(format!("Config file {} must not be world-writable", f_name).into());
             }
-            let lines = fs::read(&f_name).map_err(|e| format!("read {}: {}", &f_name, &e))?;
-            toml::from_str(
-                &String::from_utf8(lines)
-                    .map_err(|_| format!("parse: {}: contains invalid UTF-8 sequences", &f_name))?,
-            )
-            .map_err(|e| format!("parse {}: {}", f_name, e))?
+            let lines = fs::read(&f_name).with_context(|| format!("read(: {f_name}"))?;
+            toml::from_str(&String::from_utf8(lines).with_context(|| format!("parse: {f_name}"))?)
+                .with_context(|| format!("parse {f_name}"))?
         }
         None => Config::default(),
     };
@@ -184,7 +180,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         Input::Stdin => Box::new(unsafe { std::fs::File::from_raw_fd(0) }),
         Input::Unix(path) => Box::new(
             UnixStream::connect(path)
-                .map_err(|e| format!("connect: {}: {}", path.to_string_lossy(), e))?,
+                .with_context(|| format!("connect: {}", path.to_string_lossy()))?,
         ),
     };
 
@@ -217,7 +213,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         }
         if dir
             .metadata()
-            .map_err(|e| format!("stat {}: {}", dir.to_string_lossy(), &e))?
+            .with_context(|| format!("stat {}", dir.to_string_lossy()))?
             .permissions()
             .mode()
             & 0o002
@@ -230,15 +226,15 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         }
     } else {
         fs::create_dir_all(&dir)
-            .map_err(|e| format!("create_dir: {}: {}", dir.to_string_lossy(), e))?;
+            .with_context(|| format!("create_dir: {}", dir.to_string_lossy()))?;
     }
     chown(&dir, Some(runas_user.uid), Some(runas_user.gid))
-        .map_err(|e| format!("chown: {}: {}", dir.to_string_lossy(), e))?;
+        .with_context(|| format!("chown: {}", dir.to_string_lossy()))?;
     fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
-        .map_err(|e| format!("chmod: {}: {}", dir.to_string_lossy(), e))?;
+        .with_context(|| format!("chmod: {}", dir.to_string_lossy()))?;
 
     let mut debug_logger = if let Some(l) = &config.debug.log {
-        Some(Logger::new(l, &dir).map_err(|e| format!("can't create debug logger: {}", e))?)
+        Some(Logger::new(l, &dir).context("can't create debug logger")?)
     } else {
         None
     };
@@ -293,13 +289,12 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     let emit_fn_drop;
     let emit_fn_log;
 
-    let mut logger = Logger::new(&config.auditlog, &dir)
-        .map_err(|e| format!("can't create audit logger: {}", e))?;
+    let mut logger = Logger::new(&config.auditlog, &dir).context("can't create audit logger")?;
 
     if let laurel::config::FilterAction::Log = config.filter.filter_action {
         log::info!("Logging filtered audit records");
-        let mut filter_logger = Logger::new(&config.filterlog, &dir)
-            .map_err(|e| format!("can't create filterlog logger: {}", e))?;
+        let mut filter_logger =
+            Logger::new(&config.filterlog, &dir).context("can't create filterlog logger")?;
         emit_fn_log = move |e: &Event| {
             if e.filter {
                 filter_logger.log(e)
@@ -344,7 +339,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
                     if let Some(ref mut l) = error_logger {
                         l.write_all(line)
                             .and_then(|_| l.flush())
-                            .map_err(|e| format!("write log: {}", e))?;
+                            .context("write log")?;
                     }
                     let line = String::from_utf8_lossy(line).replace('\n', "");
                     log::error!("Error {} processing msg: {}", e, &line);
@@ -373,7 +368,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         line.clear();
         if input
             .read_until(b'\n', &mut line)
-            .map_err(|e| format!("read from stdin: {}", e))?
+            .context("read from stdin")?
             == 0
         {
             break;
@@ -387,7 +382,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
                 if let Some(ref mut l) = error_logger {
                     l.write_all(&line)
                         .and_then(|_| l.flush())
-                        .map_err(|e| format!("write log: {}", e))?;
+                        .context("write log")?;
                 }
                 let line = String::from_utf8_lossy(&line).replace('\n', "");
                 log::error!("Error {} processing msg: {}", e, &line);
@@ -419,6 +414,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             if dump_state_last_t.elapsed()? >= *p {
                 coalesce
                     .dump_state(&mut dl.output)
+                    // .context("dump state")?;
                     .map_err(|e| format!("dump state: {}", e))?;
                 dump_state_last_t = SystemTime::now();
             }

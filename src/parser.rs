@@ -12,6 +12,24 @@ use nom::{
 
 use nom::character::complete::{i64 as dec_i64, u16 as dec_u16, u32 as dec_u32, u64 as dec_u64};
 
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ParseError {
+    #[error("cannot parse header: {}", String::from_utf8_lossy(.0))]
+    MalformedHeader(Vec<u8>),
+    #[error("cannot parse body: {}", String::from_utf8_lossy(.0))]
+    MalformedBody(Vec<u8>),
+    #[error("garbage at end of message: {}", String::from_utf8_lossy(.0))]
+    TrailingGarbage(Vec<u8>),
+    #[error("{id} ({ty}) can't hex-decode {}", String::from_utf8_lossy(.hex_str))]
+    HexDecodeError {
+        ty: MessageType,
+        id: EventID,
+        hex_str: Vec<u8>,
+    },
+}
+
 /// Parse a single log line as produced by _auditd(8)_
 ///
 /// If `skip_enriched` is set and _auditd_ has been configured to
@@ -22,26 +40,15 @@ use nom::character::complete::{i64 as dec_i64, u16 as dec_u16, u32 as dec_u32, u
 pub fn parse(
     mut raw: Vec<u8>,
     skip_enriched: bool,
-) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record), String> {
-    let (rest, (nd, ty, id)) = parse_header(&raw).map_err(|e| {
-        format!(
-            "cannot parse header: {}",
-            e.map_input(String::from_utf8_lossy)
-        )
-    })?;
+) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record), ParseError> {
+    let (rest, (nd, ty, id)) =
+        parse_header(&raw).map_err(|_| ParseError::MalformedHeader(raw.clone()))?;
 
-    let (rest, body) = parse_body(rest, ty, skip_enriched).map_err(|e| {
-        format!(
-            "cannot parse body: {}",
-            e.map_input(String::from_utf8_lossy)
-        )
-    })?;
+    let (rest, body) = parse_body(rest, ty, skip_enriched)
+        .map_err(|_| ParseError::MalformedBody(rest.to_vec()))?;
 
     if !rest.is_empty() {
-        return Err(format!(
-            "garbage at end of message: {}",
-            String::from_utf8_lossy(rest)
-        ));
+        return Err(ParseError::TrailingGarbage(rest.to_vec()));
     }
 
     let nd = nd.map(|s| s.to_vec());
@@ -82,10 +89,12 @@ pub fn parse(
             let d = unsafe {
                 str::from_utf8_unchecked(&raw[stride.start + 2 * i..stride.start + 2 * i + 2])
             };
-            raw[stride.start + i] = u8::from_str_radix(d, 16).map_err(|_| {
-                let hex_str = unsafe { str::from_utf8_unchecked(&raw[stride.clone()]) };
-                format!("{} ({}) can't hex-decode {}", id, ty, hex_str)
-            })?;
+            raw[stride.start + i] =
+                u8::from_str_radix(d, 16).map_err(|_| ParseError::HexDecodeError {
+                    id,
+                    ty,
+                    hex_str: raw[stride.clone()].to_vec(),
+                })?;
         }
     }
 
@@ -537,7 +546,7 @@ mod test {
     use super::msg_type::*;
     use super::*;
 
-    fn do_parse<T>(text: T) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record), String>
+    fn do_parse<T>(text: T) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record), ParseError>
     where
         T: AsRef<[u8]>,
     {
