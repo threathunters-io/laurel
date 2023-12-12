@@ -135,8 +135,6 @@ impl Logger {
     }
 }
 
-const LAUREL_VERSION: &str = env!("CARGO_PKG_VERSION");
-
 fn run_app() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
 
@@ -153,7 +151,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     }
 
     if matches.opt_present("v") {
-        println!("{}", LAUREL_VERSION);
+        println!("{}", laurel::VERSION);
         return Ok(());
     }
 
@@ -205,7 +203,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
     };
 
     if matches.opt_present("d") {
-        println!("Laurel {}: Config ok.", LAUREL_VERSION);
+        println!("Laurel {}: Config ok.", laurel::VERSION);
         return Ok(());
     }
 
@@ -281,7 +279,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
 
     // Initial setup is done at this point.
 
-    log::info!("Started {} running version {}", &args[0], LAUREL_VERSION);
+    log::info!("Started {} running version {}", &args[0], laurel::VERSION);
     log::info!(
         "Running with EUID {} using config {}",
         Uid::effective().as_raw(),
@@ -402,7 +400,7 @@ fn run_app() -> Result<(), Box<dyn Error>> {
             if statusreport_period_t.as_secs() > 0
                 && statusreport_last_t.elapsed()? >= statusreport_period_t
             {
-                log::info!("Laurel version {}", LAUREL_VERSION);
+                log::info!("Laurel version {}", laurel::VERSION);
                 log::info!(
                     "Parsing stats (until now): processed {} lines {} events with {} errors in total",
                     &stats.lines, &stats.events, &stats.errors );

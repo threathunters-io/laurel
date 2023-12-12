@@ -1,3 +1,5 @@
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod coalesce;
 pub mod config;
 pub mod constants;
