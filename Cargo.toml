@@ -33,6 +33,8 @@ tinyvec = { version = "1", features = ["alloc"] }
 log = "0.4"
 simple_logger = ">= 1"
 syslog = "6"
+thiserror = "1"
+anyhow = "1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = "0.5"

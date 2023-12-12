@@ -5,8 +5,9 @@
 include!(concat!(env!("OUT_DIR"), "/sockaddr.rs"));
 
 use std::convert::TryInto;
-use std::error::Error;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+
+use thiserror::Error;
 
 /*
 pub struct SocketAddrLL {
@@ -73,9 +74,17 @@ pub enum SocketAddr {
     VM(SocketAddrVM),
 }
 
-fn get_sock<T: Sized>(buf: &[u8]) -> Result<T, String> {
+#[derive(Debug, Error)]
+pub enum SocketAddrError {
+    #[error("buffer too short")]
+    BufferTooShort,
+    #[error("unrecognized socket family {0}")]
+    UnrecognizedFamily(u16),
+}
+
+fn get_sock<T: Sized>(buf: &[u8]) -> Result<T, SocketAddrError> {
     if buf.len() < std::mem::size_of::<T>() {
-        Err("buffer too short".into())
+        Err(SocketAddrError::BufferTooShort)
     } else {
         let sa = unsafe { std::ptr::read(&buf[0] as *const _ as _) };
         Ok(sa)
@@ -83,9 +92,9 @@ fn get_sock<T: Sized>(buf: &[u8]) -> Result<T, String> {
 }
 
 impl SocketAddr {
-    pub fn parse(buf: &[u8]) -> Result<Self, Box<dyn Error>> {
+    pub fn parse(buf: &[u8]) -> Result<Self, SocketAddrError> {
         if buf.len() < 2 {
-            return Err("buffer too short".into());
+            return Err(SocketAddrError::BufferTooShort);
         }
         let fam = u16::from_ne_bytes(buf[0..2].try_into().unwrap()) as u32;
         match fam {
@@ -166,7 +175,7 @@ impl SocketAddr {
                     cid: sa.svm_cid,
                 }))
             }
-            _ => Err(format!("unrecognized socket family {}", fam).into()),
+            _ => Err(SocketAddrError::UnrecognizedFamily(fam as _)),
         }
     }
 }
@@ -176,7 +185,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn parse_syslog() -> Result<(), Box<dyn Error>> {
+    fn parse_syslog() -> Result<(), SocketAddrError> {
         // taken from testdata/record-connect-unix-raw.txt
         let buf = b"\x01\x00\x2F\x64\x65\x76\x2F\x6C\x6F\x67\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
         let s = SocketAddr::parse(&buf[..])?;

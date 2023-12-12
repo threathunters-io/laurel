@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
-use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display};
 use std::iter::Iterator;
 use std::ops::Range;
@@ -569,7 +568,7 @@ pub struct RValue<'a> {
 }
 
 impl TryFrom<RValue<'_>> for Vec<u8> {
-    type Error = Box<dyn StdError>;
+    type Error = &'static str;
     fn try_from(v: RValue) -> Result<Self, Self::Error> {
         match v.value {
             Value::Str(r, Quote::Braces) => {
@@ -589,19 +588,17 @@ impl TryFrom<RValue<'_>> for Vec<u8> {
                 }
                 Ok(sb)
             }
-            Value::Number(_) => Err("Won't convert number to string".into()),
-            Value::List(_) | Value::StringifiedList(_) => {
-                Err("Can't convert list to scalar".into())
-            }
-            Value::Map(_) => Err("Can't convert map to scalar".into()),
-            Value::Skipped(_) => Err("Can't convert skipped to scalar".into()),
+            Value::Number(_) => Err("Won't convert number to string"),
+            Value::List(_) | Value::StringifiedList(_) => Err("Can't convert list to scalar"),
+            Value::Map(_) => Err("Can't convert map to scalar"),
+            Value::Skipped(_) => Err("Can't convert skipped to scalar"),
             Value::Literal(s) => Ok(s.to_string().into()),
         }
     }
 }
 
 impl TryFrom<RValue<'_>> for Vec<Vec<u8>> {
-    type Error = Box<dyn StdError>;
+    type Error = &'static str;
     fn try_from(value: RValue) -> Result<Self, Self::Error> {
         match value.value {
             Value::List(values) | Value::StringifiedList(values) => {
@@ -615,7 +612,7 @@ impl TryFrom<RValue<'_>> for Vec<Vec<u8>> {
                 }
                 Ok(rv)
             }
-            _ => Err("not a list".into()),
+            _ => Err("not a list"),
         }
     }
 }

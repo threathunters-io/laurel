@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
 use crate::label_matcher::LabelMatcher;
-use crate::parser::parse;
+use crate::parser::{parse, ParseError};
 use crate::proc::{ContainerInfo, ProcTable, Process, ProcessKey};
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
@@ -16,6 +16,8 @@ use crate::procfs;
 use crate::sockaddr::SocketAddr;
 use crate::types::*;
 use crate::userdb::UserDB;
+
+use thiserror::Error;
 
 #[derive(Clone)]
 pub struct Settings<'a> {
@@ -72,6 +74,16 @@ impl Default for Settings<'_> {
             filter_null_keys: false,
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub enum CoalesceError {
+    #[error("{0}")]
+    Parse(ParseError),
+    #[error("duplicate event id {0}")]
+    DuplicateEvent(EventID),
+    #[error("Event id {0} for EOE marker not found")]
+    SpuriousEOE(EventID),
 }
 
 /// Coalesce collects Audit Records from individual lines and assembles them to Events
@@ -1005,9 +1017,9 @@ impl<'a> Coalesce<'a> {
     ///
     /// The line is consumed and serves as backing store for the
     /// EventBody objects.
-    pub fn process_line(&mut self, line: Vec<u8>) -> Result<(), Box<dyn Error>> {
+    pub fn process_line(&mut self, line: Vec<u8>) -> Result<(), CoalesceError> {
         let skip_enriched = self.settings.translate_universal && self.settings.translate_userdb;
-        let (node, typ, id, rv) = parse(line, skip_enriched)?;
+        let (node, typ, id, rv) = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
         let nid = (node.clone(), id);
 
         // clean out state every EXPIRE_PERIOD
@@ -1024,12 +1036,12 @@ impl<'a> Coalesce<'a> {
 
         if typ == EOE {
             if self.done.contains(&nid) {
-                return Err(format!("duplicate event id {}", id).into());
+                return Err(CoalesceError::DuplicateEvent(id));
             }
             let ev = self
                 .inflight
                 .remove(&nid)
-                .ok_or(format!("Event id {} for EOE marker not found", &id))?;
+                .ok_or(CoalesceError::SpuriousEOE(id))?;
             self.emit_event(ev);
         } else if typ.is_multipart() {
             // kernel-level messages
@@ -1055,7 +1067,7 @@ impl<'a> Coalesce<'a> {
         } else {
             // user-space messages
             if self.done.contains(&nid) {
-                return Err(format!("duplicate event id {}", id).into());
+                return Err(CoalesceError::DuplicateEvent(id));
             }
             let mut ev = Event::new(node, id);
             ev.body.insert(typ, EventValues::Single(rv));

@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fmt;
 
 use regex::bytes::RegexSet;
@@ -14,7 +13,7 @@ pub struct LabelMatcher {
 }
 
 impl LabelMatcher {
-    pub fn new(exprs: &[(&str, &str)]) -> Result<Self, Box<dyn Error>> {
+    pub fn new(exprs: &[(&str, &str)]) -> Result<Self, regex::Error> {
         let mut regexes = Vec::with_capacity(exprs.len());
         let mut tags = Vec::with_capacity(exprs.len());
         for (r, t) in exprs {

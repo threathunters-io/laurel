@@ -131,7 +131,9 @@ impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
     #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
-        procfs::parse_proc_pid(pid).map(|p| p.into())
+        procfs::parse_proc_pid(pid)
+            .map(|p| p.into())
+            .map_err(|e| e.into())
     }
 }
 
