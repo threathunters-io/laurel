@@ -79,7 +79,7 @@ get translated to
 
     ARCH=x86_64 SYSCALL=execve UID="root"
 
-by `auditd(8)`. All information that is added to records by `laurel(8)`  follows the same convention, i.e. keys are turned into all-caps. While `laurel` can be configured to perform the same translations as `auditd(8)`, it con perform other enrichments, including interpreted scripts, collecting specific environment variables, or container information for processes that are run within container environments.
+by `auditd(8)`. All information that is added to records by `laurel(8)`  follows the same convention, i.e. keys are turned into all-caps. While `laurel` can be configured to perform the same translations as `auditd(8)`, it can perform other enrichments, including interpreted scripts, collecting specific environment variables, or container information for processes that are run within container environments.
 
 ### Adding Context: Process Relationships, Labels
 
@@ -116,7 +116,7 @@ For process tracking to work properly, the kernel should be configured to log al
 -a exit,always -F arch=b64 -S fork,vfork,clone,clone3 -F success=1 -F exe=/bin/bash
 # …
 ```
-If the `fork` calls are not needed in the log file, they can be filtered out by assigning a key to those rules in the audit ruleset and adding thhis key to `filter.filter-keys`.
+If the `fork` calls are not needed in the log file, they can be filtered out by assigning a key to those rules in the audit ruleset and adding this key to `filter.filter-keys`.
 
 Note that older versions of auditd may not understand all the syscalls. In those cases, it may be necessary to substitute the syscall numbers for the ruleset.
 
