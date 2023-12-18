@@ -312,10 +312,10 @@ impl Config {
             translate_universal: self.translate.universal,
             translate_userdb: self.translate.userdb,
             drop_translated: self.translate.drop_raw,
-            label_exe: self.label_process.label_exe.as_ref(),
-            unlabel_exe: self.label_process.unlabel_exe.as_ref(),
-            label_script: self.label_process.label_script.as_ref(),
-            unlabel_script: self.label_process.unlabel_script.as_ref(),
+            label_exe: self.label_process.label_exe.clone(),
+            unlabel_exe: self.label_process.unlabel_exe.clone(),
+            label_script: self.label_process.label_script.clone(),
+            unlabel_script: self.label_process.unlabel_script.clone(),
             filter_keys: self
                 .filter
                 .filter_keys
