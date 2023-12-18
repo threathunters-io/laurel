@@ -22,7 +22,7 @@ use crate::userdb::UserDB;
 use thiserror::Error;
 
 #[derive(Clone)]
-pub struct Settings<'a> {
+pub struct Settings {
     /// Generate ARGV and ARGV_STR from EXECVE
     pub execve_argv_list: bool,
     pub execve_argv_string: bool,
@@ -41,17 +41,17 @@ pub struct Settings<'a> {
     pub translate_userdb: bool,
     pub drop_translated: bool,
 
-    pub label_exe: Option<&'a LabelMatcher>,
-    pub unlabel_exe: Option<&'a LabelMatcher>,
-    pub label_script: Option<&'a LabelMatcher>,
-    pub unlabel_script: Option<&'a LabelMatcher>,
+    pub label_exe: Option<LabelMatcher>,
+    pub unlabel_exe: Option<LabelMatcher>,
+    pub label_script: Option<LabelMatcher>,
+    pub unlabel_script: Option<LabelMatcher>,
 
     pub filter_keys: HashSet<Vec<u8>>,
     pub filter_labels: HashSet<Vec<u8>>,
     pub filter_null_keys: bool,
 }
 
-impl Default for Settings<'_> {
+impl Default for Settings {
     fn default() -> Self {
         Settings {
             execve_argv_list: true,
@@ -103,7 +103,7 @@ pub struct Coalesce<'a> {
     /// Creadential cache
     userdb: UserDB,
 
-    pub settings: Settings<'a>,
+    pub settings: Settings,
 }
 
 const EXPIRE_PERIOD: u64 = 1_000;
@@ -346,7 +346,7 @@ impl<'a> Coalesce<'a> {
             self.userdb.populate();
         }
         self.processes = ProcTable::from_proc(
-            self.settings.label_exe,
+            self.settings.label_exe.clone(),
             &self.settings.proc_propagate_labels,
         )
         .map_err(|e| format!("populate proc table: {}", e))?;
@@ -759,7 +759,8 @@ impl<'a> Coalesce<'a> {
 
         // Handle script enrichment
         #[cfg(all(feature = "procfs", target_os = "linux"))]
-        let script: Option<NVec> = match (self.settings.enrich_script, self.settings.label_script) {
+        let script: Option<NVec> = match (self.settings.enrich_script, &self.settings.label_script)
+        {
             (false, None) => None,
             _ => match (&current_process, ev.body.get(&PATH), syscall_is_exec) {
                 (Some(proc), Some(EventValues::Multi(paths)), true) => {
@@ -784,12 +785,12 @@ impl<'a> Coalesce<'a> {
 
         #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let (Some(ref mut proc), Some(script)) = (&mut current_process, &script) {
-            if let Some(label_script) = self.settings.label_script {
+            if let Some(label_script) = &self.settings.label_script {
                 for label in label_script.matches(script.as_ref()) {
                     proc.labels.insert(label.into());
                 }
             }
-            if let Some(unlabel_script) = self.settings.unlabel_script {
+            if let Some(unlabel_script) = &self.settings.unlabel_script {
                 for label in unlabel_script.matches(script.as_ref()) {
                     proc.labels.remove(label);
                 }
@@ -1407,13 +1408,13 @@ mod test {
         let lm = LabelMatcher::new(&[("whoami", "recon")])?;
 
         let mut c = Coalesce::new(mk_emit(&ec));
-        c.settings.label_exe = Some(&lm);
+        c.settings.label_exe = Some(lm.clone());
         process_record(&mut c, include_bytes!("testdata/record-execve.txt"))?;
         drop(c);
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["recon"]"#));
 
         let mut c = Coalesce::new(mk_emit(&ec));
-        c.settings.label_exe = Some(&lm);
+        c.settings.label_exe = Some(lm);
         process_record(
             &mut c,
             strip_enriched(include_bytes!("testdata/record-execve.txt")),

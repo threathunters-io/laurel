@@ -143,7 +143,7 @@ impl ProcTable {
     /// If label_exe and propagate_labels are supplied, Process labels
     /// based on executable are applied and propagated to children.
     pub fn from_proc(
-        label_exe: Option<&LabelMatcher>,
+        label_exe: Option<LabelMatcher>,
         propagate_labels: &HashSet<Vec<u8>>,
     ) -> Result<ProcTable, Box<dyn Error>> {
         let mut pt = ProcTable {
@@ -156,7 +156,7 @@ impl ProcTable {
             for pid in procfs::get_pids()? {
                 // /proc/<pid> access is racy. Ignore errors here.
                 if let Ok(mut proc) = Process::parse_proc(pid) {
-                    if let (Some(label_exe), Some(exe)) = (label_exe, &proc.exe) {
+                    if let (Some(label_exe), Some(exe)) = (&label_exe, &proc.exe) {
                         proc.labels
                             .extend(label_exe.matches(exe).iter().map(|v| Vec::from(*v)));
                     }
@@ -171,7 +171,7 @@ impl ProcTable {
             }
         }
 
-        if let Some(label_exe) = label_exe {
+        if let Some(label_exe) = &label_exe {
             for proc in pt.processes.values_mut() {
                 if let Some(exe) = &proc.exe {
                     proc.labels
