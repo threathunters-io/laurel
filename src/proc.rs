@@ -6,7 +6,6 @@ use std::fmt::{self, Display};
 use std::iter::Iterator;
 use std::vec::Vec;
 
-use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 
 use crate::label_matcher::LabelMatcher;
@@ -15,19 +14,10 @@ use crate::types::EventID;
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct ContainerInfo {
+    #[serde(with = "faster_hex::nopfx_lowercase")]
     pub id: Vec<u8>,
-}
-
-impl Serialize for ContainerInfo {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let mut map = s.serialize_map(Some(1))?;
-        // safety: id contains entirely of hex-digits
-        let converted = unsafe { std::str::from_utf8_unchecked(&self.id) };
-        map.serialize_entry("id", converted)?;
-        map.end()
-    }
 }
 
 /// Host-unique identifier for processes

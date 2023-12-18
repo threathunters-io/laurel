@@ -5,6 +5,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::str::FromStr;
 
+use faster_hex::hex_decode;
 use lazy_static::lazy_static;
 use nix::sys::time::TimeSpec;
 use nix::time::{clock_gettime, ClockId};
@@ -178,15 +179,13 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
     })
 }
 
-fn extract_sha256(buf: &[u8]) -> Option<&[u8]> {
-    if buf.len() < 64 {
-        None
-    } else if buf[buf.len() - 64..].iter().all(u8::is_ascii_hexdigit) {
-        Some(&buf[buf.len() - 64..])
-    } else if buf[..64].iter().all(u8::is_ascii_hexdigit) {
-        Some(&buf[..64])
-    } else {
-        None
+fn extract_sha256(buf: &[u8]) -> Option<Vec<u8>> {
+    let mut dec = [0u8; 32];
+    match buf.len() {
+        n if n < 64 => None,
+        _ if hex_decode(&buf[buf.len() - 64..], &mut dec).is_ok() => Some(Vec::from(dec)),
+        _ if hex_decode(&buf[..64], &mut dec).is_ok() => Some(Vec::from(dec)),
+        _ => None,
     }
 }
 
@@ -209,7 +208,7 @@ fn parse_cgroup_buf(buf: &[u8]) -> Result<Option<Vec<u8>>, ProcFSError> {
             };
             match extract_sha256(fragment) {
                 None => continue,
-                Some(id) => return Ok(Some(Vec::from(id))),
+                Some(id) => return Ok(Some(id)),
             }
         }
     }

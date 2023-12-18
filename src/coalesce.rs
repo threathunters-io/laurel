@@ -4,6 +4,8 @@ use std::io::Write;
 use std::ops::Range;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use faster_hex::hex_string;
+
 use serde_json::json;
 
 use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
@@ -988,7 +990,7 @@ impl<'a> Coalesce<'a> {
                 #[cfg(all(feature = "procfs", target_os = "linux"))]
                 if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                     let mut ci = Record::default();
-                    let r = ci.put(&c.id);
+                    let r = ci.put(hex_string(&c.id));
                     ci.elems
                         .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
                     ev.body.insert(CONTAINER_INFO, EventValues::Single(ci));
