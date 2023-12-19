@@ -41,7 +41,7 @@ read-users = [ "splunk" ]
 # generations = 3
 
 # [filterlog]
-# # If filter.filter-action is set to "log", filtered evens are
+# # If filter.filter-action is set to "log", filtered events are
 # # written to this log. It is configured just like [auditlog].
 # file = "filtered.log"
 # size = 1000000
@@ -124,7 +124,7 @@ unlabel-exe."bin/php$" = "java"
 # scripts.
 label-script."maint" = "^/root/maint-.*[.]sh$"
 
-# unlabel-script-"maint" = "…"
+# unlabel-script."maint" = "…"
 
 # Process Labels can be propagated to spawned child processes. This is
 # useful for marking an entire subtree of children that have been
