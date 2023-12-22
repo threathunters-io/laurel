@@ -59,6 +59,8 @@ const ARCHS: &[(&str, u32)] = &[
     ("hexagon", 0x000000a4),
     ("i386", 0x40000003),
     ("ia64", 0xc0000032),
+    ("loongarch32", 0x40000102),
+    ("loongarch64", 0xc0000102),
     ("m32r", 0x00000058),
     ("m68k", 0x00000004),
     ("microblaze", 0x000000bd),
