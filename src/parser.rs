@@ -177,8 +177,10 @@ fn parse_body(
     ty: MessageType,
     skip_enriched: bool,
 ) -> IResult<&[u8], Vec<(Key, PValue)>> {
-    let (input, special) = opt(alt((
-        map(
+    // Skip. overe start of message doesn't fit the key=value
+    // scheme and does not contain useful information.
+    let (input, special) = match ty {
+        msg_type::AVC => opt(map(
             tuple((
                 preceded(
                     pair(tag("avc:"), space0),
@@ -191,17 +193,19 @@ fn parse_body(
                 ),
             )),
             |(k, v)| (Key::Name(NVec::from(k)), PValue::List(v)),
-        ),
-        map(terminated(tag("netlabel"), pair(tag(":"), space0)), |s| {
-            (Key::Name(NVec::from(s)), PValue::Empty)
-        }),
-    )))(input)?;
-
-    let (input, _) = match ty {
-        // Skip. overe start of message doesn't fit the key=value
-        // scheme and does not contain useful information.
-        msg_type::MAC_POLICY_LOAD => opt(tag("policy loaded "))(input)?,
-        _ => (input, None),
+        ))(input)?,
+        msg_type::TTY => {
+            let (input, _) = opt(tag("tty "))(input)?;
+            (input, None)
+        }
+        msg_type::MAC_POLICY_LOAD => {
+            let (input, _) = opt(tag("policy loaded "))(input)?;
+            (input, None)
+        }
+        _ => opt(map(
+            terminated(tag("netlabel"), pair(tag(":"), space0)),
+            |s| (Key::Name(NVec::from(s)), PValue::Empty),
+        ))(input)?,
     };
 
     let (input, mut kv) = if skip_enriched {
@@ -878,16 +882,13 @@ mod test {
         do_parse(include_bytes!("testdata/line-sockaddr-unix.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-sockaddr-unix-2.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-user-auth-2.txt")).unwrap();
+        do_parse(include_bytes!("testdata/line-mac-policy-load.txt")).unwrap();
+        do_parse(include_bytes!("testdata/line-tty.txt")).unwrap();
     }
 
     #[test]
     #[should_panic]
     fn breakage_sockaddr_unknown() {
         do_parse(include_bytes!("testdata/line-sockaddr-unknown.txt")).unwrap();
-    }
-
-    #[test]
-    fn breakage_mac_policy_load() {
-        do_parse(include_bytes!("testdata/line-mac-policy-load.txt")).unwrap();
     }
 }
