@@ -261,9 +261,9 @@ pub enum Key {
     /// translated / "enriched" values
     NameTranslated(NVec),
     /// `a0`, `a1`, `a2[0]`, `a2[1]`…
-    Arg(u16, Option<u16>),
+    Arg(u32, Option<u16>),
     /// `a0_len` …
-    ArgLen(u16),
+    ArgLen(u32),
     Literal(&'static str),
 }
 
