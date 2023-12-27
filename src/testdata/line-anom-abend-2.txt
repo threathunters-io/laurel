@@ -1,0 +1,1 @@
+type=ANOM_ABEND msg=audit(1703677054.334:4223663): auid=4294967295 uid=0 gid=0 ses=4294967295 subj==/usr/bin/man//&man_groff (enforce) pid=109919 comm="preconv" exe="/usr/bin/preconv" sig=31 res=1AUID="unset" UID="root" GID="root"
