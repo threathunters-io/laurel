@@ -1,0 +1,1 @@
+type=TTY msg=audit(1702500511.459:370948): tty pid=260398 uid=0 auid=4294967295 ses=4294967295 major=136 minor=1 comm="bash" data=72706D202D7161207C2067726570207379736C6F670DUID="root" AUID="unset"
