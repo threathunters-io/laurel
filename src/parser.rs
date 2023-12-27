@@ -233,10 +233,14 @@ fn parse_body(
 fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (Key, PValue)> {
     let (input, key) = match ty {
         // Special case for execve arguments: aX, aX[Y], aX_len
-        msg_type::EXECVE if !input.is_empty() && input[0] == b'a' => terminated(
-            alt((parse_key_a_x_len, parse_key_a_xy, parse_key_a_x, parse_key)),
-            tag("="),
-        )(input),
+        msg_type::EXECVE
+            if !input.is_empty() && input[0] == b'a' && !input.starts_with(b"argc") =>
+        {
+            terminated(
+                alt((parse_key_a_x_len, parse_key_a_xy, parse_key_a_x)),
+                tag("="),
+            )(input)
+        }
         // Special case for syscall params: aX
         msg_type::SYSCALL => terminated(alt((parse_key_a_x, parse_key)), tag("="))(input),
         _ => terminated(parse_key, tag("="))(input),
@@ -490,7 +494,7 @@ fn parse_key(input: &[u8]) -> IResult<&[u8], Key> {
 /// Recognize length specifier for EXECVE split arguments, e.g. a1_len
 #[inline(always)]
 fn parse_key_a_x_len(input: &[u8]) -> IResult<&[u8], Key> {
-    map(delimited(tag("a"), dec_u16, tag("_len")), Key::ArgLen)(input)
+    map(delimited(tag("a"), dec_u32, tag("_len")), Key::ArgLen)(input)
 }
 
 /// Recognize EXECVE split arguments, e.g. a1[3]
@@ -498,7 +502,7 @@ fn parse_key_a_x_len(input: &[u8]) -> IResult<&[u8], Key> {
 fn parse_key_a_xy(input: &[u8]) -> IResult<&[u8], Key> {
     map(
         pair(
-            preceded(tag("a"), dec_u16),
+            preceded(tag("a"), dec_u32),
             delimited(tag("["), dec_u16, tag("]")),
         ),
         |(x, y)| Key::Arg(x, Some(y)),
@@ -508,7 +512,7 @@ fn parse_key_a_xy(input: &[u8]) -> IResult<&[u8], Key> {
 /// Recognize SYSCALL, EXECVE regular argument keys, e.g. a1, a2, a3…
 #[inline(always)]
 fn parse_key_a_x(input: &[u8]) -> IResult<&[u8], Key> {
-    map(preceded(tag("a"), u16), |x| Key::Arg(x, None))(input)
+    map(preceded(tag("a"), u32), |x| Key::Arg(x, None))(input)
 }
 
 /// Recognize identifiers (used in some irregular messages)
