@@ -425,7 +425,7 @@ fn parse_str_dq(input: &[u8]) -> IResult<&[u8], &[u8]> {
 
 #[inline(always)]
 fn parse_str_braced(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    delimited(tag("{"), take_while(|c| c != b'}'), tag("}"))(input)
+    delimited(tag("{ "), take_until(" }"), tag(" }"))(input)
 }
 
 #[inline(always)]
@@ -876,6 +876,7 @@ mod test {
         do_parse(include_bytes!("testdata/line-anom-abend-2.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-user-auth.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-sockaddr-unix.txt")).unwrap();
+        do_parse(include_bytes!("testdata/line-sockaddr-unix-2.txt")).unwrap();
         do_parse(include_bytes!("testdata/line-user-auth-2.txt")).unwrap();
     }
 
