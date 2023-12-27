@@ -122,9 +122,9 @@ unlabel-exe."bin/php$" = "java"
 
 # Labels can be attached to or removed from processes that have been identified as
 # scripts.
-label-script."maint" = "^/root/maint-.*[.]sh$"
+label-script."^/root/maint-.*[.]sh$" = "maint"
 
-# unlabel-script."maint" = "…"
+# unlabel-script."…" = "maint"
 
 # Process Labels can be propagated to spawned child processes. This is
 # useful for marking an entire subtree of children that have been
