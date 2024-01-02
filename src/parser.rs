@@ -177,8 +177,8 @@ fn parse_body(
     ty: MessageType,
     skip_enriched: bool,
 ) -> IResult<&[u8], Vec<(Key, PValue)>> {
-    // Skip. overe start of message doesn't fit the key=value
-    // scheme and does not contain useful information.
+    // Handle some corner cases that don't fit the general key=value
+    // scheme.
     let (input, special) = match ty {
         msg_type::AVC => opt(map(
             tuple((
