@@ -326,6 +326,42 @@ fn path_script_name(path: &Record, pid: u32, cwd: &[u8], exe: &[u8]) -> Option<N
     }
 }
 
+/// Create an enriched pid entry in rv.
+fn add_record_procinfo(rv: &mut Record, name: &[u8], proc: &Process, include_names: bool) {
+    let key = Key::NameTranslated(name.into());
+    let mut m = Vec::with_capacity(4);
+    match &proc.key {
+        ProcessKey::Event(id) => {
+            m.push((
+                SimpleKey::Literal("EVENT_ID"),
+                SimpleValue::Str(rv.put(format!("{id}"))),
+            ));
+        }
+        ProcessKey::Observed { time, pid: _ } => {
+            let (sec, msec) = (time / 1000, time % 1000);
+            m.push((
+                SimpleKey::Literal("START_TIME"),
+                SimpleValue::Str(rv.put(format!("{sec}.{msec:03}"))),
+            ));
+        }
+    }
+    if include_names {
+        if let Some(comm) = &proc.comm {
+            m.push((SimpleKey::Literal("comm"), SimpleValue::Str(rv.put(comm))));
+        }
+        if let Some(exe) = &proc.exe {
+            m.push((SimpleKey::Literal("exe"), SimpleValue::Str(rv.put(exe))));
+        }
+        if proc.ppid != 0 {
+            m.push((
+                SimpleKey::Literal("ppid"),
+                SimpleValue::Number(Number::Dec(proc.ppid.into())),
+            ));
+        }
+    }
+    rv.elems.push((key, Value::Map(m)));
+}
+
 impl<'a> Coalesce<'a> {
     /// Creates a `Coalsesce`. `emit_fn` is the function that takes
     /// completed events.
@@ -431,54 +467,36 @@ impl<'a> Coalesce<'a> {
 
     /// Enrich "pid" entries using `ppid`, `exe`, `ID` (generating
     /// event id) from the shadow process table
-    fn enrich_generic_pid(&mut self, rv: &mut Record, k: &Key, v: &Value) -> Option<(Key, Value)> {
-        let pid = match v {
-            Value::Number(Number::Dec(n)) => *n,
-            _ => return None,
-        };
+    fn enrich_pid(&mut self, rv: &mut Record, k: &Key, v: &Value) {
         if !self.settings.enrich_pid {
-            return None;
+            return;
         }
-        match &k {
-            Key::Name(r) if r.ends_with(b"pid") => {
-                let key = Key::NameTranslated(r.clone());
-                let proc = self.processes.get_or_retrieve(pid as _)?;
+        let name = match &k {
+            Key::Common(Common::Pid) => &b"pid"[..],
+            Key::Common(Common::PPid) => &b"ppid"[..],
+            Key::Name(r) if r.ends_with(b"pid") => r.as_ref(),
+            _ => return,
+        };
+        if let Value::Number(Number::Dec(pid)) = v {
+            self.processes
+                .get_or_retrieve(*pid as _)
+                .map(|proc| add_record_procinfo(rv, name, proc, true));
+        }
+    }
 
-                if let (ProcessKey::Observed { time: _, pid: _ }, None, 0) =
-                    (proc.key, &proc.exe, &proc.ppid)
-                {
-                    None
-                } else {
-                    let mut m = Vec::with_capacity(3);
-                    match &proc.key {
-                        ProcessKey::Event(id) => {
-                            m.push((
-                                SimpleKey::Literal("EVENT_ID"),
-                                SimpleValue::Str(rv.put(format!("{id}"))),
-                            ));
-                        }
-                        ProcessKey::Observed { time, pid: _ } => {
-                            let (sec, msec) = (time / 1000, time % 1000);
-                            m.push((
-                                SimpleKey::Literal("START_TIME"),
-                                SimpleValue::Str(rv.put(format!("{sec}.{msec:03}"))),
-                            ));
-                        }
-                    }
-                    if let Some(exe) = &proc.exe {
-                        m.push((SimpleKey::Literal("exe"), SimpleValue::Str(rv.put(exe))));
-                    }
-                    if proc.ppid != 0 {
-                        m.push((
-                            SimpleKey::Literal("ppid"),
-                            SimpleValue::Number(Number::Dec(proc.ppid.into())),
-                        ));
-                    }
-                    Some((key, Value::Map(m)))
+    fn enrich_generic(&mut self, rv: &mut Record) {
+        let mut nrv = Record::default();
+        for (k, v) in &rv.elems {
+            if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
+                nrv.elems.push((k, v));
+                if self.settings.drop_translated {
+                    continue;
                 }
+            } else {
+                self.enrich_pid(&mut nrv, k, v);
             }
-            _ => None,
         }
+        rv.extend(nrv);
     }
 
     /// Rewrite event to normal form
@@ -592,6 +610,7 @@ impl<'a> Coalesce<'a> {
                         // using (and possibly updating) the existing
                         // Process entry.
                         syscall_is_exec = sn.contains("execve");
+                        parent = self.processes.get_or_retrieve(proc.ppid).cloned();
                         let pr = if !syscall_is_exec {
                             self.processes.get_or_retrieve(proc.pid)
                         } else {
@@ -611,9 +630,7 @@ impl<'a> Coalesce<'a> {
                             _ => {
                                 // first syscall in new process
                                 proc.key = ProcessKey::Event(ev.id);
-                                let pa = self.processes.get_or_retrieve(proc.ppid);
-                                if let Some(pa) = pa {
-                                    parent = Some(pa.clone());
+                                if let Some(pa) = &parent {
                                     proc.parent = Some(pa.key);
                                     let propagated_labels = self
                                         .settings
@@ -797,8 +814,16 @@ impl<'a> Coalesce<'a> {
             }
         }
 
+        // filter early on labels
         if let Some(proc) = &current_process {
-            self.processes.set_labels(&proc.key, &proc.labels)
+            self.processes.set_labels(&proc.key, &proc.labels);
+            if proc
+                .labels
+                .iter()
+                .any(|x| self.settings.filter_labels.contains(x))
+            {
+                ev.filter = true;
+            }
         }
 
         if ev.filter {
@@ -855,34 +880,10 @@ impl<'a> Coalesce<'a> {
                         }
                     }
                 }
-                (_, EventValues::Single(rv)) => {
-                    let mut nrv = Record::default();
-                    for (k, v) in &rv.elems {
-                        if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
-                            nrv.elems.push((k, v));
-                            if self.settings.drop_translated {
-                                continue;
-                            }
-                        } else if let Some((k, v)) = self.enrich_generic_pid(&mut nrv, k, v) {
-                            nrv.elems.push((k, v));
-                        }
-                    }
-                    rv.extend(nrv);
-                }
+                (_, EventValues::Single(rv)) => self.enrich_generic(rv),
                 (_, EventValues::Multi(rvs)) => {
                     for rv in rvs {
-                        let mut nrv = Record::default();
-                        for (k, v) in &rv.elems {
-                            if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
-                                nrv.elems.push((k, v));
-                                if self.settings.drop_translated {
-                                    continue;
-                                }
-                            } else if let Some((k, v)) = self.enrich_generic_pid(&mut nrv, k, v) {
-                                nrv.elems.push((k, v));
-                            }
-                        }
-                        rv.extend(nrv);
+                        self.enrich_generic(rv);
                     }
                 }
             }
@@ -923,35 +924,7 @@ impl<'a> Coalesce<'a> {
             }
 
             if let (true, Some(parent)) = (self.settings.enrich_pid, &parent) {
-                let mut m = Vec::with_capacity(4);
-                match &parent.key {
-                    ProcessKey::Event(id) => {
-                        m.push((
-                            SimpleKey::Literal("EVENT_ID"),
-                            SimpleValue::Str(sc.put(format!("{}", id))),
-                        ));
-                    }
-                    ProcessKey::Observed { time, pid: _ } => {
-                        let (sec, msec) = (time / 1000, time % 1000);
-                        m.push((
-                            SimpleKey::Literal("START_TIME"),
-                            SimpleValue::Str(sc.put(format!("{sec}.{msec:03}"))),
-                        ));
-                    }
-                }
-                if let Some(comm) = &parent.comm {
-                    m.push((SimpleKey::Literal("comm"), SimpleValue::Str(sc.put(comm))));
-                }
-                if let Some(exe) = &parent.exe {
-                    m.push((SimpleKey::Literal("exe"), SimpleValue::Str(sc.put(exe))));
-                }
-                if parent.ppid != 0 {
-                    m.push((
-                        SimpleKey::Literal("ppid"),
-                        SimpleValue::Number(Number::Dec(parent.ppid.into())),
-                    ));
-                }
-                sc.elems.push((Key::Literal("PPID"), Value::Map(m)));
+                add_record_procinfo(sc, b"ppid", parent, true);
             }
 
             #[cfg(all(featuree = "procfs", target_os = "linux"))]
@@ -964,22 +937,11 @@ impl<'a> Coalesce<'a> {
             }
 
             if let Some(proc) = current_process {
-                if let (true, ProcessKey::Event(id)) = (self.settings.enrich_pid, proc.key) {
-                    let m = Value::Map(vec![(
-                        SimpleKey::Literal("EVENT_ID"),
-                        SimpleValue::Str(sc.put(format!("{}", id))),
-                    )]);
-                    sc.elems.push((Key::Literal("PID"), m));
+                if self.settings.enrich_pid {
+                    add_record_procinfo(sc, b"pid", &proc, false);
                 }
 
                 if !proc.labels.is_empty() {
-                    if proc
-                        .labels
-                        .iter()
-                        .any(|x| self.settings.filter_labels.contains(x))
-                    {
-                        ev.filter = true;
-                    }
                     let labels = proc
                         .labels
                         .iter()
@@ -1268,6 +1230,7 @@ mod test {
         let ec = Rc::new(RefCell::new(None));
 
         let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.enrich_pid = false;
         c.settings.translate_userdb = true;
         c.settings.translate_universal = true;
         process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
