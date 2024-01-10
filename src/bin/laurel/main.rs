@@ -441,6 +441,10 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
 
 pub fn main() {
     log::set_boxed_logger(Box::<logger::Logger>::default()).unwrap();
+
+    #[cfg(debug_assertions)]
+    log::set_max_level(log::LevelFilter::Debug);
+    #[cfg(not(debug_assertions))]
     log::set_max_level(log::LevelFilter::Info);
 
     {
