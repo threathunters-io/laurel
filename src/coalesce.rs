@@ -927,7 +927,7 @@ impl<'a> Coalesce<'a> {
                 add_record_procinfo(sc, b"ppid", parent, true);
             }
 
-            #[cfg(all(featuree = "procfs", target_os = "linux"))]
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
             if let (true, Some(script)) = (self.settings.enrich_script, script) {
                 let (k, v) = (
                     Key::Literal("SCRIPT"),
