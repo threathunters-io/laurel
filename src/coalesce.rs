@@ -478,9 +478,9 @@ impl<'a> Coalesce<'a> {
             _ => return,
         };
         if let Value::Number(Number::Dec(pid)) = v {
-            self.processes
-                .get_or_retrieve(*pid as _)
-                .map(|proc| add_record_procinfo(rv, name, proc, true));
+            if let Some(proc) = self.processes.get_or_retrieve(*pid as _) {
+                add_record_procinfo(rv, name, proc, true)
+            }
         }
     }
 
