@@ -1,0 +1,5 @@
+type=SYSCALL msg=audit(1705071450.879:29498378): arch=c000003e syscall=42 success=no exit=-2 a0=4 a1=7ffeabb1aa00 a2=6e a3=0 items=1 ppid=1064378 pid=3736674 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts9 ses=2 comm="ls" exe="/usr/bin/ls" subj=unconfined key=(null)ARCH=x86_64 SYSCALL=connect AUID="user" UID="user" GID="user" EUID="user" SUID="user" FSUID="user" EGID="user" SGID="user" FSGID="user"
+type=SOCKADDR msg=audit(1705071450.879:29498378): saddr=01002F7661722F72756E2F6E7363642F736F636B6574000000000000000000000000000000000000000000000000000038530200000000003853020000000000001000000000000001000000050000000060020000000000006002000000000000600200000000003C4C15000000SADDR={ saddr_fam=local path=/var/run/nscd/socket }
+type=CWD msg=audit(1705071450.879:29498378): cwd="/home/user"
+type=PATH msg=audit(1705071450.879:29498378): item=0 name="/var/run/nscd/socket" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=EOE msg=audit(1705071450.879:29498378):

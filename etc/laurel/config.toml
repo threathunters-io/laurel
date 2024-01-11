@@ -148,6 +148,12 @@ propagate-labels = [ "software_mgmt", "amazon-ssm-agent" ]
 
 filter-null-keys = false
 
+# Filter events that were constructed from input lines matching these
+# regular expressions
+# filter-raw-lines = [
+#     "^type=PATH msg=\\S*? item=\\S*? name=\"/var/run/nscd[.]sock\" "
+# ]
+
 # What to do with filtered events? "drop" or "log" to the filterlog
 # defined above.
 filter-action = "drop"

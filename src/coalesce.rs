@@ -49,6 +49,7 @@ pub struct Settings {
     pub filter_keys: HashSet<Vec<u8>>,
     pub filter_labels: HashSet<Vec<u8>>,
     pub filter_null_keys: bool,
+    pub filter_raw_lines: regex::bytes::RegexSet,
 }
 
 impl Default for Settings {
@@ -74,6 +75,7 @@ impl Default for Settings {
             filter_keys: HashSet::new(),
             filter_labels: HashSet::new(),
             filter_null_keys: false,
+            filter_raw_lines: regex::bytes::RegexSet::empty(),
         }
     }
 }
@@ -988,6 +990,8 @@ impl<'a> Coalesce<'a> {
     /// The line is consumed and serves as backing store for the
     /// EventBody objects.
     pub fn process_line(&mut self, line: Vec<u8>) -> Result<(), CoalesceError> {
+        let filter_raw = self.settings.filter_raw_lines.is_match(&line);
+
         let skip_enriched = self.settings.translate_universal && self.settings.translate_userdb;
         let (node, typ, id, rv) = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
         let nid = (node.clone(), id);
@@ -1019,6 +1023,7 @@ impl<'a> Coalesce<'a> {
                 self.inflight.insert(nid.clone(), Event::new(node, id));
             }
             let ev = self.inflight.get_mut(&nid).unwrap();
+            ev.filter |= filter_raw;
             match ev.body.get_mut(&typ) {
                 Some(EventValues::Single(v)) => v.extend(rv),
                 Some(EventValues::Multi(v)) => v.push(rv),
@@ -1040,6 +1045,7 @@ impl<'a> Coalesce<'a> {
                 return Err(CoalesceError::DuplicateEvent(id));
             }
             let mut ev = Event::new(node, id);
+            ev.filter |= filter_raw;
             ev.body.insert(typ, EventValues::Single(rv));
             self.emit_event(ev);
         }
@@ -1477,6 +1483,24 @@ mod test {
         drop(c);
 
         Ok(())
+    }
+
+    #[test]
+    fn filter_raw() {
+        let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+
+        let mut c = Coalesce::new(mk_emit_vec(&events));
+        c.settings.filter_raw_lines = regex::bytes::RegexSet::new(&[
+            "^type=SOCKADDR (?:node=\\$*? )?msg=audit\\(\\S*?\\): saddr=01002F7661722F72756E2F6E7363642F736F636B657400",
+        ])
+        .expect("failed to compile regex");
+
+        process_record(&mut c, include_bytes!("testdata/record-nscd.txt")).unwrap();
+
+        assert!(
+            events.borrow().is_empty(),
+            "nscd connect event should be filtered"
+        )
     }
 
     #[test]
