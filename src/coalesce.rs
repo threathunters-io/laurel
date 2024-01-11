@@ -623,8 +623,11 @@ impl<'a> Coalesce<'a> {
                                 proc.parent = pr.parent;
                                 proc.labels = pr.labels.clone();
                                 #[cfg(all(feature = "procfs", target_os = "linux"))]
-                                {
-                                    proc.container_info = pr.container_info.clone();
+                                if self.settings.enrich_container {
+                                    proc.container_info = match &pr.container_info {
+                                        Some(ci) => Some(ci.clone()),
+                                        _ => parent.as_ref().and_then(|p| p.container_info.clone()),
+                                    };
                                 }
                             }
                             _ => {
@@ -641,9 +644,11 @@ impl<'a> Coalesce<'a> {
                                 }
                                 #[cfg(all(feature = "procfs", target_os = "linux"))]
                                 if self.settings.enrich_container {
-                                    if let Ok(Some(id)) = procfs::parse_proc_pid_cgroup(proc.pid) {
-                                        proc.container_info = Some(ContainerInfo { id });
-                                    }
+                                    let id = procfs::parse_proc_pid_cgroup(proc.pid).ok().flatten();
+                                    proc.container_info = match id {
+                                        Some(id) => Some(ContainerInfo { id }),
+                                        _ => parent.as_ref().and_then(|p| p.container_info.clone()),
+                                    };
                                 }
                                 self.processes.insert(proc.clone());
                             }
