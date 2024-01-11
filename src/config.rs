@@ -138,12 +138,33 @@ pub enum FilterAction {
     Log,
 }
 
+pub(crate) mod regex_set {
+    use regex::bytes::RegexSet;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(crate) fn serialize<S>(v: &RegexSet, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        v.patterns().to_vec().serialize(s)
+    }
+    pub(crate) fn deserialize<'de, D>(d: D) -> Result<RegexSet, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let v: Vec<String> = Deserialize::deserialize(d)?;
+        RegexSet::new(&v).map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Filter {
     #[serde(default, rename = "filter-keys")]
     pub filter_keys: HashSet<String>,
     #[serde(default, rename = "filter-labels")]
     pub filter_labels: HashSet<String>,
+    #[serde(default, rename = "filter-raw-lines", with = "regex_set")]
+    pub filter_raw_lines: regex::bytes::RegexSet,
     #[serde(default, rename = "filter-null-keys")]
     pub filter_null_keys: bool,
     #[serde(default, rename = "filter-action")]
@@ -329,6 +350,7 @@ impl Config {
                 .map(|s| s.as_bytes().to_vec())
                 .collect(),
             filter_null_keys: self.filter.filter_null_keys,
+            filter_raw_lines: self.filter.filter_raw_lines.clone(),
         }
     }
 }

@@ -169,6 +169,9 @@ using them for internal processing such as process tracking.
 - `filter-null-keys`: Filter events without specified key. Default: false
 - `filter-labels`: A list of strings that are matched against process
   labels. Default: empty
+- `filter-raw-lines`: A list of regular expression that are matched
+  against individual input lines as written by `auditd(8)`. Events
+  that contain such lines are then filtered. Default: empty
 - `filter-action`: What to do with filtered events? `drop` or `log` to the
   filterlog defined above.
 
