@@ -264,14 +264,16 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
 /// As an extra sanity check, exe is compared with normalized
 /// PATH.name. If they are equal, no script is returned.
 #[cfg(all(feature = "procfs", target_os = "linux"))]
-fn path_script_name(path: &Record, pid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
+fn path_script_name(path: &Record, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
     use std::{
         ffi::OsStr,
         os::unix::{ffi::OsStrExt, fs::MetadataExt},
         path::{Component, Path, PathBuf},
     };
 
-    let meta = procfs::pid_path_metadata(pid, exe).ok()?;
+    let meta = procfs::pid_path_metadata(pid, exe)
+        .or_else(|_| procfs::pid_path_metadata(ppid, exe))
+        .ok()?;
 
     let (e_dev, e_inode) = (meta.dev(), meta.ino());
 
@@ -799,6 +801,7 @@ impl<'a> Coalesce<'a> {
                     path_script_name(
                         &paths[0],
                         proc.pid,
+                        proc.ppid,
                         cwd,
                         &proc.exe.clone().unwrap_or_default(),
                     )
