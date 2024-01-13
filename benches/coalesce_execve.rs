@@ -23,6 +23,7 @@ fn measure(bench: &mut Bencher, s: bool) {
         };
         c.settings.translate_universal = true;
         c.settings.translate_userdb = true;
+        c.settings.enrich_script = false;
 
         for i in 0 .. 1000 {
             let pid = ppid + 100000 + i;
