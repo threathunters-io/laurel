@@ -145,7 +145,7 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
                 (f, SimpleValue::Str(rv.put("ax25"))),
                 (
                     SimpleKey::Literal("call"),
-                    SimpleValue::Str(rv.put(&sa.call)),
+                    SimpleValue::Str(rv.put(sa.call)),
                 ),
             ]
         }
@@ -171,7 +171,7 @@ fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
                 (f, SimpleValue::Str(rv.put("x25"))),
                 (
                     SimpleKey::Literal("addr"),
-                    SimpleValue::Str(rv.put(&sa.address)),
+                    SimpleValue::Str(rv.put(sa.address)),
                 ),
             ]
         }

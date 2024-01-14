@@ -153,7 +153,7 @@ pub(crate) mod regex_set {
         D: Deserializer<'de>,
     {
         let v: Vec<String> = Deserialize::deserialize(d)?;
-        RegexSet::new(&v).map_err(serde::de::Error::custom)
+        RegexSet::new(v).map_err(serde::de::Error::custom)
     }
 }
 
