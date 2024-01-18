@@ -1422,33 +1422,33 @@ mod test {
 
     #[test]
     fn filter_key() -> Result<(), Box<dyn Error>> {
-        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+        let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
 
-        let mut c = Coalesce::new(mk_emit(&ec));
+        let mut c = Coalesce::new(mk_emit_vec(&events));
         c.settings
             .filter_keys
             .insert(Vec::from(&b"filter-this"[..]));
         c.settings.filter_keys.insert(Vec::from(&b"this-too"[..]));
         process_record(&mut c, include_bytes!("testdata/record-syscall-key.txt"))?;
         drop(c);
-        assert!(ec.borrow().as_ref().is_none());
+        assert!(events.borrow().is_empty());
 
-        let mut c = Coalesce::new(mk_emit(&ec));
+        let mut c = Coalesce::new(mk_emit_vec(&events));
         c.settings.filter_null_keys = true;
         process_record(
             &mut c,
             include_bytes!("testdata/record-syscall-nullkey.txt"),
         )?;
         drop(c);
-        assert!(ec.borrow().as_ref().is_none());
+        assert!(events.borrow().is_empty());
 
-        let mut c = Coalesce::new(mk_emit(&ec));
+        let mut c = Coalesce::new(mk_emit_vec(&events));
         c.settings
             .filter_keys
             .insert(Vec::from(&b"random-filter"[..]));
         process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
         drop(c);
-        assert!(!ec.borrow().as_ref().is_none());
+        assert!(!events.borrow().is_empty());
 
         Ok(())
     }
