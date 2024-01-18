@@ -113,6 +113,12 @@ impl Serialize for EventID {
     }
 }
 
+impl PartialEq<str> for EventID {
+    fn eq(&self, other: &str) -> bool {
+        format!("{self}") == other
+    }
+}
+
 /// The type of an audit message, corresponding to the `type=…` part
 /// of every _auditd(8)_ log line.
 ///
