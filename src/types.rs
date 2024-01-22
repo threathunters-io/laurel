@@ -115,7 +115,7 @@ impl Serialize for EventID {
 
 impl PartialEq<str> for EventID {
     fn eq(&self, other: &str) -> bool {
-        &format!("{self}") == other
+        format!("{self}") == other
     }
 }
 
