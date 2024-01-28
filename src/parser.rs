@@ -302,16 +302,30 @@ fn parse_named<'a>(input: &'a [u8], ty: MessageType, name: &[u8]) -> IResult<&'a
 fn parse_common(input: &[u8], ty: MessageType, c: Common) -> IResult<&[u8], PValue> {
     let name = <&str>::from(c).as_bytes();
     match c {
-        Common::Arch => alt((parse_hex, |input| parse_unspec_value(input, ty, name)))(input),
-        Common::Syscall
+        Common::Arch | Common::CapFi | Common::CapFp | Common::CapFver => {
+            alt((parse_hex, |input| parse_unspec_value(input, ty, name)))(input)
+        }
+        Common::Argc
+        | Common::Exit
+        | Common::CapFe
+        | Common::Inode
+        | Common::Item
         | Common::Items
         | Common::Pid
         | Common::PPid
-        | Common::Exit
-        | Common::Ses => alt((parse_dec, |input| parse_unspec_value(input, ty, name)))(input),
-        Common::Success | Common::Tty | Common::Comm | Common::Exe | Common::Subj | Common::Key => {
-            alt((parse_encoded, |input| parse_unspec_value(input, ty, name)))(input)
-        }
+        | Common::Ses
+        | Common::Syscall => alt((parse_dec, |input| parse_unspec_value(input, ty, name)))(input),
+        Common::Success
+        | Common::Cwd
+        | Common::Dev
+        | Common::Tty
+        | Common::Comm
+        | Common::Exe
+        | Common::Name
+        | Common::Nametype
+        | Common::Subj
+        | Common::Key => alt((parse_encoded, |input| parse_unspec_value(input, ty, name)))(input),
+        Common::Mode => alt((parse_oct, |input| parse_unspec_value(input, ty, name)))(input),
     }
 }
 
