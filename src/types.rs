@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
+use std::convert::{Into, TryFrom};
 use std::fmt::{self, Debug, Display};
 use std::iter::Iterator;
 use std::ops::Range;
@@ -7,8 +6,6 @@ use std::str;
 use std::string::*;
 
 use indexmap::IndexMap;
-
-use lazy_static::lazy_static;
 
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
@@ -176,77 +173,83 @@ impl MessageType {
 }
 
 /// Common values found in SYSCALL records
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
+#[repr(usize)]
 pub enum Common {
     Arch,
-    Syscall,
-    Success,
-    Exit,
-    Items,
-    PPid,
-    Pid,
-    Tty,
-    Ses,
+    Argc,
+    CapFe,
+    CapFi,
+    CapFp,
+    CapFver,
     Comm,
+    Cwd,
+    Dev,
     Exe,
-    Subj,
+    Exit,
+    Inode,
+    Item,
+    Items,
     Key,
+    Mode,
+    Name,
+    Nametype,
+    Pid,
+    PPid,
+    Ses,
+    Subj,
+    Success,
+    Syscall,
+    Tty,
 }
 
 const COMMON: &[(&str, Common)] = &[
     ("arch", Common::Arch),
-    ("syscall", Common::Syscall),
-    ("success", Common::Success),
-    ("exit", Common::Exit),
-    ("items", Common::Items),
-    ("ppid", Common::PPid),
-    ("pid", Common::Pid),
-    ("tty", Common::Tty),
-    ("ses", Common::Ses),
+    ("argc", Common::Argc),
+    ("cap_fe", Common::CapFe),
+    ("cap_fi", Common::CapFi),
+    ("cap_fp", Common::CapFp),
+    ("cap_fver", Common::CapFver),
     ("comm", Common::Comm),
+    ("cwd", Common::Cwd),
+    ("dev", Common::Dev),
     ("exe", Common::Exe),
-    ("subj", Common::Subj),
+    ("exit", Common::Exit),
+    ("inode", Common::Inode),
+    ("item", Common::Item),
+    ("items", Common::Items),
     ("key", Common::Key),
+    ("mode", Common::Mode),
+    ("name", Common::Name),
+    ("nametype", Common::Nametype),
+    ("pid", Common::Pid),
+    ("ppid", Common::PPid),
+    ("ses", Common::Ses),
+    ("subj", Common::Subj),
+    ("success", Common::Success),
+    ("syscall", Common::Syscall),
+    ("tty", Common::Tty),
 ];
-
-lazy_static! {
-    static ref COMMON_TYPES: HashMap<&'static [u8], Common> = {
-        let mut hm = HashMap::with_capacity(COMMON.len());
-        for (name, value) in COMMON {
-            hm.insert(name.as_bytes(), *value);
-        }
-        hm
-    };
-    static ref COMMON_NAMES: HashMap<Common, &'static str> = {
-        let mut hm = HashMap::with_capacity(COMMON.len());
-        for (name, value) in COMMON {
-            hm.insert(*value, *name);
-        }
-        hm
-    };
-}
-
-pub fn initialize() {
-    lazy_static::initialize(&COMMON_TYPES);
-    lazy_static::initialize(&COMMON_NAMES);
-}
 
 impl TryFrom<&[u8]> for Common {
     type Error = &'static str;
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        COMMON_TYPES.get(&value).copied().ok_or("unknown key")
+        let i = COMMON
+            .binary_search_by_key(&value, |(s, _)| s.as_bytes())
+            .map_err(|_| "unknown key")?;
+        Ok(COMMON[i].1)
     }
 }
 
-impl From<Common> for &str {
+impl From<Common> for &'static str {
     fn from(value: Common) -> Self {
-        COMMON_NAMES[&value]
+        COMMON[value as usize].0
     }
 }
 
 impl Display for Common {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", COMMON_NAMES[self])
+        write!(f, "{}", COMMON[*self as usize].0)
     }
 }
 
