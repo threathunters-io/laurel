@@ -96,6 +96,9 @@ container = true
 # Add script context to SYSCALL execve events
 script = true
 
+# Add groups that the user (uid) is a member of. Default: true
+user-groups = true
+
 [label-process]
 
 # Audit records that contain certain keys can be reused as a label
