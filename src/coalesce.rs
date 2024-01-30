@@ -29,6 +29,7 @@ pub struct Settings {
     pub enrich_container: bool,
     pub enrich_pid: bool,
     pub enrich_script: bool,
+    pub enrich_uid_groups: bool,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
     pub proc_propagate_labels: HashSet<Vec<u8>>,
@@ -58,6 +59,7 @@ impl Default for Settings {
             enrich_container: false,
             enrich_pid: true,
             enrich_script: true,
+            enrich_uid_groups: true,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
             translate_universal: false,
@@ -361,6 +363,14 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     format!("unknown({})", d)
                 };
                 rec.push((Key::NameTranslated(r.clone()), Value::from(translated)));
+                if self.settings.enrich_uid_groups && r.as_slice() == b"uid" {
+                    if let Some(names) = self.userdb.get_user_groups(*d as _) {
+                        rec.push((
+                            Key::Literal("UID_GROUPS"),
+                            Value::List(names.iter().map(|n| Value::from(n.as_bytes())).collect()),
+                        ));
+                    }
+                }
                 true
             }
             (Key::NameGID(r), Value::Number(Number::Dec(d))) => {
@@ -1142,6 +1152,7 @@ mod test {
         let ec = Rc::new(RefCell::new(None));
 
         let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.enrich_uid_groups = false;
         c.settings.enrich_pid = false;
         c.settings.translate_userdb = true;
         c.settings.translate_universal = true;

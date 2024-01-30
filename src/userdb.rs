@@ -1,44 +1,47 @@
 use std::collections::BTreeMap;
-use std::ffi::CStr;
+use std::ffi::CString;
 
 use serde::Serialize;
 
-use libc;
+use tinyvec::TinyVec;
 
-fn get_user(uid: u32) -> Option<String> {
-    let passwd = unsafe { libc::getpwuid(uid as libc::uid_t) };
-    if passwd.is_null() {
-        None
-    } else {
-        let passwd = unsafe { *passwd };
-        Some(
-            unsafe { CStr::from_ptr(passwd.pw_name) }
-                .to_string_lossy()
-                .to_string(),
-        )
-    }
+use nix::unistd::{getgrouplist, Gid, Group, Uid, User};
+
+#[derive(Clone, Debug, Serialize)]
+struct UserEntry {
+    name: String,
+    primary_gid: u32,
+    secondary_gids: TinyVec<[u32; 8]>,
+}
+
+fn get_user(uid: u32) -> Option<UserEntry> {
+    User::from_uid(Uid::from(uid)).ok()?.map(|user| {
+        let name = CString::new(user.name.as_bytes()).unwrap();
+        let gids = getgrouplist(&name, user.gid)
+            .unwrap_or_else(|_| vec![])
+            .into_iter()
+            .map(u32::from)
+            .collect();
+        UserEntry {
+            name: user.name,
+            primary_gid: user.gid.into(),
+            secondary_gids: gids,
+        }
+    })
 }
 
 fn get_group(gid: u32) -> Option<String> {
-    let group = unsafe { libc::getgrgid(gid as libc::gid_t) };
-    if group.is_null() {
-        None
-    } else {
-        let group = unsafe { *group };
-        Some(
-            unsafe { CStr::from_ptr(group.gr_name) }
-                .to_string_lossy()
-                .to_string(),
-        )
-    }
+    Group::from_gid(Gid::from(gid))
+        .ok()?
+        .map(|group| group.name)
 }
 
 /// Implementation of a credentials store that caches user and group
 /// lookups by uid and gid, respectively.
 #[derive(Debug, Default, Serialize)]
-pub struct UserDB {
-    pub users: BTreeMap<u32, (Option<String>, i64)>,
-    pub groups: BTreeMap<u32, (Option<String>, i64)>,
+pub(crate) struct UserDB {
+    users: BTreeMap<u32, (Option<UserEntry>, i64)>,
+    groups: BTreeMap<u32, (Option<String>, i64)>,
 }
 
 fn now() -> i64 {
@@ -56,15 +59,33 @@ impl UserDB {
             }
         }
     }
-    pub fn get_user(&mut self, uid: u32) -> Option<String> {
+    fn get_user_entry(&mut self, uid: u32) -> Option<UserEntry> {
         match self.users.get(&uid) {
-            Some((x, t)) if *t >= now() - 1800 => x.clone(),
+            Some((entry, t)) if *t >= now() - 1800 => entry.clone(),
             Some(_) | None => {
-                let user = get_user(uid);
-                self.users.insert(uid, (user.clone(), now()));
-                user
+                let entry = get_user(uid);
+                self.users.insert(uid, (entry.clone(), now()));
+                entry
             }
         }
+    }
+    pub fn get_user(&mut self, uid: u32) -> Option<String> {
+        self.get_user_entry(uid).map(|user| user.name)
+    }
+    pub fn get_user_groups(&mut self, uid: u32) -> Option<Vec<String>> {
+        let user = self.get_user_entry(uid)?;
+        let mut username = user.name.as_bytes().to_vec();
+        username.push(0);
+        let gids = getgrouplist(
+            &CString::from_vec_with_nul(username).unwrap(),
+            Gid::from(user.primary_gid),
+        )
+        .ok()?;
+        Some(
+            gids.iter()
+                .filter_map(|gid| self.get_group(libc::gid_t::from(*gid)))
+                .collect::<Vec<_>>(),
+        )
     }
     pub fn get_group(&mut self, gid: u32) -> Option<String> {
         match self.groups.get(&gid) {

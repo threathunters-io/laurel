@@ -28,7 +28,7 @@ libc = "0.2"
 exacl = ">= 0.6"
 regex = "1"
 signal-hook = "0.3"
-tinyvec = { version = "1", features = ["alloc"] }
+tinyvec = { version = "1", features = ["alloc", "serde"] }
 
 log = "0.4"
 simple_logger = ">= 1"
