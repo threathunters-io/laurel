@@ -1228,7 +1228,7 @@ mod test {
             "output contains translated EGID"
         );
         assert!(
-            !output.contains(r#""uid":"0,"#),
+            !output.contains(r#""uid":0,"#),
             "output does not contain raw uid"
         );
         assert!(
