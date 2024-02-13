@@ -23,14 +23,14 @@ use crate::quoted_string::ToQuotedString;
 /// "Multi" records are serialized as list-of-maps (`[ { "key":
 /// "value", … }, { "key": "value", … } … ]`)
 #[derive(Debug, Clone)]
-pub enum EventValues {
+pub enum EventValues<'a> {
     // e.g SYSCALL, EXECVE
-    Single(Record),
+    Single(Record<'a>),
     // e.g. PATH
-    Multi(Vec<Record>),
+    Multi(Vec<Record<'a>>),
 }
 
-impl Serialize for EventValues {
+impl Serialize for EventValues<'_> {
     #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
@@ -41,14 +41,14 @@ impl Serialize for EventValues {
 }
 
 #[derive(Clone, Debug)]
-pub struct Event {
+pub struct Event<'a> {
     pub node: Option<Vec<u8>>,
     pub id: EventID,
-    pub body: IndexMap<MessageType, EventValues>,
+    pub body: IndexMap<MessageType, EventValues<'a>>,
     pub filter: bool,
 }
 
-impl Event {
+impl Event<'_> {
     pub fn new(node: Option<Vec<u8>>, id: EventID) -> Self {
         Event {
             node,
@@ -59,7 +59,7 @@ impl Event {
     }
 }
 
-impl Serialize for Event {
+impl Serialize for Event<'_> {
     #[inline(always)]
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where
@@ -348,6 +348,18 @@ impl PartialEq<[u8]> for Key {
     }
 }
 
+impl From<&'static str> for Key {
+    fn from(value: &'static str) -> Self {
+        Self::Literal(value)
+    }
+}
+
+impl From<&[u8]> for Key {
+    fn from(value: &[u8]) -> Self {
+        Self::Name(NVec::from(value))
+    }
+}
+
 /// Quotes in [`Value`] strings
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Quote {
@@ -392,18 +404,18 @@ impl Serialize for Number {
 
 /// Representation of the value part of key/value pairs in [`Record`]
 #[derive(Clone)]
-pub enum Value {
+pub enum Value<'a> {
     Empty,
-    Str(Range<usize>, Quote),
+    Str(&'a [u8], Quote),
     /// Segments are generated in Coalesce::normalize() from `EXECVE`
     /// / `aX[Y]` fragments.
-    Segments(Vec<Range<usize>>),
+    Segments(Vec<&'a [u8]>),
     /// Lists are generated in Coalesce::normalize() e.g.: `EXECVE` /
     /// `a0`, `a1`, `a2` … -> `ARGV`
-    List(Vec<Value>),
-    StringifiedList(Vec<Value>),
+    List(Vec<Value<'a>>),
+    StringifiedList(Vec<Value<'a>>),
     /// Key/Value map, used in ENV (environment variables) list
-    Map(Vec<(SimpleKey, SimpleValue)>),
+    Map(Vec<(Key, Value<'a>)>),
     /// Values generated in parse() from unquoted Str values
     ///
     /// For example, `SYSCALL` / `a0` etc are interpreted as
@@ -412,15 +424,16 @@ pub enum Value {
     /// Elements removed from ARGV lists
     Skipped((usize, usize)),
     Literal(&'static str),
+    Owned(Vec<u8>),
 }
 
-impl Default for Value {
+impl Default for Value<'_> {
     fn default() -> Self {
         Self::Empty
     }
 }
 
-impl Value {
+impl Value<'_> {
     pub fn str_len(&self) -> usize {
         match self {
             Value::Str(r, _) => r.len(),
@@ -430,27 +443,25 @@ impl Value {
     }
 }
 
-#[derive(Clone)]
-pub enum SimpleKey {
-    Str(Range<usize>),
-    Literal(&'static str),
-}
-
-#[derive(Clone)]
-pub enum SimpleValue {
-    Str(Range<usize>),
-    Number(Number),
-}
-
 /// List of [`Key`]/[`Value`] pairs, that are, for the most part,
 /// stored offsets into the raw log line.
-#[derive(Default, Clone)]
-pub struct Record {
-    pub elems: Vec<(Key, Value)>,
-    pub raw: Vec<u8>,
+pub struct Record<'a> {
+    elems: Vec<(Key, Value<'a>)>,
+    arena: Vec<Vec<u8>>,
+    _pin: std::marker::PhantomPinned,
 }
 
-impl Debug for Record {
+impl Default for Record<'_> {
+    fn default() -> Self {
+        Record {
+            elems: Vec::with_capacity(8),
+            arena: vec![],
+            _pin: std::marker::PhantomPinned,
+        }
+    }
+}
+
+impl Debug for Record<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut seq = f.debug_struct("Record");
         for (k, v) in self {
@@ -460,7 +471,7 @@ impl Debug for Record {
     }
 }
 
-impl Serialize for Record {
+impl Serialize for Record<'_> {
     #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let mut map = s.serialize_map(None)?;
@@ -474,126 +485,163 @@ impl Serialize for Record {
     }
 }
 
-impl Record {
+impl<'a> Record<'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_capacity(len: usize) -> Self {
+        Self {
+            elems: Vec::with_capacity(len),
+            ..Self::default()
+        }
+    }
+
+    fn add_slice<'i>(&mut self, input: &'i [u8]) -> &'a [u8]
+    where
+        'a: 'i,
+    {
+        let ilen = input.len();
+
+        // let changed_buf: &Vec<u8>;
+        for buf in self.arena.iter() {
+            let Range { start, end } = input.as_ptr_range();
+            if buf.as_slice().as_ptr_range().contains(&start)
+                && buf.as_slice().as_ptr_range().contains(&end)
+            {
+                let s = std::ptr::slice_from_raw_parts(start, ilen);
+                return unsafe { &*s };
+            }
+        }
+        for buf in self.arena.iter_mut() {
+            if buf.capacity() - buf.len() > ilen {
+                let e = buf.len();
+                buf.extend(input);
+                let s = std::ptr::slice_from_raw_parts(buf[e..].as_ptr(), ilen);
+                return unsafe { &*s };
+            }
+        }
+        self.arena
+            .push(Vec::with_capacity(1014 * (1 + (ilen / 1024))));
+        let i = self.arena.len() - 1;
+        let new_buf = &mut self.arena[i];
+        new_buf.extend(input);
+        let s = std::ptr::slice_from_raw_parts(new_buf[..].as_ptr(), ilen);
+        unsafe { &*s }
+    }
+
+    fn add_value<'i>(&mut self, v: Value<'i>) -> Value<'a>
+    where
+        'a: 'i,
+    {
+        match v {
+            Value::Str(s, q) => Value::Str(self.add_slice(s), q),
+            Value::Owned(s) => Value::Str(self.add_slice(s.as_slice()), Quote::None),
+            Value::List(vs) => Value::List(vs.into_iter().map(|v| self.add_value(v)).collect()),
+            Value::StringifiedList(vs) => {
+                Value::StringifiedList(vs.into_iter().map(|v| self.add_value(v)).collect())
+            }
+            Value::Segments(vs) => {
+                let vs = vs.iter().map(|s| self.add_slice(s)).collect();
+                Value::Segments(vs)
+            }
+            Value::Map(vs) => Value::Map(
+                vs.into_iter()
+                    .map(|(k, v)| (k, self.add_value(v)))
+                    .collect(),
+            ),
+            // safety: These enum variants are self-contained.
+            Value::Empty | Value::Literal(_) | Value::Number(_) | Value::Skipped(_) => unsafe {
+                std::mem::transmute::<Value<'i>, Value<'a>>(v)
+            },
+        }
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        self.elems.reserve(additional);
+    }
+
+    pub fn push(&mut self, kv: (Key, Value)) {
+        let (k, v) = kv;
+        let v = self.add_value(v);
+        self.elems.push((k, v));
+    }
+
+    pub fn len(&self) -> usize {
+        self.elems.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.elems.is_empty()
+    }
+
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&(Key, Value<'a>)) -> bool,
+    {
+        self.elems.retain(f)
+    }
+
     /// Merges two Records into one
-    pub fn extend(&mut self, other: Self) {
-        let rawlen = self.raw.len();
-        self.raw.extend(other.raw);
-        self.elems.extend(
-            other
-                .elems
-                .into_iter()
-                .map(|(k, v)| {
-                    (
-                        k,
-                        match v {
-                            Value::Str(r, q) => Value::Str(r.offset(rawlen), q),
-                            Value::Empty | Value::Number(_) | Value::Literal(_) => v,
-                            Value::Map(kv) => Value::Map(
-                                kv.into_iter()
-                                    .map(|(k, v)| {
-                                        (
-                                            k,
-                                            match v {
-                                                SimpleValue::Str(r) => {
-                                                    SimpleValue::Str(r.offset(rawlen))
-                                                }
-                                                _ => v,
-                                            },
-                                        )
-                                    })
-                                    .collect(),
-                            ),
-                            Value::Segments(_) => {
-                                panic!("Value::Segments should only exist in EXECVE")
-                            }
-                            Value::Skipped(_) => {
-                                panic!("Value::Skipped should only exist in EXECVE")
-                            }
-                            Value::List(_) | Value::StringifiedList(_) => {
-                                panic!("Value::List should only exist in EXECVE")
-                            }
-                        },
-                    )
-                })
-                .collect::<Vec<_>>(),
-        )
+    pub fn concat(&mut self, other: Self) {
+        self.arena.extend(other.arena);
+        self.elems.reserve(other.elems.len());
+        for (k, v) in other.elems {
+            self.push((k, v));
+        }
     }
 
     /// Retrieves the first value found for a given key
-    pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Option<RValue> {
+    pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Option<&Value> {
         let key = key.as_ref();
-        for (k, v) in self {
-            if format!("{}", k).as_bytes() == key {
-                return Some(v);
-            }
-        }
-        None
-    }
-
-    /// Add a byte string to a record.
-    pub fn put<S: AsRef<[u8]>>(&mut self, s: S) -> Range<usize> {
-        let s = s.as_ref();
-        let b = self.raw.len();
-        self.raw.extend(s);
-        b..b + s.len()
+        self.elems.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 }
 
-impl<'a> IntoIterator for &'a Record {
-    type Item = (&'a Key, RValue<'a>);
-    type IntoIter = RecordIterator<'a>;
+/*
+impl<'a> Extend<(Key, Value<'a>)> for Record<'_> {
+    fn extend<T: IntoIterator<Item = (Key, Value<'a>)>>(&mut self, iter: T) {
+        todo!()
+    }
+}
+*/
+
+impl Clone for Record<'_> {
+    fn clone(&self) -> Self {
+        let mut new = Record::default();
+        self.into_iter()
+            .cloned()
+            .for_each(|(k, v)| new.push((k, v)));
+        new
+    }
+}
+
+impl<'a> IntoIterator for &'a Record<'a> {
+    type Item = &'a (Key, Value<'a>);
+    type IntoIter = std::slice::Iter<'a, (Key, Value<'a>)>;
     fn into_iter(self) -> Self::IntoIter {
-        RecordIterator { count: 0, r: self }
+        self.elems.iter()
     }
 }
 
-pub struct RecordIterator<'a> {
-    r: &'a Record,
-    count: usize,
-}
-
-impl<'a> Iterator for RecordIterator<'a> {
-    type Item = (&'a Key, RValue<'a>);
-    fn next(&mut self) -> Option<Self::Item> {
-        self.count += 1;
-        self.r.elems.get(self.count - 1).map(|(key, value)| {
-            (
-                key,
-                RValue {
-                    value,
-                    raw: &self.r.raw,
-                },
-            )
-        })
-    }
-}
-
-/// RValue is borrowed from Record.
-#[derive(Clone, Copy)]
-pub struct RValue<'a> {
-    pub value: &'a Value,
-    pub raw: &'a [u8],
-}
-
-impl TryFrom<RValue<'_>> for Vec<u8> {
+impl TryFrom<Value<'_>> for Vec<u8> {
     type Error = &'static str;
-    fn try_from(v: RValue) -> Result<Self, Self::Error> {
-        match v.value {
+    fn try_from(v: Value) -> Result<Self, Self::Error> {
+        match v {
             Value::Str(r, Quote::Braces) => {
                 let mut s = Vec::with_capacity(r.len() + 2);
                 s.push(b'{');
-                s.extend(Vec::from(&v.raw[r.clone()]));
+                s.extend(Vec::from(r));
                 s.push(b'}');
                 Ok(s)
             }
-            Value::Str(r, _) => Ok(Vec::from(&v.raw[r.clone()])),
+            Value::Str(r, _) => Ok(Vec::from(r)),
             Value::Empty => Ok("".into()),
             Value::Segments(ranges) => {
                 let l = ranges.iter().map(|r| r.len()).sum();
                 let mut sb = Vec::with_capacity(l);
                 for r in ranges {
-                    sb.extend(Vec::from(&v.raw[r.clone()]));
+                    sb.extend(Vec::from(r));
                 }
                 Ok(sb)
             }
@@ -602,21 +650,19 @@ impl TryFrom<RValue<'_>> for Vec<u8> {
             Value::Map(_) => Err("Can't convert map to scalar"),
             Value::Skipped(_) => Err("Can't convert skipped to scalar"),
             Value::Literal(s) => Ok(s.to_string().into()),
+            Value::Owned(v) => Ok(v),
         }
     }
 }
 
-impl TryFrom<RValue<'_>> for Vec<Vec<u8>> {
+impl TryFrom<Value<'_>> for Vec<Vec<u8>> {
     type Error = &'static str;
-    fn try_from(value: RValue) -> Result<Self, Self::Error> {
-        match value.value {
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
             Value::List(values) | Value::StringifiedList(values) => {
                 let mut rv = Vec::with_capacity(values.len());
                 for v in values {
-                    let s = Vec::try_from(RValue {
-                        value: v,
-                        raw: value.raw,
-                    })?;
+                    let s = Vec::try_from(v)?;
                     rv.push(s);
                 }
                 Ok(rv)
@@ -626,14 +672,10 @@ impl TryFrom<RValue<'_>> for Vec<Vec<u8>> {
     }
 }
 
-impl Debug for RValue<'_> {
+impl Debug for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.value {
-            Value::Str(r, _q) => write!(
-                f,
-                "Str:<{}>",
-                &String::from_utf8_lossy(&self.raw[r.clone()])
-            ),
+        match self {
+            Value::Str(r, _q) => write!(f, "Str:<{}>", &String::from_utf8_lossy(r)),
             Value::Empty => write!(f, "Empty"),
             Value::Segments(segs) => {
                 write!(f, "Segments<")?;
@@ -641,7 +683,7 @@ impl Debug for RValue<'_> {
                     if n > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                    write!(f, "{}", String::from_utf8_lossy(r))?;
                 }
                 write!(f, ">")
             }
@@ -653,11 +695,11 @@ impl Debug for RValue<'_> {
                     }
                     match v {
                         Value::Str(r, _) => {
-                            write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                            write!(f, "{}", String::from_utf8_lossy(r))?;
                         }
                         Value::Segments(rs) => {
                             for r in rs {
-                                write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                                write!(f, "{}", String::from_utf8_lossy(r))?;
                             }
                         }
                         Value::Number(n) => write!(f, "{:?}", n)?,
@@ -670,6 +712,7 @@ impl Debug for RValue<'_> {
                         }
                         Value::Map(_) => panic!("list can't contain map"),
                         Value::Literal(v) => write!(f, "{:?}", v)?,
+                        Value::Owned(v) => write!(f, "{}", String::from_utf8_lossy(v))?,
                     }
                 }
                 write!(f, ">")
@@ -682,11 +725,11 @@ impl Debug for RValue<'_> {
                     }
                     match v {
                         Value::Str(r, _) => {
-                            write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                            write!(f, "{}", String::from_utf8_lossy(r))?;
                         }
                         Value::Segments(rs) => {
                             for r in rs {
-                                write!(f, "{}", String::from_utf8_lossy(&self.raw[r.clone()]))?;
+                                write!(f, "{}", String::from_utf8_lossy(r))?;
                             }
                         }
                         Value::Number(n) => write!(f, "{:?}", n)?,
@@ -699,6 +742,7 @@ impl Debug for RValue<'_> {
                         }
                         Value::Map(_) => panic!("List can't contain mapr"),
                         Value::Literal(v) => write!(f, "{}", v)?,
+                        Value::Owned(v) => write!(f, "{}", String::from_utf8_lossy(v))?,
                     }
                 }
                 write!(f, ">")
@@ -710,8 +754,9 @@ impl Debug for RValue<'_> {
                         write!(f, " ")?;
                     }
                     let v = match &v.1 {
-                        SimpleValue::Str(r) => String::from_utf8_lossy(&self.raw[r.clone()]).into(),
-                        SimpleValue::Number(n) => format!("{:?}", n),
+                        Value::Str(r, _q) => String::from_utf8_lossy(r).into(),
+                        Value::Number(n) => format!("{:?}", n),
+                        _ => todo!(),
                     };
                     write!(f, "{}={}", n, v)?;
                 }
@@ -720,14 +765,15 @@ impl Debug for RValue<'_> {
             Value::Number(n) => write!(f, "{:?}", n),
             Value::Skipped(n) => write!(f, "Skip<elems={} bytes={}>", n.0, n.1),
             Value::Literal(s) => write!(f, "{:?}", s),
+            Value::Owned(v) => write!(f, "{}", String::from_utf8_lossy(v)),
         }
     }
 }
 
-impl Serialize for RValue<'_> {
+impl Serialize for Value<'_> {
     #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match self.value {
+        match self {
             Value::Empty => s.serialize_none(),
             Value::Str(r, q) => {
                 let (q1, q2) = if let Quote::Braces = q {
@@ -735,25 +781,17 @@ impl Serialize for RValue<'_> {
                 } else {
                     ("", "")
                 };
-                s.collect_str(&format_args!(
-                    "{}{}{}",
-                    q1,
-                    &self.raw[r.clone()].to_quoted_string(),
-                    q2
-                ))
+                s.collect_str(&format_args!("{}{}{}", q1, r.to_quoted_string(), q2))
             }
             Value::Segments(segs) => {
                 let l = segs.iter().map(|r| r.len()).sum();
                 let mut sb = String::with_capacity(l);
                 for seg in segs {
-                    sb.push_str(&self.raw[seg.clone()].to_quoted_string());
+                    sb.push_str(&seg.to_quoted_string());
                 }
                 s.collect_str(&sb)
             }
-            Value::List(vs) => s.collect_seq(vs.iter().map(|v| RValue {
-                raw: self.raw,
-                value: v,
-            })),
+            Value::List(vs) => s.collect_seq(vs.iter()),
             Value::StringifiedList(vs) => {
                 let mut buf: Vec<u8> = Vec::with_capacity(vs.len());
                 let mut first = true;
@@ -768,14 +806,7 @@ impl Serialize for RValue<'_> {
                             format!("<<< Skipped: args={}, bytes={} >>>", args, bytes).bytes(),
                         );
                     } else {
-                        buf.extend(
-                            RValue {
-                                raw: self.raw,
-                                value: v,
-                            }
-                            .try_into()
-                            .unwrap_or_else(|_| vec![b'x']),
-                        );
+                        buf.extend(v.clone().try_into().unwrap_or_else(|_| vec![b'x']));
                     }
                 }
                 s.serialize_str(&buf.to_quoted_string())
@@ -785,16 +816,14 @@ impl Serialize for RValue<'_> {
                 let mut map = s.serialize_map(Some(vs.len()))?;
                 for (k, v) in vs {
                     match k {
-                        SimpleKey::Str(r) => {
-                            map.serialize_key(&self.raw[r.clone()].to_quoted_string())?
-                        }
-                        SimpleKey::Literal(n) => map.serialize_key(n)?,
+                        Key::Name(n) => map.serialize_key(&n.as_slice().to_quoted_string())?,
+                        Key::Literal(n) => map.serialize_key(n)?,
+                        _ => todo!(),
                     }
                     match v {
-                        SimpleValue::Str(r) => {
-                            map.serialize_value(&self.raw[r.clone()].to_quoted_string())?
-                        }
-                        SimpleValue::Number(n) => map.serialize_value(&n)?,
+                        Value::Str(r, _q) => map.serialize_value(&r.to_quoted_string())?,
+                        Value::Number(n) => map.serialize_value(&n)?,
+                        _ => todo!(),
                     }
                 }
                 map.end()
@@ -806,22 +835,68 @@ impl Serialize for RValue<'_> {
                 map.end()
             }
             Value::Literal(v) => s.collect_str(v),
+            Value::Owned(v) => s.collect_str(&v.to_quoted_string()),
         }
     }
 }
 
-impl PartialEq<str> for RValue<'_> {
+impl PartialEq<str> for Value<'_> {
     fn eq(&self, other: &str) -> bool {
         self == other.as_bytes()
     }
 }
 
-impl PartialEq<[u8]> for RValue<'_> {
+impl PartialEq<[u8]> for Value<'_> {
     fn eq(&self, other: &[u8]) -> bool {
-        if let Ok(v) = (*self).try_into() as Result<Vec<u8>, _> {
-            return v == other;
+        match self {
+            Value::Empty => other.is_empty(),
+            Value::Str(r, _) => r == &other,
+            Value::Segments(segs) => {
+                let l = segs.iter().map(|s| s.len()).sum();
+                let mut buf: Vec<u8> = Vec::with_capacity(l);
+                for s in segs {
+                    buf.extend(*s);
+                }
+                buf == other
+            }
+            Value::Literal(s) => s.as_bytes() == other,
+            Value::Owned(v) => v == other,
+            Value::List(_)
+            | Value::StringifiedList(_)
+            | Value::Map(_)
+            | Value::Skipped(_)
+            | Value::Number(_) => false,
         }
-        false
+    }
+}
+
+impl<'a> From<&'a [u8]> for Value<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        Value::Str(value, Quote::None)
+    }
+}
+
+impl<'a> From<&'a str> for Value<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::from(value.as_bytes())
+    }
+}
+
+impl From<Vec<u8>> for Value<'_> {
+    fn from(value: Vec<u8>) -> Self {
+        Value::Owned(value)
+    }
+}
+
+impl From<String> for Value<'_> {
+    fn from(value: String) -> Self {
+        Self::from(Vec::from(value))
+    }
+}
+
+impl From<i64> for Value<'_> {
+    fn from(value: i64) -> Self {
+        Value::Number(Number::Dec(value))
     }
 }
 
