@@ -44,7 +44,7 @@ caps = "0.5"
 bindgen = ">= 0.60"
 
 [dev-dependencies]
-bencher = "0"
+divan = "0.1.13"
 gperftools = "0"
 
 [features]
