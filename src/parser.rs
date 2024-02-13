@@ -1,5 +1,4 @@
 use std::convert::{From, TryFrom};
-use std::ops::Range;
 use std::str;
 
 use crate::constants::*;
@@ -7,7 +6,7 @@ use crate::types::*;
 
 use nom::{
     branch::*, bytes::complete::*, character::complete::*, character::*, combinator::*, multi::*,
-    sequence::*, IResult, Offset,
+    sequence::*, IResult,
 };
 
 use nom::character::complete::{i64 as dec_i64, u16 as dec_u16, u32 as dec_u32, u64 as dec_u64};
@@ -37,10 +36,10 @@ pub enum ParseError {
 /// syscall, arch, sockaddr fields, those resolved values are dropped
 /// by the parser.
 #[allow(clippy::type_complexity)]
-pub fn parse(
-    mut raw: Vec<u8>,
+pub fn parse<'a>(
+    raw: Vec<u8>,
     skip_enriched: bool,
-) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record), ParseError> {
+) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record<'a>), ParseError> {
     let (rest, (nd, ty, id)) =
         parse_header(&raw).map_err(|_| ParseError::MalformedHeader(raw.clone()))?;
 
@@ -53,58 +52,12 @@ pub fn parse(
 
     let nd = nd.map(|s| s.to_vec());
 
-    let mut hex_strides = Vec::with_capacity(
-        body.iter()
-            .filter(|(_, v)| matches!(v, PValue::HexStr(_)))
-            .count(),
-    );
-
-    let mut elems = Vec::with_capacity(body.len());
-
+    let mut rec = Record::with_capacity(body.len());
     for (k, v) in body {
-        let v = match &v {
-            PValue::Empty => Value::Empty,
-            PValue::Number(n) => Value::Number(n.clone()),
-            PValue::Str(s, q) => Value::Str(to_range(&raw, s), *q),
-            PValue::List(vs) => Value::List(
-                vs.iter()
-                    .map(|s| Value::Str(to_range(&raw, s), Quote::None))
-                    .collect::<Vec<_>>(),
-            ),
-            PValue::HexStr(s) => {
-                // Record position of hex string. In-place Conversion
-                // happens below.
-                let o = raw.offset(s);
-                hex_strides.push(o..o + s.len());
-                Value::Str(o..o + s.len() / 2, Quote::None)
-            }
-        };
-        elems.push((k, v));
+        rec.push((k, v));
     }
 
-    for stride in hex_strides {
-        for i in 0..stride.len() / 2 {
-            // safety: The area to be hex-decoded has been recognized
-            // as valid ASCII (and thus UTF-8) by the nom parser.
-            let d = unsafe {
-                str::from_utf8_unchecked(&raw[stride.start + 2 * i..stride.start + 2 * i + 2])
-            };
-            raw[stride.start + i] =
-                u8::from_str_radix(d, 16).map_err(|_| ParseError::HexDecodeError {
-                    id,
-                    ty,
-                    hex_str: raw[stride.clone()].to_vec(),
-                })?;
-        }
-    }
-
-    Ok((nd, ty, id, Record { elems, raw }))
-}
-
-#[inline(always)]
-fn to_range(line: &[u8], subset: &[u8]) -> Range<usize> {
-    let s = line.offset(subset);
-    s..s + subset.len()
+    Ok((nd, ty, id, rec))
 }
 
 /// Recognize the header: node, type, event identifier
@@ -160,15 +113,6 @@ fn parse_msgid(input: &[u8]) -> IResult<&[u8], EventID> {
     )(input)
 }
 
-#[derive(Clone)]
-enum PValue<'a> {
-    Empty,
-    HexStr(&'a [u8]),
-    Str(&'a [u8], Quote),
-    List(Vec<&'a [u8]>),
-    Number(Number),
-}
-
 /// Recognize the body: Multiple key/value pairs, with special cases
 /// for some irregular messages
 #[inline(always)]
@@ -176,7 +120,7 @@ fn parse_body(
     input: &[u8],
     ty: MessageType,
     skip_enriched: bool,
-) -> IResult<&[u8], Vec<(Key, PValue)>> {
+) -> IResult<&[u8], Vec<(Key, Value)>> {
     // Handle some corner cases that don't fit the general key=value
     // scheme.
     let (input, special) = match ty {
@@ -192,7 +136,16 @@ fn parse_body(
                     tuple((tag("}"), space0, tag("for"), space0)),
                 ),
             )),
-            |(k, v)| (Key::Name(NVec::from(k)), PValue::List(v)),
+            |(k, v)| {
+                (
+                    Key::Name(NVec::from(k)),
+                    Value::List(
+                        v.iter()
+                            .map(|e| Value::Str(e, Quote::None))
+                            .collect::<Vec<_>>(),
+                    ),
+                )
+            },
         ))(input)?,
         msg_type::TTY => {
             let (input, _) = opt(tag("tty "))(input)?;
@@ -204,7 +157,7 @@ fn parse_body(
         }
         _ => opt(map(
             terminated(tag("netlabel"), pair(tag(":"), space0)),
-            |s| (Key::Name(NVec::from(s)), PValue::Empty),
+            |s| (Key::Name(NVec::from(s)), Value::Empty),
         ))(input)?,
     };
 
@@ -234,7 +187,7 @@ fn parse_body(
 
 /// Recognize one key/value pair
 #[inline(always)]
-fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (Key, PValue)> {
+fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (Key, Value)> {
     let (input, key) = match ty {
         // Special case for execve arguments: aX, aX[Y], aX_len
         msg_type::EXECVE
@@ -259,8 +212,8 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (Key, PValue)> {
             |s| {
                 let ps = unsafe { str::from_utf8_unchecked(s) };
                 match u64::from_str_radix(ps, 16) {
-                    Ok(n) => PValue::Number(Number::Hex(n)),
-                    Err(_) => PValue::Str(s, Quote::None),
+                    Ok(n) => Value::Number(Number::Hex(n)),
+                    Err(_) => Value::Str(s, Quote::None),
                 }
             },
         )(input)?,
@@ -279,7 +232,7 @@ fn parse_kv(input: &[u8], ty: MessageType) -> IResult<&[u8], (Key, PValue)> {
 }
 
 #[inline(always)]
-fn parse_named<'a>(input: &'a [u8], ty: MessageType, name: &[u8]) -> IResult<&'a [u8], PValue<'a>> {
+fn parse_named<'a>(input: &'a [u8], ty: MessageType, name: &[u8]) -> IResult<&'a [u8], Value<'a>> {
     match FIELD_TYPES.get(name) {
         Some(&FieldType::Encoded) => {
             alt((parse_encoded, |input| parse_unspec_value(input, ty, name)))(input)
@@ -299,7 +252,7 @@ fn parse_named<'a>(input: &'a [u8], ty: MessageType, name: &[u8]) -> IResult<&'a
 }
 
 #[inline(always)]
-fn parse_common(input: &[u8], ty: MessageType, c: Common) -> IResult<&[u8], PValue> {
+fn parse_common(input: &[u8], ty: MessageType, c: Common) -> IResult<&[u8], Value> {
     let name = <&str>::from(c).as_bytes();
     match c {
         Common::Arch | Common::CapFi | Common::CapFp | Common::CapFver => {
@@ -333,18 +286,25 @@ fn parse_common(input: &[u8], ty: MessageType, c: Common) -> IResult<&[u8], PVal
 ///
 /// May be double-quoted string, hex-encoded blob, (null), ?.
 #[inline(always)]
-fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
+fn parse_encoded(input: &[u8]) -> IResult<&[u8], Value> {
     alt((
-        map(parse_str_dq_safe, |s| PValue::Str(s, Quote::Double)),
+        map(parse_str_dq_safe, |s| Value::Str(s, Quote::Double)),
         terminated(
             map(
                 recognize(many1_count(take_while_m_n(2, 2, is_hex_digit))),
-                PValue::HexStr,
+                |hexstr: &[u8]| {
+                    let mut recoded = Vec::with_capacity(hexstr.len() / 2);
+                    for i in 0..hexstr.len() / 2 {
+                        let d = unsafe { str::from_utf8_unchecked(&hexstr[2 * i..2 * i + 2]) };
+                        recoded.push(u8::from_str_radix(d, 16).unwrap());
+                    }
+                    Value::Owned(recoded)
+                },
             ),
             peek(take_while1(is_sep)),
         ),
         terminated(
-            value(PValue::Empty, alt((tag("(null)"), tag("?")))),
+            value(Value::Empty, alt((tag("(null)"), tag("?")))),
             peek(take_while1(is_sep)),
         ),
     ))(input)
@@ -352,34 +312,32 @@ fn parse_encoded(input: &[u8]) -> IResult<&[u8], PValue> {
 
 /// Recognize hexadecimal value
 #[inline(always)]
-fn parse_hex(input: &[u8]) -> IResult<&[u8], PValue> {
+fn parse_hex(input: &[u8]) -> IResult<&[u8], Value> {
     map_res(
         terminated(take_while1(is_hex_digit), peek(take_while1(is_sep))),
         |digits| -> Result<_, std::num::ParseIntError> {
             let digits = unsafe { str::from_utf8_unchecked(digits) };
-            Ok(PValue::Number(Number::Hex(u64::from_str_radix(
-                digits, 16,
-            )?)))
+            Ok(Value::Number(Number::Hex(u64::from_str_radix(digits, 16)?)))
         },
     )(input)
 }
 
 /// Recognize decimal value
 #[inline(always)]
-fn parse_dec(input: &[u8]) -> IResult<&[u8], PValue> {
+fn parse_dec(input: &[u8]) -> IResult<&[u8], Value> {
     map(terminated(dec_i64, peek(take_while1(is_sep))), |n| {
-        PValue::Number(Number::Dec(n))
+        Value::Number(Number::Dec(n))
     })(input)
 }
 
 /// Recognize octal value
 #[inline(always)]
-fn parse_oct(input: &[u8]) -> IResult<&[u8], PValue> {
+fn parse_oct(input: &[u8]) -> IResult<&[u8], Value> {
     map_res(
         terminated(take_while1(is_oct_digit), peek(take_while1(is_sep))),
         |digits| -> Result<_, std::num::ParseIntError> {
             let digits = unsafe { str::from_utf8_unchecked(digits) };
-            Ok(PValue::Number(Number::Oct(u64::from_str_radix(digits, 8)?)))
+            Ok(Value::Number(Number::Oct(u64::from_str_radix(digits, 8)?)))
         },
     )(input)
 }
@@ -389,7 +347,7 @@ fn parse_unspec_value<'a>(
     input: &'a [u8],
     ty: MessageType,
     name: &[u8],
-) -> IResult<&'a [u8], PValue<'a>> {
+) -> IResult<&'a [u8], Value<'a>> {
     // work around apparent AppArmor breakage
     match (ty, name) {
         (_, b"subj") => {
@@ -399,12 +357,12 @@ fn parse_unspec_value<'a>(
                 opt(delimited(tag(" ("), parse_identifier, tag(")"))),
             )))(input)
             {
-                return Ok((input, PValue::Str(s, Quote::None)));
+                return Ok((input, Value::Str(s, Quote::None)));
             }
         }
         (msg_type::AVC, b"info") => {
             if let Ok((input, s)) = parse_str_dq(input) {
-                return Ok((input, PValue::Str(s, Quote::None)));
+                return Ok((input, Value::Str(s, Quote::None)));
             }
         }
         _ => (),
@@ -413,16 +371,16 @@ fn parse_unspec_value<'a>(
     alt((
         terminated(
             map(take_while1(is_safe_unquoted_chr), |s| {
-                PValue::Str(s, Quote::None)
+                Value::Str(s, Quote::None)
             }),
             peek(take_while1(is_sep)),
         ),
-        map(parse_kv_sq, |s| PValue::Str(s, Quote::Single)),
-        map(parse_str_sq, |s| PValue::Str(s, Quote::Single)),
-        map(parse_str_dq, |s| PValue::Str(s, Quote::Double)),
-        map(parse_kv_braced, |s| PValue::Str(s, Quote::Braces)),
-        map(parse_str_braced, |s| PValue::Str(s, Quote::Braces)),
-        value(PValue::Empty, peek(take_while1(is_sep))),
+        map(parse_kv_sq, |s| Value::Str(s, Quote::Single)),
+        map(parse_str_sq, |s| Value::Str(s, Quote::Single)),
+        map(parse_str_dq, |s| Value::Str(s, Quote::Double)),
+        map(parse_kv_braced, |s| Value::Str(s, Quote::Braces)),
+        map(parse_str_braced, |s| Value::Str(s, Quote::Braces)),
+        value(Value::Empty, peek(take_while1(is_sep))),
     ))(input)
 }
 
@@ -568,7 +526,9 @@ mod test {
     use super::msg_type::*;
     use super::*;
 
-    fn do_parse<T>(text: T) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record), ParseError>
+    fn do_parse<'a, T>(
+        text: T,
+    ) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record<'a>), ParseError>
     where
         T: AsRef<[u8]>,
     {

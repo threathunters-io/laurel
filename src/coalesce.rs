@@ -1,10 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::io::Write;
-use std::ops::Range;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use faster_hex::hex_string;
 
 use serde_json::json;
 
@@ -91,9 +88,9 @@ pub enum CoalesceError {
 }
 
 /// Coalesce collects Audit Records from individual lines and assembles them to Events
-pub struct Coalesce<'a> {
+pub struct Coalesce<'a, 'ev> {
     /// Events that are being collected/processed
-    inflight: BTreeMap<(Option<Vec<u8>>, EventID), Event>,
+    inflight: BTreeMap<(Option<Vec<u8>>, EventID), Event<'ev>>,
     /// Event IDs that have been recently processed
     done: HashSet<(Option<Vec<u8>>, EventID)>,
     /// Timestamp for next cleanup
@@ -101,7 +98,7 @@ pub struct Coalesce<'a> {
     /// Process table built from observing process-related events
     processes: ProcTable,
     /// Output function
-    emit_fn: Box<dyn 'a + FnMut(&Event)>,
+    emit_fn: Box<dyn 'a + FnMut(&Event<'ev>)>,
     /// Creadential cache
     userdb: UserDB,
 
@@ -115,139 +112,71 @@ const EXPIRE_DONE_TIMEOUT: u64 = 120_000;
 /// generate translation of SocketAddr enum to a format similar to
 /// what auditd log_format=ENRICHED produces
 #[cfg(target_os = "linux")]
-fn translate_socketaddr(rv: &mut Record, sa: SocketAddr) -> Value {
-    let f = SimpleKey::Literal("saddr_fam");
-    let m = match sa {
+fn add_translated_socketaddr(rv: &mut Record, sa: SocketAddr) {
+    let mut m: Vec<(Key, Value)> = Vec::with_capacity(5);
+    match sa {
         SocketAddr::Local(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("local"))),
-                (
-                    SimpleKey::Literal("path"),
-                    SimpleValue::Str(rv.put(&sa.path)),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "local".into()));
+            m.push(("path".into(), sa.path.into()));
         }
         SocketAddr::Inet(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("inet"))),
-                (
-                    SimpleKey::Literal("addr"),
-                    SimpleValue::Str(rv.put(format!("{}", sa.ip()))),
-                ),
-                (
-                    SimpleKey::Literal("port"),
-                    SimpleValue::Number(Number::Dec(sa.port().into())),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "inet".into()));
+            m.push(("addr".into(), format!("{}", sa.ip()).into()));
+            m.push(("port".into(), (sa.port() as i64).into()));
         }
         SocketAddr::AX25(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("ax25"))),
-                (
-                    SimpleKey::Literal("call"),
-                    SimpleValue::Str(rv.put(sa.call)),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "ax25".into()));
+            m.push(("call".into(), Vec::from(sa.call).into()));
         }
         SocketAddr::ATMPVC(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("atmpvc"))),
-                (
-                    SimpleKey::Literal("itf"),
-                    SimpleValue::Number(Number::Dec(sa.itf.into())),
-                ),
-                (
-                    SimpleKey::Literal("vpi"),
-                    SimpleValue::Number(Number::Dec(sa.vpi.into())),
-                ),
-                (
-                    SimpleKey::Literal("vci"),
-                    SimpleValue::Number(Number::Dec(sa.vci.into())),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "atmpvc".into()));
+            m.push(("itf".into(), (sa.itf as i64).into()));
+            m.push(("vpi".into(), (sa.vpi as i64).into()));
+            m.push(("vci".into(), (sa.vci as i64).into()));
         }
         SocketAddr::X25(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("x25"))),
-                (
-                    SimpleKey::Literal("addr"),
-                    SimpleValue::Str(rv.put(sa.address)),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "x25".into()));
+            m.push(("addr".into(), Vec::from(sa.address).into()));
         }
         SocketAddr::IPX(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("ipx"))),
-                (
-                    SimpleKey::Literal("network"),
-                    SimpleValue::Number(Number::Hex(sa.network.into())),
-                ),
-                (
-                    SimpleKey::Literal("node"),
-                    SimpleValue::Str(rv.put(format!(
-                        "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                        sa.node[0], sa.node[1], sa.node[2], sa.node[3], sa.node[4], sa.node[5]
-                    ))),
-                ),
-                (
-                    SimpleKey::Literal("port"),
-                    SimpleValue::Number(Number::Dec(sa.port.into())),
-                ),
-                (
-                    SimpleKey::Literal("type"),
-                    SimpleValue::Number(Number::Dec(sa.typ.into())),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "ipx".into()));
+            m.push((
+                "network".into(),
+                Value::Number(Number::Hex(sa.network.into())),
+            ));
+            m.push((
+                "node".into(),
+                format!(
+                    "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                    sa.node[0], sa.node[1], sa.node[2], sa.node[3], sa.node[4], sa.node[5]
+                )
+                .into(),
+            ));
+            m.push(("port".into(), (sa.port as i64).into()));
+            m.push(("type".into(), (sa.typ as i64).into()));
         }
         SocketAddr::Inet6(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("inet6"))),
-                (
-                    SimpleKey::Literal("addr"),
-                    SimpleValue::Str(rv.put(format!("{}", sa.ip()))),
-                ),
-                (
-                    SimpleKey::Literal("port"),
-                    SimpleValue::Number(Number::Dec(sa.port().into())),
-                ),
-                (
-                    SimpleKey::Literal("flowinfo"),
-                    SimpleValue::Number(Number::Dec(sa.flowinfo().into())),
-                ),
-                (
-                    SimpleKey::Literal("scope_id"),
-                    SimpleValue::Number(Number::Dec(sa.scope_id().into())),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "inet6".into()));
+            m.push(("addr".into(), format!("{}", sa.ip()).into()));
+            m.push(("port".into(), (sa.port() as i64).into()));
+            m.push(("flowinfo".into(), (sa.flowinfo() as i64).into()));
+            m.push(("scope_id".into(), (sa.scope_id() as i64).into()));
         }
         SocketAddr::Netlink(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("netlink"))),
-                (
-                    SimpleKey::Literal("pid"),
-                    SimpleValue::Number(Number::Dec(sa.pid.into())),
-                ),
-                (
-                    SimpleKey::Literal("groups"),
-                    SimpleValue::Number(Number::Hex(sa.groups.into())),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "netlink".into()));
+            m.push(("pid".into(), (sa.pid as i64).into()));
+            m.push((
+                "groups".into(),
+                Value::Number(Number::Hex(sa.groups.into())),
+            ));
         }
         SocketAddr::VM(sa) => {
-            vec![
-                (f, SimpleValue::Str(rv.put("vsock"))),
-                (
-                    SimpleKey::Literal("cid"),
-                    SimpleValue::Number(Number::Dec(sa.cid.into())),
-                ),
-                (
-                    SimpleKey::Literal("port"),
-                    SimpleValue::Number(Number::Dec(sa.port.into())),
-                ),
-            ]
+            m.push(("saddr_fam".into(), "vsock".into()));
+            m.push(("cid".into(), (sa.cid as i64).into()));
+            m.push(("port".into(), (sa.port as i64).into()));
         }
     };
-    Value::Map(m)
+    rv.push(("SADDRR".into(), Value::Map(m)));
 }
 
 /// Returns a script name from path if exe's dev / inode don't match
@@ -282,9 +211,9 @@ fn path_script_name(path: &Record, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) 
     let mut name = None;
     for (k, v) in path {
         if k == "name" {
-            if let Value::Str(r, _) = v.value {
+            if let Value::Str(r, _) = v {
                 let mut pb = PathBuf::new();
-                let s = Path::new(OsStr::from_bytes(&path.raw[r.clone()]));
+                let s = Path::new(OsStr::from_bytes(r));
                 if !s.is_absolute() {
                     pb.push(OsStr::from_bytes(cwd));
                 }
@@ -305,13 +234,13 @@ fn path_script_name(path: &Record, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) 
                 name = Some(NVec::from(tpb.as_os_str().as_bytes()))
             }
         } else if k == "inode" {
-            if let Value::Number(Number::Dec(i)) = v.value {
+            if let Value::Number(Number::Dec(i)) = v {
                 p_inode = Some(*i as _);
             }
         } else if k == "dev" {
-            if let Value::Str(r, _) = v.value {
+            if let Value::Str(r, _) = v {
                 let mut d = 0;
-                let value = String::from_utf8_lossy(&v.raw[r.clone()]);
+                let value = String::from_utf8_lossy(r);
                 for p in value.split(|c| c == ':') {
                     if let Ok(parsed) = u64::from_str_radix(p, 16) {
                         d <<= 8;
@@ -331,45 +260,36 @@ fn path_script_name(path: &Record, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) 
 }
 
 /// Create an enriched pid entry in rv.
-fn add_record_procinfo(rv: &mut Record, name: &[u8], proc: &Process, include_names: bool) {
-    let key = Key::NameTranslated(name.into());
-    let mut m = Vec::with_capacity(4);
+fn add_record_procinfo(rec: &mut Record, key: &[u8], proc: &Process, include_names: bool) {
+    let mut m: Vec<(Key, Value)> = Vec::with_capacity(4);
     match &proc.key {
         ProcessKey::Event(id) => {
-            m.push((
-                SimpleKey::Literal("EVENT_ID"),
-                SimpleValue::Str(rv.put(format!("{id}"))),
-            ));
+            m.push(("EVENT_ID".into(), format!("{id}").into()));
         }
         ProcessKey::Observed { time, pid: _ } => {
             let (sec, msec) = (time / 1000, time % 1000);
-            m.push((
-                SimpleKey::Literal("START_TIME"),
-                SimpleValue::Str(rv.put(format!("{sec}.{msec:03}"))),
-            ));
+            m.push(("START_TIME".into(), format!("{sec}.{msec:03}").into()));
         }
     }
     if include_names {
         if let Some(comm) = &proc.comm {
-            m.push((SimpleKey::Literal("comm"), SimpleValue::Str(rv.put(comm))));
+            m.push(("comm".into(), Value::from(comm.as_slice())));
         }
         if let Some(exe) = &proc.exe {
-            m.push((SimpleKey::Literal("exe"), SimpleValue::Str(rv.put(exe))));
+            m.push(("exe".into(), Value::from(exe.as_slice())));
         }
         if proc.ppid != 0 {
-            m.push((
-                SimpleKey::Literal("ppid"),
-                SimpleValue::Number(Number::Dec(proc.ppid.into())),
-            ));
+            m.push(("ppid".into(), Value::from(proc.ppid as i64)));
         }
     }
-    rv.elems.push((key, Value::Map(m)));
+
+    rec.push((Key::NameTranslated(key.into()), Value::Map(m)));
 }
 
-impl<'a> Coalesce<'a> {
+impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Creates a `Coalsesce`. `emit_fn` is the function that takes
     /// completed events.
-    pub fn new<F: 'a + FnMut(&Event)>(emit_fn: F) -> Self {
+    pub fn new<F: 'a + FnMut(&Event<'ev>)>(emit_fn: F) -> Self {
         Coalesce {
             inflight: BTreeMap::new(),
             done: HashSet::new(),
@@ -429,44 +349,35 @@ impl<'a> Coalesce<'a> {
     /// IDs that can't be resolved are translated into "unknown(n)".
     /// `(uint32)-1` is translated into "unset".
     #[inline(always)]
-    fn translate_userdb(&mut self, rv: &mut Record, k: &Key, v: &Value) -> Option<(Key, Value)> {
+    fn add_record_userdb(&mut self, rec: &mut Record, key: &Key, value: &Value) -> bool {
         if !self.settings.translate_userdb {
-            return None;
+            return false;
         }
-        match k {
-            Key::NameUID(r) => {
-                if let Value::Number(Number::Dec(d)) = v {
-                    let translated = if *d == 0xffffffff {
-                        "unset".to_string()
-                    } else if let Some(user) = self.userdb.get_user(*d as u32) {
-                        user
-                    } else {
-                        format!("unknown({})", d)
-                    };
-                    return Some((
-                        Key::NameTranslated(r.clone()),
-                        Value::Str(rv.put(translated), Quote::Double),
-                    ));
-                }
+        match (key, value) {
+            (Key::NameUID(r), Value::Number(Number::Dec(d))) => {
+                let translated = if *d == 0xffffffff {
+                    "unset".to_string()
+                } else if let Some(user) = self.userdb.get_user(*d as u32) {
+                    user
+                } else {
+                    format!("unknown({})", d)
+                };
+                rec.push((Key::NameTranslated(r.clone()), Value::from(translated)));
+                true
             }
-            Key::NameGID(r) => {
-                if let Value::Number(Number::Dec(d)) = v {
-                    let translated = if *d == 0xffffffff {
-                        "unset".to_string()
-                    } else if let Some(group) = self.userdb.get_group(*d as u32) {
-                        group
-                    } else {
-                        format!("unknown({})", d)
-                    };
-                    return Some((
-                        Key::NameTranslated(r.clone()),
-                        Value::Str(rv.put(translated), Quote::Double),
-                    ));
-                }
+            (Key::NameGID(r), Value::Number(Number::Dec(d))) => {
+                let translated = if *d == 0xffffffff {
+                    "unset".to_string()
+                } else if let Some(group) = self.userdb.get_group(*d as u32) {
+                    group
+                } else {
+                    format!("unknown({})", d)
+                };
+                rec.push((Key::NameTranslated(r.clone()), Value::from(translated)));
+                true
             }
-            _ => (),
-        };
-        None
+            _ => false,
+        }
     }
 
     /// Enrich "pid" entries using `ppid`, `exe`, `ID` (generating
@@ -490,17 +401,17 @@ impl<'a> Coalesce<'a> {
 
     fn enrich_generic(&mut self, rv: &mut Record) {
         let mut nrv = Record::default();
-        for (k, v) in &rv.elems {
-            if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
-                nrv.elems.push((k, v));
+        rv.retain(|(k, v)| {
+            if self.add_record_userdb(&mut nrv, k, v) {
                 if self.settings.drop_translated {
-                    continue;
+                    return false;
                 }
             } else {
                 self.enrich_pid(&mut nrv, k, v);
             }
-        }
-        rv.extend(nrv);
+            true
+        });
+        rv.concat(nrv);
     }
 
     /// Rewrite event to normal form
@@ -527,36 +438,35 @@ impl<'a> Coalesce<'a> {
 
         if let Some(EventValues::Single(rv)) = ev.body.get_mut(&SYSCALL) {
             let mut proc = Process::default();
-            let mut extra = 0;
+            let mut extra = 2; // pid, ppid
             if self.settings.translate_universal {
-                extra += 16 // syscall, arch
+                extra += 2; // syscall, arch
             }
             if self.settings.translate_userdb {
-                extra += 72 // *uid, *gid: 9 entries.
+                extra += 9; // uid, gid
             }
-            rv.raw.reserve(extra);
-            let mut new = Vec::with_capacity(rv.elems.len() - 3);
+            rv.reserve(extra);
             let mut nrv = Record::default();
             let mut argv = Vec::with_capacity(4);
-            for (k, v) in &rv.elems {
+            rv.retain(|(k, v)| {
                 match (k, v) {
                     (Key::Arg(_, None), _) => {
                         // FIXME: check argv length
                         argv.push(v.clone());
-                        continue;
+                        return false;
                     }
-                    (Key::ArgLen(_), _) => continue,
+                    (Key::ArgLen(_), _) => return false,
                     (Key::Common(c), Value::Number(n)) => match (c, n) {
                         (Common::Arch, Number::Hex(n)) if arch.is_none() => {
                             arch = Some(*n as u32);
                             if self.settings.translate_universal && self.settings.drop_translated {
-                                continue;
+                                return false;
                             }
                         }
                         (Common::Syscall, Number::Dec(n)) if syscall.is_none() => {
                             syscall = Some(*n as u32);
                             if self.settings.translate_universal && self.settings.drop_translated {
-                                continue;
+                                return false;
                             }
                         }
                         (Common::Pid, Number::Dec(n)) => proc.pid = *n as u32,
@@ -564,31 +474,29 @@ impl<'a> Coalesce<'a> {
                         _ => (),
                     },
                     (Key::Common(c), Value::Str(r, _)) => match c {
-                        Common::Comm => proc.comm = Some(rv.raw[r.clone()].into()),
-                        Common::Exe => proc.exe = Some(rv.raw[r.clone()].into()),
-                        Common::Key => key = Some(rv.raw[r.clone()].into()),
+                        Common::Comm => proc.comm = Some((*r).into()),
+                        Common::Exe => proc.exe = Some((*r).into()),
+                        Common::Key => key = Some((*r).into()),
                         _ => (),
                     },
                     (Key::Name(name), Value::Str(_, _)) => {
                         match name.as_ref() {
-                            b"ARCH" | b"SYSCALL" if self.settings.translate_universal => continue,
+                            b"ARCH" | b"SYSCALL" if self.settings.translate_universal => {
+                                return false
+                            }
                             _ => (),
                         };
                     }
                     _ => {
-                        if let Some((k, v)) = self.translate_userdb(&mut nrv, k, v) {
-                            nrv.elems.push((k, v));
-                            if self.settings.drop_translated {
-                                continue;
-                            }
+                        if self.add_record_userdb(&mut nrv, k, v) && self.settings.drop_translated {
+                            return false;
                         }
                     }
                 };
-                new.push((k.clone(), v.clone()));
-            }
-            new.push((Key::Literal("ARGV"), Value::List(argv)));
-            rv.elems = new;
-            rv.extend(nrv);
+                true
+            });
+            rv.push((Key::Literal("ARGV"), Value::List(argv)));
+            rv.concat(nrv);
 
             if let (Some(arch), Some(syscall)) = (arch, syscall) {
                 if let Some(an) = ARCH_NAMES.get(&arch) {
@@ -687,17 +595,17 @@ impl<'a> Coalesce<'a> {
         }
 
         if let Some(EventValues::Single(rv)) = ev.body.get_mut(&EXECVE) {
-            let mut new: Vec<(Key, Value)> = Vec::with_capacity(2);
-            let mut argv: Vec<Value> = Vec::with_capacity(1);
-            for (k, v) in &rv.elems {
+            let mut argv: Vec<Value> = Vec::with_capacity(rv.len() - 1);
+            rv.retain(|(k, v)| {
                 match k {
-                    Key::ArgLen(_) => continue,
+                    Key::ArgLen(_) => false,
                     Key::Arg(i, None) => {
                         let idx = *i as usize;
                         if argv.len() <= idx {
                             argv.resize(idx + 1, Value::Empty);
                         };
                         argv[idx] = v.clone();
+                        false
                     }
                     Key::Arg(i, Some(f)) => {
                         let idx = *i as usize;
@@ -705,21 +613,24 @@ impl<'a> Coalesce<'a> {
                             argv.resize(idx + 1, Value::Empty);
                             argv[idx] = Value::Segments(Vec::new());
                         }
-                        if let Some(Value::Segments(l)) = argv.get_mut(idx) {
+                        if let Some(Value::Segments(vs)) = argv.get_mut(idx) {
                             let frag = *f as usize;
                             let r = match v {
                                 Value::Str(r, _) => r,
-                                _ => &Range { start: 0, end: 0 }, // FIXME
+                                _ => todo!(),
                             };
-                            if l.len() <= frag {
-                                l.resize(frag + 1, 0..0);
-                                l[frag] = r.clone();
+                            if vs.len() <= frag {
+                                vs.resize(frag + 1, &[]);
+                                let ptr = std::ptr::slice_from_raw_parts(r.as_ptr(), r.len());
+                                // (assumed) safety: vs[frag] is only added back to rv
+                                vs[frag] = unsafe { &*ptr };
                             }
                         }
+                        false
                     }
-                    _ => new.push((k.clone(), v.clone())),
-                };
-            }
+                    _ => true,
+                }
+            });
 
             // Strip data from the middle of excessively long ARGV
             if let Some(argv_max) = self.settings.execve_argv_limit_bytes {
@@ -756,11 +667,11 @@ impl<'a> Coalesce<'a> {
 
             // ARGV
             if self.settings.execve_argv_list {
-                new.push((Key::Literal("ARGV"), Value::List(argv.clone())));
+                rv.push((Key::Literal("ARGV"), Value::List(argv.clone())));
             }
             // ARGV_STR
             if self.settings.execve_argv_string {
-                new.push((
+                rv.push((
                     Key::Literal("ARGV_STR"),
                     Value::StringifiedList(argv.clone()),
                 ));
@@ -774,13 +685,16 @@ impl<'a> Coalesce<'a> {
                 {
                     let map = vars
                         .iter()
-                        .map(|(k, v)| (SimpleKey::Str(rv.put(k)), SimpleValue::Str(rv.put(v))))
+                        .map(|(k, v)| {
+                            (
+                                Key::Name(NVec::from(k.as_slice())),
+                                Value::Str(v, Quote::None),
+                            )
+                        })
                         .collect();
-                    new.push((Key::Literal("ENV"), Value::Map(map)));
+                    rv.push((Key::Literal("ENV"), Value::Map(map)));
                 }
             }
-
-            rv.elems = new;
         }
 
         // Handle script enrichment
@@ -792,10 +706,8 @@ impl<'a> Coalesce<'a> {
                 (Some(proc), Some(EventValues::Multi(paths)), true) => {
                     let mut cwd = &b"/"[..];
                     if let Some(EventValues::Single(r)) = ev.body.get(&CWD) {
-                        if let Some(rv) = r.get("cwd") {
-                            if let Value::Str(r, _) = rv.value {
-                                cwd = &rv.raw[r.clone()];
-                            }
+                        if let Some(Value::Str(rv, _)) = r.get("cwd") {
+                            cwd = rv;
                         }
                     };
                     path_script_name(
@@ -849,79 +761,83 @@ impl<'a> Coalesce<'a> {
                 (&SYSCALL, EventValues::Single(_)) | (&EXECVE, EventValues::Single(_)) => {}
                 (&SOCKADDR, EventValues::Multi(rvs)) => {
                     for rv in rvs {
-                        let mut new = Vec::with_capacity(rv.elems.len());
                         let mut nrv = Record::default();
-                        for (k, v) in &rv.elems {
-                            if let (Key::Name(name), Value::Str(vr, _)) = (k, v) {
-                                match name.as_ref() {
-                                    b"saddr" if self.settings.translate_universal => {
-                                        #[cfg(target_os = "linux")]
-                                        if let Ok(sa) = SocketAddr::parse(&rv.raw[vr.clone()]) {
-                                            let kv = (
-                                                Key::Literal("SADDR"),
-                                                translate_socketaddr(&mut nrv, sa),
-                                            );
-                                            nrv.elems.push(kv);
-                                            continue;
+                        rv.retain(|(k, v)| match (k, v) {
+                            (k, Value::Str(vr, _q)) if self.settings.translate_universal => {
+                                if k == "saddr" {
+                                    #[cfg(target_os = "linux")]
+                                    if let Ok(sa) = SocketAddr::parse(vr) {
+                                        add_translated_socketaddr(&mut nrv, sa);
+                                        if self.settings.drop_translated {
+                                            return false;
                                         }
                                     }
-                                    b"SADDR" if self.settings.translate_universal => continue,
-                                    _ => {}
+                                    true
+                                } else {
+                                    // drop SADDR, keep everything else
+                                    k != "SADDR"
                                 }
                             }
-                            new.push((k.clone(), v.clone()));
-                        }
-                        rv.elems = new;
-                        rv.extend(nrv);
+                            _ => true,
+                        });
+                        rv.concat(nrv);
                     }
                 }
                 (&PROCTITLE, EventValues::Single(rv)) => {
-                    if let Some(v) = rv.get(b"proctitle") {
-                        if let Value::Str(r, _) = v.value {
-                            let mut argv: Vec<Value> = Vec::new();
-                            let mut prev = r.start;
-                            for i in r.start..=r.end {
-                                if (i == r.end || rv.raw[i] == 0) && !(prev..i).is_empty() {
-                                    argv.push(Value::Str(prev..i, Quote::None));
-                                    prev = i + 1;
-                                }
+                    let mut argv = vec![];
+                    rv.retain(|(k, v)| {
+                        match (k, v) {
+                            (k, Value::Str(r, _)) if k == "proctitle" => {
+                                argv = r
+                                    .split(|c| *c == 0)
+                                    .map(|arg| {
+                                        // (assumed) safety:
+                                        // We are adding references to the
+                                        // same memory regions back to rv.
+                                        let arg = unsafe {
+                                            &*std::ptr::slice_from_raw_parts(
+                                                arg.as_ptr(),
+                                                arg.len(),
+                                            )
+                                        };
+                                        Value::Str(arg, Quote::None)
+                                    })
+                                    .collect();
+                                false
                             }
-                            rv.elems = vec![(Key::Literal("ARGV"), Value::List(argv))];
+                            _ => true,
                         }
+                    });
+                    if !argv.is_empty() {
+                        rv.push(("ARGV".into(), Value::List(argv)));
                     }
                 }
                 (_, EventValues::Single(rv)) => self.enrich_generic(rv),
                 (_, EventValues::Multi(rvs)) => {
-                    for rv in rvs {
-                        self.enrich_generic(rv);
-                    }
+                    rvs.iter_mut().for_each(|rv| self.enrich_generic(rv))
                 }
             }
         }
 
         // PARENT_INFO
         if let (true, Some(parent)) = (self.settings.enrich_parent_info, &parent) {
-            let mut pi = Record::default();
+            let mut pi = Record::with_capacity(4);
             if let ProcessKey::Event(id) = parent.key {
-                let r = pi.put(format!("{}", id));
-                pi.elems
-                    .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
+                let r = format!("{}", id);
+                pi.push((Key::Literal("ID"), Value::Str(r.as_bytes(), Quote::None)));
             }
             if let Some(comm) = &parent.comm {
-                let r = pi.put(comm);
-                pi.elems
-                    .push((Key::Literal("comm"), Value::Str(r, Quote::None)));
+                let r = comm;
+                pi.push((Key::Literal("comm"), Value::Str(r, Quote::None)));
             }
             if let Some(exe) = &parent.exe {
-                let r = pi.put(exe);
-                pi.elems
-                    .push((Key::Literal("exe"), Value::Str(r, Quote::None)));
+                let r = exe;
+                pi.push((Key::Literal("exe"), Value::Str(r, Quote::None)));
             }
-            let kv = (
+            pi.push((
                 Key::Literal("ppid"),
                 Value::Number(Number::Dec(parent.ppid as i64)),
-            );
-            pi.elems.push(kv);
+            ));
             ev.body.insert(PARENT_INFO, EventValues::Single(pi));
         }
 
@@ -929,8 +845,8 @@ impl<'a> Coalesce<'a> {
             if let (true, Some(an), Some(sn)) =
                 (self.settings.translate_universal, arch_name, syscall_name)
             {
-                sc.elems.push((Key::Literal("ARCH"), Value::Literal(an)));
-                sc.elems.push((Key::Literal("SYSCALL"), Value::Literal(sn)));
+                sc.push((Key::Literal("ARCH"), Value::Literal(an)));
+                sc.push((Key::Literal("SYSCALL"), Value::Literal(sn)));
             }
 
             if let (true, Some(parent)) = (self.settings.enrich_pid, &parent) {
@@ -939,11 +855,10 @@ impl<'a> Coalesce<'a> {
 
             #[cfg(all(feature = "procfs", target_os = "linux"))]
             if let (true, Some(script)) = (self.settings.enrich_script, script) {
-                let (k, v) = (
+                sc.push((
                     Key::Literal("SCRIPT"),
-                    Value::Str(sc.put(script), Quote::None),
-                );
-                sc.elems.push((k, v));
+                    Value::Str(script.as_slice(), Quote::None),
+                ));
             }
 
             if let Some(proc) = current_process {
@@ -955,17 +870,15 @@ impl<'a> Coalesce<'a> {
                     let labels = proc
                         .labels
                         .iter()
-                        .map(|l| Value::Str(sc.put(l), Quote::None))
+                        .map(|l| Value::Str(l, Quote::None))
                         .collect::<Vec<_>>();
-                    sc.elems.push((Key::Literal("LABELS"), Value::List(labels)));
+                    sc.push((Key::Literal("LABELS"), Value::List(labels)));
                 }
 
                 #[cfg(all(feature = "procfs", target_os = "linux"))]
                 if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                     let mut ci = Record::default();
-                    let r = ci.put(hex_string(&c.id));
-                    ci.elems
-                        .push((Key::Literal("ID"), Value::Str(r, Quote::None)));
+                    ci.push((Key::Literal("ID"), Value::Str(&c.id, Quote::None)));
                     ev.body.insert(CONTAINER_INFO, EventValues::Single(ci));
                 }
             }
@@ -974,7 +887,7 @@ impl<'a> Coalesce<'a> {
 
     /// Do bookkeeping on event, transform, emit it via the provided
     /// output function.
-    fn emit_event(&mut self, mut ev: Event) {
+    fn emit_event(&mut self, mut ev: Event<'ev>) {
         self.done.insert((ev.node.clone(), ev.id));
 
         self.transform_event(&mut ev);
@@ -1028,7 +941,7 @@ impl<'a> Coalesce<'a> {
             let ev = self.inflight.get_mut(&nid).unwrap();
             ev.filter |= filter_raw;
             match ev.body.get_mut(&typ) {
-                Some(EventValues::Single(v)) => v.extend(rv),
+                Some(EventValues::Single(v)) => v.concat(rv),
                 Some(EventValues::Multi(v)) => v.push(rv),
                 None => match typ {
                     SYSCALL => {
@@ -1096,7 +1009,7 @@ impl<'a> Coalesce<'a> {
     }
 }
 
-impl Drop for Coalesce<'_> {
+impl Drop for Coalesce<'_, '_> {
     fn drop(&mut self) {
         self.flush();
     }
@@ -1250,7 +1163,7 @@ mod test {
         process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
         if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
             // Check for: pid uid subj old-auid auid tty old-ses ses res UID OLD-AUID AUID
-            let l = records[0].elems.len();
+            let l = records[0].len();
             assert!(
                 l == 12,
                 "expected 12 fields, got {}: {:?}",
@@ -1296,11 +1209,11 @@ mod test {
             for (k, v) in record {
                 if k.to_string().ends_with("UID") {
                     uids += 1;
-                    assert!(&v == "root", "Got {}={:?}, expected root", k, v);
+                    assert!(v == "root", "Got {}={:?}, expected root", k, v);
                 }
                 if k.to_string().ends_with("GID") {
                     gids += 1;
-                    assert!(&v == gid0name.as_str(), "Got {}={:?}, expected root", k, v);
+                    assert!(v == gid0name.as_str(), "Got {}={:?}, expected root", k, v);
                 }
             }
             assert!(
@@ -1317,13 +1230,13 @@ mod test {
             let mut auid = false;
             // UID="root" OLD-AUID="unset" AUID="root"
             for (k, v) in &records[0] {
-                if k == "UID" && &v == "root" {
+                if k == "UID" && v == "root" {
                     uid = true;
                 }
-                if k == "OLD-AUID" && &v == "unset" {
+                if k == "OLD-AUID" && v == "unset" {
                     old_auid = true;
                 }
-                if k == "AUID" && &v == "root" {
+                if k == "AUID" && v == "root" {
                     auid = true;
                 }
             }
@@ -1403,7 +1316,9 @@ mod test {
     }
 
     // Returns an emitter function that puts the event into an Option
-    fn mk_emit(ec: &Rc<RefCell<Option<Event>>>) -> impl FnMut(&Event) + '_ {
+    fn mk_emit<'c, 'ev: 'c>(
+        ec: &'c Rc<RefCell<Option<Event<'ev>>>>,
+    ) -> impl FnMut(&Event<'ev>) + 'c {
         return |ev: &Event| {
             if !ev.filter {
                 *ec.borrow_mut() = Some(ev.clone());
@@ -1412,7 +1327,7 @@ mod test {
     }
 
     // Returns an emitter function that appends the event onto a Vec
-    fn mk_emit_vec(ec: &Rc<RefCell<Vec<Event>>>) -> impl FnMut(&Event) + '_ {
+    fn mk_emit_vec<'c, 'ev>(ec: &'c Rc<RefCell<Vec<Event<'ev>>>>) -> impl FnMut(&Event<'ev>) + 'c {
         return |ev: &Event| {
             if !ev.filter {
                 ec.borrow_mut().push(ev.clone());
@@ -1669,7 +1584,7 @@ mod test {
             assert!(
                 event_to_json(&event).contains(
                     r#""PPID":{"EVENT_ID":"1697091526.357:2638033","comm":"csh","exe":"/bin/tcsh","ppid":2542}"#),
-                "Did not get correct parent for {}",id);
+                "Did not get correct parent for {id}\n\n{}", event_to_json(&event));
             println!("{}", event_to_json(&event));
         }
     }
