@@ -90,11 +90,7 @@ impl FileRotate {
             acl.push(AclEntry::allow_user(&format!("{}", uid), Perm::READ, None));
         }
 
-        if let Ok(mut f) = OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&self.basename)
-        {
+        if let Ok(mut f) = OpenOptions::new().append(true).open(&self.basename) {
             fchmod(f.as_raw_fd(), Mode::from_bits(0o600).unwrap())
                 .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
@@ -114,7 +110,6 @@ impl FileRotate {
             let f = OpenOptions::new()
                 .create_new(true)
                 .mode(0o600)
-                .write(true)
                 .append(true)
                 .open(&tmp)?;
 
