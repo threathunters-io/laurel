@@ -42,8 +42,8 @@ execve-argv = [ "array" ]
 
 [translate]
 
-universal = false
-user-db = false
+universal = true
+user-db = true
 drop-raw = false
 
 [enrich]
