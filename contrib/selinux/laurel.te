@@ -11,8 +11,6 @@ permissive laurel_t;
 
 init_daemon_domain(laurel_t, laurel_exec_t)
 
-gen_require(`type passwd_file_t;')
-
 # Transition auditd (auditd 3+) -> laurel
 ifdef(`audit3',`
 	gen_require(`type auditd_t;')
@@ -50,8 +48,17 @@ list_dirs_pattern(laurel_t, proc_t, proc_t);
 # stat() for every file (for enrich.script)
 files_getattr_all_files(laurel_t)
 
-# Access user database or SSSD
-allow laurel_t passwd_file_t:file { open read };
+# Access local user database
+ifdef(`distro_debian',`
+	gen_require(`type etc_t;')
+	allow laurel_t etc_t:file { open read };
+')
+ifdef(`distro_redhat',`
+	gen_require(`type passwd_file_t;')
+	allow laurel_t passwd_file_t:file { open read };
+')
+
+# Access user database via SSSD
 sssd_read_public_files(laurel_t)
 sssd_stream_connect(laurel_t)
 
