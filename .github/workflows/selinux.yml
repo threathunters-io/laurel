@@ -76,3 +76,39 @@ jobs:
         with:
           name: selinux-al2023
           path: contrib/selinux/laurel.pp
+
+  build-bookworm:
+    runs-on: ubuntu-latest
+    container: debian:bookworm-slim
+    steps:
+      - name: Prepare
+        run: |
+          apt-get -qqy update
+          apt-get -qqy install selinux-policy-dev
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v3
+        with:
+          name: selinux-bookworm
+          path: contrib/selinux/laurel.pp
+
+  build-jammy:
+    runs-on: ubuntu-latest
+    container: ubuntu:jammy
+    steps:
+      - name: Prepare
+        run: |
+          apt-get -qqy update
+          apt-get -qqy install selinux-policy-dev
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v3
+        with:
+          name: selinux-jammy
+          path: contrib/selinux/laurel.pp
