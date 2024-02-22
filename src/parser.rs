@@ -212,7 +212,7 @@ fn parse_body(
         terminated(
             separated_list0(tag(b" "), |input| parse_kv(input, ty)),
             alt((
-                value((), tuple((tag("\x1d"), many1(none_of("\n")), tag("\n")))),
+                value((), tuple((tag("\x1d"), is_not("\n"), tag("\n")))),
                 value((), tag("\n")),
             )),
         )(input)?
