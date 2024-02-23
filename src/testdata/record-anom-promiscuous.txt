@@ -1,0 +1,4 @@
+type=ANOM_PROMISCUOUS msg=audit(1708689989.768:339749193): dev=veth5f40f62 prom=256 old_prom=0 auid=4294967295 uid=0 gid=0 ses=4294967295AUID="unset" UID="root" GID="root"
+type=SYSCALL msg=audit(1708689989.768:339749193): arch=c000003e syscall=44 success=yes exit=40 a0=e a1=c002e50000 a2=28 a3=0 items=0 ppid=1 pid=13877 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="dockerd" exe="/usr/bin/dockerd" key=(null)ARCH=x86_64 SYSCALL=sendto AUID="unset" UID="root" GID="root" EUID="root" SUID="root" FSUID="root" EGID="root" SGID="root" FSGID="root"
+type=SOCKADDR msg=audit(1708689989.768:339749193): saddr=100000000000000000000000SADDR={ fam=netlink nlnk-fam=16 nlnk-pid=0 }
+type=EOE msg=audit(1708689989.768:339749193): 

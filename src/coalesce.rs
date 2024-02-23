@@ -1114,6 +1114,13 @@ mod test {
             }
         );
 
+        process_record(&mut c, include_bytes!("testdata/record-anom-promiscuous.txt"))?;
+        let output = event_to_json(ec.borrow().last().unwrap());
+        assert!(
+            output.contains(r#""saddr":"%10%00%00%00%00%00%00%00%00%00%00%00""#),
+            "SOCKADDR.saddr blob is encoded correctly"
+        );
+
         // recordds do not begin with SYSCALL.
         process_record(&mut c, include_bytes!("testdata/record-login.txt"))?;
         process_record(&mut c, include_bytes!("testdata/record-adjntpval.txt"))?;
