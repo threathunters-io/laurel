@@ -1018,14 +1018,13 @@ impl Drop for Coalesce<'_, '_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use serde_json;
     use std::cell::RefCell;
     use std::io::{BufRead, BufReader};
     use std::rc::Rc;
 
     fn event_to_json(e: &Event) -> String {
         let mut out = vec![];
-        serde_json::to_writer(&mut out, e).unwrap();
+        crate::json::to_writer(&mut out, e).unwrap();
         String::from_utf8_lossy(&out).to_string()
     }
 

@@ -92,7 +92,7 @@ impl Logger {
         if let Some(prefix) = &self.prefix {
             self.output.write_all(prefix.as_bytes()).unwrap();
         }
-        serde_json::to_writer(&mut self.output, &message).unwrap();
+        laurel::json::to_writer(&mut self.output, &message).unwrap();
         self.output.write_all(b"\n").unwrap();
         self.output.flush().unwrap();
     }
