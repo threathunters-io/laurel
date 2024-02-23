@@ -11,7 +11,6 @@ use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 
 use crate::constants::*;
-use crate::quoted_string::ToQuotedString;
 
 /// Collect records in [`EventBody`] context as single or multiple
 /// instances.
@@ -71,7 +70,7 @@ impl Serialize for Event<'_> {
         map.serialize_value(&self.id)?;
         if let Some(node) = &self.node {
             map.serialize_key("NODE")?;
-            map.serialize_value(&node.as_slice().to_quoted_string())?;
+            map.serialize_value(&node)?;
         }
         for (k, v) in &self.body {
             map.serialize_entry(&k, &v)?;
@@ -775,21 +774,21 @@ impl Serialize for Value<'_> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
             Value::Empty => s.serialize_none(),
-            Value::Str(r, q) => {
-                let (q1, q2) = if let Quote::Braces = q {
-                    ("{", "}")
-                } else {
-                    ("", "")
-                };
-                s.collect_str(&format_args!("{}{}{}", q1, r.to_quoted_string(), q2))
+            Value::Str(r, Quote::Braces) => {
+                let mut buf = Vec::with_capacity(r.len() + 2);
+                buf.push(b'{');
+                buf.extend(*r);
+                buf.push(b'}');
+                s.serialize_bytes(&buf)
             }
+            Value::Str(r, _) => s.serialize_bytes(r),
             Value::Segments(segs) => {
                 let l = segs.iter().map(|r| r.len()).sum();
-                let mut sb = String::with_capacity(l);
+                let mut buf = Vec::with_capacity(l);
                 for seg in segs {
-                    sb.push_str(&seg.to_quoted_string());
+                    buf.extend(*seg);
                 }
-                s.collect_str(&sb)
+                s.serialize_bytes(&buf)
             }
             Value::List(vs) => s.collect_seq(vs.iter()),
             Value::StringifiedList(vs) => {
@@ -809,25 +808,10 @@ impl Serialize for Value<'_> {
                         buf.extend(v.clone().try_into().unwrap_or_else(|_| vec![b'x']));
                     }
                 }
-                s.serialize_str(&buf.to_quoted_string())
+                s.serialize_bytes(&buf)
             }
             Value::Number(n) => n.serialize(s),
-            Value::Map(vs) => {
-                let mut map = s.serialize_map(Some(vs.len()))?;
-                for (k, v) in vs {
-                    match k {
-                        Key::Name(n) => map.serialize_key(&n.as_slice().to_quoted_string())?,
-                        Key::Literal(n) => map.serialize_key(n)?,
-                        _ => todo!(),
-                    }
-                    match v {
-                        Value::Str(r, _q) => map.serialize_value(&r.to_quoted_string())?,
-                        Value::Number(n) => map.serialize_value(&n)?,
-                        _ => todo!(),
-                    }
-                }
-                map.end()
-            }
+            Value::Map(vs) => s.collect_map(vs.iter().cloned()),
             Value::Skipped((args, bytes)) => {
                 let mut map = s.serialize_map(Some(2))?;
                 map.serialize_entry("skipped_args", args)?;
@@ -835,7 +819,7 @@ impl Serialize for Value<'_> {
                 map.end()
             }
             Value::Literal(v) => s.collect_str(v),
-            Value::Owned(v) => s.collect_str(&v.to_quoted_string()),
+            Value::Owned(v) => Bytes(v).serialize(s),
         }
     }
 }
@@ -911,5 +895,14 @@ impl Offset for Range<usize> {
             start: self.start + offset,
             end: self.end + offset,
         }
+    }
+}
+
+/// Helper type to enforce that serialize_bytes() is used in serialization.
+pub(crate) struct Bytes<'a>(pub &'a [u8]);
+
+impl<'a> Serialize for Bytes<'a> {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_bytes(self.0)
     }
 }
