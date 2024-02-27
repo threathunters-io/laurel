@@ -881,8 +881,8 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     ///
     /// The line is consumed and serves as backing store for the
     /// EventBody objects.
-    pub fn process_line(&mut self, line: Vec<u8>) -> Result<(), CoalesceError> {
-        let filter_raw = self.settings.filter_raw_lines.is_match(&line);
+    pub fn process_line(&mut self, line: &[u8]) -> Result<(), CoalesceError> {
+        let filter_raw = self.settings.filter_raw_lines.is_match(line);
 
         let skip_enriched = self.settings.translate_universal && self.settings.translate_userdb;
         let (node, typ, id, rv) = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
@@ -1008,8 +1008,8 @@ mod test {
     fn dump_state() -> Result<(), Box<dyn Error>> {
         let mut c = Coalesce::new(|_| {});
         c.initialize()?;
-        c.process_line(br#"type=SYSCALL msg=audit(1615114232.375:15558): arch=c000003e syscall=59 success=yes exit=0 a0=63b29337fd18 a1=63b293387d58 a2=63b293375640 a3=fffffffffffff000 items=2 ppid=10883 pid=10884 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="whoami" exe="/usr/bin/whoami" key=(null)
-"#.to_vec())?;
+        c.process_line(&br#"type=SYSCALL msg=audit(1615114232.375:15558): arch=c000003e syscall=59 success=yes exit=0 a0=63b29337fd18 a1=63b293387d58 a2=63b293375640 a3=fffffffffffff000 items=2 ppid=10883 pid=10884 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="whoami" exe="/usr/bin/whoami" key=(null)
+"#[..])?;
         let mut buf: Vec<u8> = vec![];
         c.dump_state(&mut buf)?;
         println!("{}", String::from_utf8_lossy(&buf));
@@ -1048,7 +1048,7 @@ mod test {
         {
             let mut line = line.unwrap().clone();
             line.push('\n');
-            c.process_line(line.as_bytes().to_vec())?;
+            c.process_line(line.as_bytes())?;
         }
         Ok(())
     }

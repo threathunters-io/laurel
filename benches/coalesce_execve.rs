@@ -58,7 +58,7 @@ fn coalesce(serialize: bool) {
                 ms, seq
             ),
         ] {
-            c.process_line(Vec::from(line.as_bytes())).unwrap();
+            c.process_line(line.as_bytes()).unwrap();
         }
     }
 }
