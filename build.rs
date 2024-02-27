@@ -70,8 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     // Artificial record
-    constants.push(("LABELS".into(), "0xffffff01".into()));
-    constants.push(("CONTAINER_INFO".into(), "0xffffff02".into()));
+    constants.push(("CONTAINER_INFO".into(), "0xffffff01".into()));
 
     let fields: Vec<(String, String)> = BufReader::new(fs::File::open(fields_file)?)
         .lines()
