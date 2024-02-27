@@ -407,6 +407,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
     }
 
+    /// Apply uid, gid, pid enrichment to generic records
     fn enrich_generic(&mut self, rv: &mut Record) {
         let mut nrv = Record::default();
         rv.retain(|(k, v)| {
@@ -420,6 +421,213 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             true
         });
         rv.concat(nrv);
+    }
+
+    /// Transform PROCTITLE record
+    ///
+    /// The flat proctitle field is turned into a list.
+    fn transform_proctitle(&mut self, rv: &mut Record) {
+        let mut argv = vec![];
+        rv.retain(|(k, v)| {
+            match (k, v) {
+                (k, Value::Str(r, _)) if k == "proctitle" => {
+                    argv = r
+                        .split(|c| *c == 0)
+                        .map(|arg| {
+                            // (assumed) safety:
+                            // We are adding references to the
+                            // same memory regions back to rv.
+                            let arg = unsafe {
+                                &*std::ptr::slice_from_raw_parts(arg.as_ptr(), arg.len())
+                            };
+                            Value::Str(arg, Quote::None)
+                        })
+                        .collect();
+                    false
+                }
+                _ => true,
+            }
+        });
+        if !argv.is_empty() {
+            rv.push(("ARGV".into(), Value::List(argv)));
+        }
+    }
+
+    /// Enrich SOCKADDR record
+    fn enrich_sockaddr(&mut self, rv: &mut Record) {
+        let mut nrv = Record::default();
+        rv.retain(|(k, v)| match (k, v) {
+            (k, Value::Str(vr, _q)) if self.settings.translate_universal => {
+                if k == "saddr" {
+                    #[cfg(target_os = "linux")]
+                    if let Ok(sa) = SocketAddr::parse(vr) {
+                        add_translated_socketaddr(&mut nrv, sa);
+                        return false;
+                    }
+                } else if k == "SADDR" {
+                    return false;
+                }
+                true
+            }
+            _ => true,
+        });
+        rv.concat(nrv);
+    }
+
+    /// Enrich SYSCALL record
+    ///
+    /// Add ARCH, SYSCALL, PID, PPID, SCRIPT, LABELS if appropriate
+    fn enrich_syscall(
+        &mut self,
+        rv: &mut Record,
+        arch_sys: (Option<&'static str>, Option<&'static str>),
+        current_process: &Option<Process>,
+        parent: &Option<Process>,
+        script: &Option<NVec>,
+        container_info: &mut Option<Record>,
+    ) {
+        if let (true, (Some(arch), Some(syscall))) = (self.settings.translate_universal, arch_sys) {
+            rv.push((Key::Literal("ARCH"), Value::Literal(arch)));
+            rv.push((Key::Literal("SYSCALL"), Value::Literal(syscall)));
+        }
+
+        if let (true, Some(parent)) = (self.settings.enrich_pid, &parent) {
+            add_record_procinfo(rv, b"ppid", parent, true);
+        }
+
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
+        if let (true, Some(script)) = (self.settings.enrich_script, &script) {
+            rv.push((
+                Key::Literal("SCRIPT"),
+                Value::Str(script.as_slice(), Quote::None),
+            ));
+        }
+
+        if let Some(proc) = &current_process {
+            if self.settings.enrich_pid {
+                add_record_procinfo(rv, b"pid", proc, false);
+            }
+
+            if !proc.labels.is_empty() {
+                let labels = proc
+                    .labels
+                    .iter()
+                    .map(|l| Value::Str(l, Quote::None))
+                    .collect::<Vec<_>>();
+                rv.push((Key::Literal("LABELS"), Value::List(labels)));
+            }
+
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
+            if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
+                let mut ci = Record::default();
+                ci.push((
+                    Key::Literal("ID"),
+                    Value::Str(hex_string(&c.id).as_bytes(), Quote::None),
+                ));
+                *container_info = Some(ci);
+            }
+        }
+    }
+
+    fn transform_execve(&mut self, rv: &mut Record, current_process: &Option<Process>) {
+        let mut argv: Vec<Value> = Vec::with_capacity(rv.len() - 1);
+        rv.retain(|(k, v)| {
+            match k {
+                Key::ArgLen(_) => false,
+                Key::Arg(i, None) => {
+                    let idx = *i as usize;
+                    if argv.len() <= idx {
+                        argv.resize(idx + 1, Value::Empty);
+                    };
+                    argv[idx] = v.clone();
+                    false
+                }
+                Key::Arg(i, Some(f)) => {
+                    let idx = *i as usize;
+                    if argv.len() <= idx {
+                        argv.resize(idx + 1, Value::Empty);
+                        argv[idx] = Value::Segments(Vec::new());
+                    }
+                    if let Some(Value::Segments(vs)) = argv.get_mut(idx) {
+                        let frag = *f as usize;
+                        let r = match v {
+                            Value::Str(r, _) => r,
+                            _ => todo!(),
+                        };
+                        if vs.len() <= frag {
+                            vs.resize(frag + 1, &[]);
+                            let ptr = std::ptr::slice_from_raw_parts(r.as_ptr(), r.len());
+                            // (assumed) safety: vs[frag] is only added back to rv
+                            vs[frag] = unsafe { &*ptr };
+                        }
+                    }
+                    false
+                }
+                _ => true,
+            }
+        });
+
+        // Strip data from the middle of excessively long ARGV
+        if let Some(argv_max) = self.settings.execve_argv_limit_bytes {
+            let argv_size: usize = argv.iter().map(|v| 1 + v.str_len()).sum();
+            if argv_size > argv_max {
+                let diff = argv_size - argv_max;
+                let skip_range = (argv_size - diff) / 2..(argv_size + diff) / 2;
+                argv = {
+                    let mut filtered = Vec::new();
+                    let mut start = 0;
+                    let mut skipped: Option<(usize, usize)> = None;
+                    for arg in argv.iter() {
+                        let end = start + arg.str_len();
+                        if skip_range.contains(&start) || skip_range.contains(&end) {
+                            skipped = match skipped {
+                                None => Some((1, end - start)),
+                                Some((args, bytes)) => Some((args + 1, 1 + bytes + (end - start))),
+                            };
+                        } else {
+                            if let Some((args, bytes)) = skipped {
+                                filtered.push(Value::Skipped((args, bytes)));
+                                skipped = None;
+                            }
+                            filtered.push(arg.clone());
+                        }
+                        start = end + 1;
+                    }
+                    filtered
+                };
+            }
+        }
+
+        // ARGV
+        if self.settings.execve_argv_list {
+            rv.push((Key::Literal("ARGV"), Value::List(argv.clone())));
+        }
+        // ARGV_STR
+        if self.settings.execve_argv_string {
+            rv.push((
+                Key::Literal("ARGV_STR"),
+                Value::StringifiedList(argv.clone()),
+            ));
+        }
+
+        // ENV
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
+        if let (Some(proc), false) = (&current_process, self.settings.execve_env.is_empty()) {
+            if let Ok(vars) =
+                procfs::get_environ(proc.pid, |k| self.settings.execve_env.contains(k))
+            {
+                let map = vars
+                    .iter()
+                    .map(|(k, v)| {
+                        (
+                            Key::Name(NVec::from(k.as_slice())),
+                            Value::Str(v, Quote::None),
+                        )
+                    })
+                    .collect();
+                rv.push((Key::Literal("ENV"), Value::Map(map)));
+            }
+        }
     }
 
     /// Rewrite event to normal form
@@ -603,106 +811,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if let Some(EventValues::Single(rv)) = ev.body.get_mut(&EXECVE) {
-            let mut argv: Vec<Value> = Vec::with_capacity(rv.len() - 1);
-            rv.retain(|(k, v)| {
-                match k {
-                    Key::ArgLen(_) => false,
-                    Key::Arg(i, None) => {
-                        let idx = *i as usize;
-                        if argv.len() <= idx {
-                            argv.resize(idx + 1, Value::Empty);
-                        };
-                        argv[idx] = v.clone();
-                        false
-                    }
-                    Key::Arg(i, Some(f)) => {
-                        let idx = *i as usize;
-                        if argv.len() <= idx {
-                            argv.resize(idx + 1, Value::Empty);
-                            argv[idx] = Value::Segments(Vec::new());
-                        }
-                        if let Some(Value::Segments(vs)) = argv.get_mut(idx) {
-                            let frag = *f as usize;
-                            let r = match v {
-                                Value::Str(r, _) => r,
-                                _ => todo!(),
-                            };
-                            if vs.len() <= frag {
-                                vs.resize(frag + 1, &[]);
-                                let ptr = std::ptr::slice_from_raw_parts(r.as_ptr(), r.len());
-                                // (assumed) safety: vs[frag] is only added back to rv
-                                vs[frag] = unsafe { &*ptr };
-                            }
-                        }
-                        false
-                    }
-                    _ => true,
-                }
-            });
-
-            // Strip data from the middle of excessively long ARGV
-            if let Some(argv_max) = self.settings.execve_argv_limit_bytes {
-                let argv_size: usize = argv.iter().map(|v| 1 + v.str_len()).sum();
-                if argv_size > argv_max {
-                    let diff = argv_size - argv_max;
-                    let skip_range = (argv_size - diff) / 2..(argv_size + diff) / 2;
-                    argv = {
-                        let mut filtered = Vec::new();
-                        let mut start = 0;
-                        let mut skipped: Option<(usize, usize)> = None;
-                        for arg in argv.iter() {
-                            let end = start + arg.str_len();
-                            if skip_range.contains(&start) || skip_range.contains(&end) {
-                                skipped = match skipped {
-                                    None => Some((1, end - start)),
-                                    Some((args, bytes)) => {
-                                        Some((args + 1, 1 + bytes + (end - start)))
-                                    }
-                                };
-                            } else {
-                                if let Some((args, bytes)) = skipped {
-                                    filtered.push(Value::Skipped((args, bytes)));
-                                    skipped = None;
-                                }
-                                filtered.push(arg.clone());
-                            }
-                            start = end + 1;
-                        }
-                        filtered
-                    };
-                }
-            }
-
-            // ARGV
-            if self.settings.execve_argv_list {
-                rv.push((Key::Literal("ARGV"), Value::List(argv.clone())));
-            }
-            // ARGV_STR
-            if self.settings.execve_argv_string {
-                rv.push((
-                    Key::Literal("ARGV_STR"),
-                    Value::StringifiedList(argv.clone()),
-                ));
-            }
-
-            // ENV
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
-            if let (Some(proc), false) = (&current_process, self.settings.execve_env.is_empty()) {
-                if let Ok(vars) =
-                    procfs::get_environ(proc.pid, |k| self.settings.execve_env.contains(k))
-                {
-                    let map = vars
-                        .iter()
-                        .map(|(k, v)| {
-                            (
-                                Key::Name(NVec::from(k.as_slice())),
-                                Value::Str(v, Quote::None),
-                            )
-                        })
-                        .collect();
-                    rv.push((Key::Literal("ENV"), Value::Map(map)));
-                }
-            }
+            self.transform_execve(rv, &current_process);
         }
 
         // Handle script enrichment
@@ -763,60 +872,23 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         // Since the event may have been dropped here, don't
         // manipulate the current process below.
         let current_process = current_process;
+        let mut container_info: Option<Record> = None;
 
         for tv in ev.body.iter_mut() {
             match tv {
-                (&SYSCALL, EventValues::Single(_)) | (&EXECVE, EventValues::Single(_)) => {}
+                (&SYSCALL, EventValues::Single(rv)) => self.enrich_syscall(
+                    rv,
+                    (arch_name, syscall_name),
+                    &current_process,
+                    &parent,
+                    &script,
+                    &mut container_info,
+                ),
+                (&EXECVE, EventValues::Single(_)) => {}
                 (&SOCKADDR, EventValues::Multi(rvs)) => {
-                    for rv in rvs {
-                        let mut nrv = Record::default();
-                        rv.retain(|(k, v)| match (k, v) {
-                            (k, Value::Str(vr, _q)) if self.settings.translate_universal => {
-                                if k == "saddr" {
-                                    #[cfg(target_os = "linux")]
-                                    if let Ok(sa) = SocketAddr::parse(vr) {
-                                        add_translated_socketaddr(&mut nrv, sa);
-                                        return false;
-                                    }
-                                } else if k == "SADDR" {
-                                    return false;
-                                }
-                                true
-                            }
-                            _ => true,
-                        });
-                        rv.concat(nrv);
-                    }
+                    rvs.iter_mut().for_each(|rv| self.enrich_sockaddr(rv))
                 }
-                (&PROCTITLE, EventValues::Single(rv)) => {
-                    let mut argv = vec![];
-                    rv.retain(|(k, v)| {
-                        match (k, v) {
-                            (k, Value::Str(r, _)) if k == "proctitle" => {
-                                argv = r
-                                    .split(|c| *c == 0)
-                                    .map(|arg| {
-                                        // (assumed) safety:
-                                        // We are adding references to the
-                                        // same memory regions back to rv.
-                                        let arg = unsafe {
-                                            &*std::ptr::slice_from_raw_parts(
-                                                arg.as_ptr(),
-                                                arg.len(),
-                                            )
-                                        };
-                                        Value::Str(arg, Quote::None)
-                                    })
-                                    .collect();
-                                false
-                            }
-                            _ => true,
-                        }
-                    });
-                    if !argv.is_empty() {
-                        rv.push(("ARGV".into(), Value::List(argv)));
-                    }
-                }
+                (&PROCTITLE, EventValues::Single(rv)) => self.transform_proctitle(rv),
                 (_, EventValues::Single(rv)) => self.enrich_generic(rv),
                 (_, EventValues::Multi(rvs)) => {
                     rvs.iter_mut().for_each(|rv| self.enrich_generic(rv))
@@ -824,51 +896,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
-        if let Some(EventValues::Single(sc)) = ev.body.get_mut(&SYSCALL) {
-            if let (true, Some(an), Some(sn)) =
-                (self.settings.translate_universal, arch_name, syscall_name)
-            {
-                sc.push((Key::Literal("ARCH"), Value::Literal(an)));
-                sc.push((Key::Literal("SYSCALL"), Value::Literal(sn)));
-            }
-
-            if let (true, Some(parent)) = (self.settings.enrich_pid, &parent) {
-                add_record_procinfo(sc, b"ppid", parent, true);
-            }
-
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
-            if let (true, Some(script)) = (self.settings.enrich_script, script) {
-                sc.push((
-                    Key::Literal("SCRIPT"),
-                    Value::Str(script.as_slice(), Quote::None),
-                ));
-            }
-
-            if let Some(proc) = current_process {
-                if self.settings.enrich_pid {
-                    add_record_procinfo(sc, b"pid", &proc, false);
-                }
-
-                if !proc.labels.is_empty() {
-                    let labels = proc
-                        .labels
-                        .iter()
-                        .map(|l| Value::Str(l, Quote::None))
-                        .collect::<Vec<_>>();
-                    sc.push((Key::Literal("LABELS"), Value::List(labels)));
-                }
-
-                #[cfg(all(feature = "procfs", target_os = "linux"))]
-                if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
-                    let mut ci = Record::default();
-                    ci.push((
-                        Key::Literal("ID"),
-                        Value::Str(hex_string(&c.id).as_bytes(), Quote::None),
-                    ));
-                    ev.body.insert(CONTAINER_INFO, EventValues::Single(ci));
-                }
-            }
-        }
+        container_info.map(|ci| ev.body.insert(CONTAINER_INFO, EventValues::Single(ci)));
     }
 
     /// Do bookkeeping on event, transform, emit it via the provided
