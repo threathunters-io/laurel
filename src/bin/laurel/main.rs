@@ -335,7 +335,7 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
             let lines = buf.split_inclusive(|c| *c == b'\n');
             log::info!("Got SIGHUP.");
             for line in lines {
-                if let Err(e) = coalesce.process_line(line.to_vec()) {
+                if let Err(e) = coalesce.process_line(line) {
                     if let Some(ref mut l) = error_logger {
                         l.write_all(line)
                             .and_then(|_| l.flush())
@@ -375,7 +375,7 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
         }
 
         stats.lines += 1;
-        match coalesce.process_line(line.clone()) {
+        match coalesce.process_line(&line) {
             Ok(()) => (),
             Err(e) => {
                 stats.errors += 1;

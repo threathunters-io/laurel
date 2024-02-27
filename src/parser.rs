@@ -37,11 +37,11 @@ pub enum ParseError {
 /// by the parser.
 #[allow(clippy::type_complexity)]
 pub fn parse<'a>(
-    raw: Vec<u8>,
+    raw: &[u8],
     skip_enriched: bool,
 ) -> Result<(Option<Vec<u8>>, MessageType, EventID, Record<'a>), ParseError> {
     let (rest, (nd, ty, id)) =
-        parse_header(&raw).map_err(|_| ParseError::MalformedHeader(raw.clone()))?;
+        parse_header(raw).map_err(|_| ParseError::MalformedHeader(raw.to_vec()))?;
 
     let (rest, body) = parse_body(rest, ty, skip_enriched)
         .map_err(|_| ParseError::MalformedBody(rest.to_vec()))?;
@@ -532,7 +532,7 @@ mod test {
     where
         T: AsRef<[u8]>,
     {
-        parse(Vec::from(text.as_ref()), false)
+        parse(text.as_ref(), false)
     }
 
     #[test]
