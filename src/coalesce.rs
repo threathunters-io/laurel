@@ -3,6 +3,8 @@ use std::error::Error;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use faster_hex::hex_string;
+
 use serde_json::json;
 
 use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
@@ -864,7 +866,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 #[cfg(all(feature = "procfs", target_os = "linux"))]
                 if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                     let mut ci = Record::default();
-                    ci.push((Key::Literal("ID"), Value::Str(&c.id, Quote::None)));
+                    ci.push((
+                        Key::Literal("ID"),
+                        Value::Str(hex_string(&c.id).as_bytes(), Quote::None),
+                    ));
                     ev.body.insert(CONTAINER_INFO, EventValues::Single(ci));
                 }
             }
