@@ -241,15 +241,13 @@ fn path_script_name(path: &Record, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) 
             }
         } else if k == "dev" {
             if let Value::Str(r, _) = v {
-                let mut d = 0;
-                let value = String::from_utf8_lossy(r);
-                for p in value.split(|c| c == ':') {
-                    if let Ok(parsed) = u64::from_str_radix(p, 16) {
-                        d <<= 8;
-                        d |= parsed;
-                    }
-                }
-                p_dev = Some(d as _);
+                p_dev = String::from_utf8_lossy(r)
+                    .split(|c| c == ':')
+                    .filter_map(|part| u64::from_str_radix(part, 16).ok())
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .ok()
+                    .map(|a: [u64; 2]| nix::sys::stat::makedev(a[0], a[1]));
             }
             break;
         }
