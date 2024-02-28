@@ -776,15 +776,12 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                                     #[cfg(target_os = "linux")]
                                     if let Ok(sa) = SocketAddr::parse(vr) {
                                         add_translated_socketaddr(&mut nrv, sa);
-                                        if self.settings.drop_translated {
-                                            return false;
-                                        }
+                                        return false;
                                     }
-                                    true
-                                } else {
-                                    // drop SADDR, keep everything else
-                                    k != "SADDR"
+                                } else if k == "SADDR" {
+                                    return false;
                                 }
+                                true
                             }
                             _ => true,
                         });
