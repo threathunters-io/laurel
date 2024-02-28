@@ -164,7 +164,7 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         let lt = clock_gettime(ClockId::CLOCK_REALTIME)
             .map_err(|e| ProcFSError::Errno("clock_gettime(CLOCK_REALTIME)", e))?
             - proc_age;
-        (lt.tv_sec() * 1000 + lt.tv_nsec() / 1_000_000) as u64
+        (lt.tv_sec() as u64) * 1000 + (lt.tv_nsec() as u64) / 1_000_000
     };
 
     let container_id = parse_proc_pid_cgroup(pid)?;
