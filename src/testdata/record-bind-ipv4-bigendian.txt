@@ -1,0 +1,4 @@
+type=SYSCALL msg=audit(1708028025.033:10): arch=80000015 syscall=327 success=yes exit=0 a0=3 a1=33ee202d0 a2=10 a3=7fffe9628078 items=0 ppid=2649 pid=2650 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="nc" exe="/usr/bin/nc.openbsd" key=(null)
+type=SOCKADDR msg=audit(1708028025.033:10): saddr=0002D903000000000000000000000000
+type=PROCTITLE msg=audit(1708028025.033:10): proctitle=6E63002D6C002D70003535353535
+type=EOE msg=audit(1708028025.033:10): 
