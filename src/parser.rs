@@ -365,6 +365,13 @@ fn parse_unspec_value<'a>(
                 return Ok((input, Value::Str(s, Quote::None)));
             }
         }
+        (msg_type::SOCKADDR, b"SADDR") => {
+            let broken_string: IResult<&[u8], &[u8]> =
+                recognize(pair(tag("unknown family"), opt(take_till(is_sep))))(input);
+            if let Ok((input, s)) = broken_string {
+                return Ok((input, Value::Str(s, Quote::None)));
+            }
+        }
         _ => (),
     };
 
@@ -861,8 +868,12 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn breakage_sockaddr_unknown() {
-        do_parse(include_bytes!("testdata/line-sockaddr-unknown.txt")).unwrap();
+        do_parse(include_bytes!("testdata/line-sockaddr-unknown-1.txt"))
+            .expect("can't parse line-sockaddr-unknown-1.txt");
+        do_parse(include_bytes!("testdata/line-sockaddr-unknown-2.txt"))
+            .expect("can't parse line-sockaddr-unknown-2.txt");
+        do_parse(include_bytes!("testdata/line-sockaddr-unknown-3.txt"))
+            .expect("can't parse line-sockaddr-unknown-3.txt");
     }
 }
