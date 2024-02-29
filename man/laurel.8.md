@@ -77,6 +77,8 @@ This section contains basic operation parameters.
 - `input`: `laurel` can consume audit events from standard input or
   connect to a listening socket specified as `unix:/path/to/socket` at
   start. Defaulkt: `stdin`
+- `marker`: A string that is written to the log on startup and
+  whenever `laurel` writes a status report. Default: none
 
 <!-- `user` and `directory` are unset by default for debugging -->
 

@@ -227,6 +227,8 @@ pub struct Config {
     #[serde(default, rename = "statusreport-period")]
     pub statusreport_period: Option<u64>,
     #[serde(default)]
+    pub marker: Option<String>,
+    #[serde(default)]
     pub auditlog: Logfile,
     #[serde(default)]
     pub filterlog: Logfile,
@@ -251,6 +253,7 @@ impl Default for Config {
             directory: Some(".".into()),
             input: Input::Stdin,
             statusreport_period: None,
+            marker: None,
             auditlog: Logfile {
                 file: "audit.log".into(),
                 users: None,
@@ -279,7 +282,8 @@ impl std::fmt::Display for Config {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(
             fmt,
-            "(user={} directory={} statusreport-period={} file={} users={} size={} generations={})",
+            "({}user={} directory={} statusreport-period={} file={} users={} size={} generations={})",
+            self.marker.as_ref().map(|m| format!("marker={m} ")).unwrap_or("".to_string()),
             self.user.clone().unwrap_or_else(|| "n/a".to_string()),
             self.directory
                 .clone()

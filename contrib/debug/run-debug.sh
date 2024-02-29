@@ -25,6 +25,7 @@ else
 directory = "."
 user = "%USER%"
 input = "unix:%AUDISPD_EVENTS%"
+marker = "test-$$"
 
 [auditlog]
 file = "audit.log"

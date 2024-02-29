@@ -10,6 +10,10 @@ statusreport-period = 0
 # can be consumed from an existing UNIX domain socket ("unix:/path/to/socket")
 input = "stdin"
 
+# A string that is written to the log on startup and
+# whenever Laurel writes a status report.
+# marker = "correct-horse-battery-staple"
+
 [auditlog]
 # Base file name for the JSONL-based log file. Set to "-" to log to stdout. In this case 
 # other log file related settings will be ignored.
