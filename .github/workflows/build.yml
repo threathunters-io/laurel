@@ -61,6 +61,35 @@ jobs:
     - run: cargo bench --no-run
     - run: make -C contrib/selinux
 
+  build_aarch64:
+    runs-on: ubuntu-latest
+    container: debian:bullseye
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependency
+      run: |
+        dpkg --add-architecture arm64
+        apt-get -qq update
+        apt-get -qqy dist-upgrade
+        apt-get -qqy install curl build-essential libclang-dev gcc-aarch64-linux-gnu libacl1-dev:arm64
+
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: aarch64-unknown-linux-gnu
+
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
+
+    - run: cargo build --target=aarch64-unknown-linux-gnu
+
   build_static_musl:
     runs-on: ubuntu-latest
     container: alpine:3.18
