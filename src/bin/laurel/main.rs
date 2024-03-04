@@ -3,7 +3,6 @@
 
 use getopts::Options;
 use std::env;
-use std::error::Error as StdError;
 use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::ops::AddAssign;
@@ -88,13 +87,13 @@ struct Logger {
 }
 
 impl Logger {
-    fn log<S: Serialize>(&mut self, message: S) {
+    fn log<S: Serialize>(&mut self, message: S) -> std::io::Result<()> {
         if let Some(prefix) = &self.prefix {
-            self.output.write_all(prefix.as_bytes()).unwrap();
+            self.output.write_all(prefix.as_bytes())?;
         }
-        laurel::json::to_writer(&mut self.output, &message).unwrap();
-        self.output.write_all(b"\n").unwrap();
-        self.output.flush().unwrap();
+        laurel::json::to_writer(&mut self.output, &message)?;
+        self.output.write_all(b"\n")?;
+        self.output.flush()
     }
 
     fn new(def: &Logfile, dir: &Path) -> anyhow::Result<Self> {
@@ -134,7 +133,7 @@ impl Logger {
     }
 }
 
-fn run_app() -> Result<(), Box<dyn StdError>> {
+fn run_app() -> Result<(), anyhow::Error> {
     let args: Vec<String> = env::args().collect();
 
     let mut opts = Options::new();
@@ -155,19 +154,19 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
     }
 
     let config: Config = match matches.opt_str("c") {
-        Some(f_name) => {
-            if fs::metadata(&f_name)
-                .with_context(|| format!("stat: {f_name}"))?
+        Some(f) => {
+            if fs::metadata(&f)
+                .with_context(|| format!("stat {f}"))?
                 .permissions()
                 .mode()
                 & 0o002
                 != 0
             {
-                return Err(format!("Config file {} must not be world-writable", f_name).into());
+                return Err(anyhow!("Config file {f} must not be world-writable"));
             }
-            let lines = fs::read(&f_name).with_context(|| format!("read(: {f_name}"))?;
-            toml::from_str(&String::from_utf8(lines).with_context(|| format!("parse: {f_name}"))?)
-                .with_context(|| format!("parse {f_name}"))?
+            let lines = fs::read(&f).with_context(|| format!("Error reading {f}"))?;
+            toml::from_str(&String::from_utf8(lines).with_context(|| format!("Error parsing {f}"))?)
+                .with_context(|| format!("Error parsing {f}"))?
         }
         None => Config::default(),
     };
@@ -180,7 +179,7 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
         Input::Stdin => Box::new(unsafe { std::fs::File::from_raw_fd(0) }),
         Input::Unix(path) => Box::new(
             UnixStream::connect(path)
-                .with_context(|| format!("connect: {}", path.to_string_lossy()))?,
+                .with_context(|| format!("Error connecting to {}", path.to_string_lossy()))?,
         ),
     };
 
@@ -190,11 +189,11 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
 
     let runas_user = match config.user {
         Some(ref username) => {
-            User::from_name(username)?.ok_or_else(|| format!("user {} not found", username))?
+            User::from_name(username)?.ok_or_else(|| anyhow!("user {} not found", username))?
         }
         None => {
             let uid = Uid::effective();
-            User::from_uid(uid)?.ok_or_else(|| format!("uid {} not found", uid))?
+            User::from_uid(uid)?.ok_or_else(|| anyhow!("uid {} not found", uid))?
         }
     };
 
@@ -209,7 +208,7 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
         .unwrap_or_else(|| Path::new(".").to_path_buf());
     if dir.exists() {
         if !dir.is_dir() {
-            return Err(format!("{} is not a directory", dir.to_string_lossy()).into());
+            return Err(anyhow!("{} is not a directory", dir.to_string_lossy()));
         }
         if dir
             .metadata()
@@ -245,7 +244,7 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
         for user in &def.clone().users.unwrap_or_default() {
             rot = rot.with_uid(
                 User::from_name(user)?
-                    .ok_or_else(|| format!("user {} not found", &user))?
+                    .ok_or_else(|| anyhow!("user {} not found", &user))?
                     .uid,
             );
         }
@@ -297,9 +296,9 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
             Logger::new(&config.filterlog, &dir).context("can't create filterlog logger")?;
         emit_fn_log = move |e: &Event| {
             if e.filter {
-                filter_logger.log(e)
+                filter_logger.log(e).expect("Error writing to filter log");
             } else {
-                logger.log(e)
+                logger.log(e).expect("Error writing to audit log");
             }
         };
         coalesce = Coalesce::new(emit_fn_log);
@@ -307,14 +306,16 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
         log::info!("Dropping filtered audit records");
         emit_fn_drop = move |e: &Event| {
             if !e.filter {
-                logger.log(e)
+                logger.log(e).expect("Error writing to audit log");
             }
         };
         coalesce = Coalesce::new(emit_fn_drop);
     }
 
     coalesce.settings = config.make_coalesce_settings();
-    coalesce.initialize()?;
+    coalesce
+        .initialize()
+        .map_err(|e| anyhow!("Failed to initialize: {e}"))?;
 
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();
@@ -414,8 +415,7 @@ fn run_app() -> Result<(), Box<dyn StdError>> {
             if dump_state_last_t.elapsed()? >= *p {
                 coalesce
                     .dump_state(&mut dl.output)
-                    // .context("dump state")?;
-                    .map_err(|e| format!("dump state: {}", e))?;
+                    .map_err(|e| anyhow!("dump state: {e}"))?;
                 dump_state_last_t = SystemTime::now();
             }
         }
@@ -469,9 +469,8 @@ pub fn main() {
     match run_app() {
         Ok(_) => (),
         Err(e) => {
-            let e = e.to_string();
-            log::error!("{}", &e);
-            std::process::abort();
+            log::error!("{e:#}");
+            std::process::exit(1);
         }
     };
 }
