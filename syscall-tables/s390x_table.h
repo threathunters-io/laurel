@@ -1,5 +1,5 @@
 /* s390x_table.h --  64 bit
- * Copyright 2005-06,2008-21 Red Hat Inc.
+ * Copyright 2005-06,2008-24 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -375,4 +375,13 @@ _S(449, "futex_waitv")
 _S(450, "set_mempolicy_home_node")
 _S(451, "cachestat")
 _S(452, "fchmodat2")
+_S(453, "map_shadow_stack")
+_S(454, "futex_wake")
+_S(455, "futex_wait")
+_S(456, "futex_requeue")
+_S(457, "statmount")
+_S(458, "listmount")
+_S(459, "lsm_get_self_attr")
+_S(460, "lsm_set_self_attr")
+_S(461, "lsm_list_modules")
 
