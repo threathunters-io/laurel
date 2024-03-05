@@ -10,7 +10,7 @@ use serde_json::json;
 use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
 use crate::label_matcher::LabelMatcher;
 use crate::parser::{parse, ParseError};
-use crate::proc::{ContainerInfo, ProcTable, Process, ProcessKey};
+use crate::proc::{self, ContainerInfo, ProcTable, Process, ProcessKey};
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 #[cfg(target_os = "linux")]
@@ -301,15 +301,14 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
     }
 
-    pub fn initialize(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn initialize(&mut self) -> Result<(), proc::ProcError> {
         if self.settings.translate_userdb {
             self.userdb.populate();
         }
         self.processes = ProcTable::from_proc(
             self.settings.label_exe.clone(),
             &self.settings.proc_propagate_labels,
-        )
-        .map_err(|e| format!("populate proc table: {}", e))?;
+        )?;
 
         Ok(())
     }

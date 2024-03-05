@@ -1,12 +1,12 @@
-use std::boxed::Box;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
-use std::error::Error;
 use std::fmt::{self, Display};
 use std::iter::Iterator;
 use std::vec::Vec;
 
 use serde::{Serialize, Serializer};
+
+use thiserror::Error;
 
 use crate::label_matcher::LabelMatcher;
 use crate::types::EventID;
@@ -120,11 +120,18 @@ impl From<procfs::ProcPidInfo> for Process {
 impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
     #[cfg(all(feature = "procfs", target_os = "linux"))]
-    pub fn parse_proc(pid: u32) -> Result<Process, Box<dyn Error>> {
+    pub fn parse_proc(pid: u32) -> Result<Process, ProcError> {
         procfs::parse_proc_pid(pid)
             .map(|p| p.into())
-            .map_err(|e| e.into())
+            .map_err(ProcError::ProcFSError)
     }
+}
+
+#[derive(Debug, Error)]
+pub enum ProcError {
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    #[error("{0}")]
+    ProcFSError(procfs::ProcFSError),
 }
 
 /// Shadow process table
@@ -145,7 +152,7 @@ impl ProcTable {
     pub fn from_proc(
         label_exe: Option<LabelMatcher>,
         propagate_labels: &HashSet<Vec<u8>>,
-    ) -> Result<ProcTable, Box<dyn Error>> {
+    ) -> Result<ProcTable, ProcError> {
         let mut pt = ProcTable {
             processes: BTreeMap::new(),
             current: BTreeMap::new(),
@@ -153,7 +160,7 @@ impl ProcTable {
 
         #[cfg(all(feature = "procfs", target_os = "linux"))]
         {
-            for pid in procfs::get_pids()? {
+            for pid in procfs::get_pids().map_err(ProcError::ProcFSError)? {
                 // /proc/<pid> access is racy. Ignore errors here.
                 if let Ok(mut proc) = Process::parse_proc(pid) {
                     if let (Some(label_exe), Some(exe)) = (&label_exe, &proc.exe) {
@@ -293,6 +300,7 @@ impl ProcTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error;
     #[test]
     fn show_processes() -> Result<(), Box<dyn Error>> {
         let pt = ProcTable::from_proc(None, &HashSet::new())?;

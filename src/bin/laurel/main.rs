@@ -313,9 +313,7 @@ fn run_app() -> Result<(), anyhow::Error> {
     }
 
     coalesce.settings = config.make_coalesce_settings();
-    coalesce
-        .initialize()
-        .map_err(|e| anyhow!("Failed to initialize: {e}"))?;
+    coalesce.initialize().context("Failed to initialize")?;
 
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();
