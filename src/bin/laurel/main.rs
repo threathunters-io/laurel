@@ -18,6 +18,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Context};
 
+use nix::sys::signal::{sigprocmask, SigSet, SigmaskHow::*, Signal::*};
 use nix::unistd::{chown, execve, Uid, User};
 #[cfg(target_os = "linux")]
 use nix::unistd::{setresgid, setresuid};
@@ -325,6 +326,7 @@ fn run_app() -> Result<(), anyhow::Error> {
     let dump_state_period = config.debug.dump_state_period.map(Duration::from_secs);
     let mut dump_state_last_t = SystemTime::now();
 
+    sigprocmask(SIG_UNBLOCK, Some(&SigSet::from_iter([SIGHUP])), None)?;
     let hup = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGHUP, Arc::clone(&hup))?;
 
