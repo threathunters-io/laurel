@@ -1170,6 +1170,10 @@ mod test {
             !output.contains(r#""egid":0,"#),
             "output does not contain raw egid"
         );
+        assert!(
+            output.contains(r#"NODE":"work","#),
+            "node name is encoded correctly."
+        );
 
         Ok(())
     }
