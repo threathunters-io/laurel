@@ -362,14 +362,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     format!("unknown({})", d)
                 };
                 rec.push((Key::NameTranslated(r.clone()), Value::from(translated)));
-                if self.settings.enrich_uid_groups && r.as_slice() == b"uid" {
-                    if let Some(names) = self.userdb.get_user_groups(*d as _) {
-                        rec.push((
-                            Key::Literal("UID_GROUPS"),
-                            Value::List(names.iter().map(|n| Value::from(n.as_bytes())).collect()),
-                        ));
-                    }
-                }
                 true
             }
             (Key::NameGID(r), Value::Number(Number::Dec(d))) => {
@@ -384,6 +376,22 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 true
             }
             _ => false,
+        }
+    }
+
+    fn add_record_uid_groups(&mut self, rec: &mut Record, key: &Key, value: &Value) {
+        if !self.settings.enrich_uid_groups {
+            return;
+        }
+        if let (Key::NameUID(r), Value::Number(Number::Dec(d))) = (key, value) {
+            if r.as_slice() == b"uid" {
+                if let Some(names) = self.userdb.get_user_groups(*d as _) {
+                    rec.push((
+                        Key::Literal("UID_GROUPS"),
+                        Value::List(names.iter().map(|n| Value::from(n.as_bytes())).collect()),
+                    ));
+                }
+            }
         }
     }
 
@@ -703,6 +711,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         };
                     }
                     _ => {
+                        self.add_record_uid_groups(&mut nrv, k, v);
                         if self.add_record_userdb(&mut nrv, k, v) && self.settings.drop_translated {
                             return false;
                         }
