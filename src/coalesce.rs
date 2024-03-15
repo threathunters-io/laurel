@@ -1288,6 +1288,22 @@ mod test {
     }
 
     #[test]
+    fn enrich_uid_groups() {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.translate_userdb = false;
+        c.settings.enrich_uid_groups = true;
+
+        process_record(&mut c, include_bytes!("testdata/record-execve.txt")).unwrap();
+
+        assert!(
+            event_to_json(ec.borrow().as_ref().unwrap()).contains(r#""UID_GROUPS":["#),
+            "enrich.uid_groups is performed regardless of translate.userdb"
+        );
+    }
+
+    #[test]
     fn key_label() -> Result<(), Box<dyn Error>> {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
 
