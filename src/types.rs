@@ -70,7 +70,7 @@ impl Serialize for Event<'_> {
         map.serialize_value(&self.id)?;
         if let Some(node) = &self.node {
             map.serialize_key("NODE")?;
-            map.serialize_value(&node)?;
+            map.serialize_value(&Bytes(node))?;
         }
         for (k, v) in &self.body {
             map.serialize_entry(&k, &v)?;
