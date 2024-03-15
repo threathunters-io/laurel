@@ -39,6 +39,10 @@ The provided container image build includes default labels via docker buildx fro
 
 The provided container image contains the default configuration, with one modification: Laurel connects to `/var/run/audispd_events` (the default path specified for the `builtin_af_unix` _auditd(8)_ plug-in. The plug-in needs to be enabled and the socket must be accessible from within the container. The rest of the configuration file should be customized as needed before deploying.
 
+## See also
+
+- [ansible-auditd-laurel](https://github.com/certeu/ansible-auditd-laurel/), an Ansible role to deploy _auditd_ + _laurel_, by @0xFustang / CERT-EU
+
 ## License
 
 GNU General Public License, version 3
