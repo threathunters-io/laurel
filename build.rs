@@ -41,7 +41,7 @@ fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
             buf.push(',');
         }
         buf.push_str("] { t.insert(*num, *name); } ");
-        buf.push_str(format!(" hm.insert(\"{}\", t); }}\n", &arch).as_str());
+        buf.push_str(format!(" hm.insert(\"{arch}\", t); }}\n").as_str());
     }
     Ok(buf)
 }
@@ -94,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &String::from_iter(
                 constants
                     .iter()
-                    .map(|(name, value)| format!(r#"("{}", {}), "#, name, value)),
+                    .map(|(name, value)| format!(r#"("{name}", {value}), "#)),
             ),
         )
         .replace(
@@ -104,12 +104,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .iter()
                     .filter(|(_, typ)| typ == "encoded" || typ.starts_with("numeric"))
                     .map(|(name, typ)| match typ.as_str() {
-                        "numeric hexadecimal" => format!(r#"("{}", FieldType::NumericHex),"#, name),
-                        "numeric decimal" => format!(r#"("{}", FieldType::NumericDec),"#, name),
-                        "numeric octal" => format!(r#"("{}", FieldType::NumericOct),"#, name),
-                        "numeric" => format!(r#"("{}", FieldType::Numeric),"#, name),
-                        "encoded" => format!(r#"("{}", FieldType::Encoded),"#, name),
-                        _ => format!(r#"("{}", FieldType::Invalid),"#, name),
+                        "numeric hexadecimal" => format!(r#"("{name}", FieldType::NumericHex),"#),
+                        "numeric decimal" => format!(r#"("{name}", FieldType::NumericDec),"#),
+                        "numeric octal" => format!(r#"("{name}", FieldType::NumericOct),"#),
+                        "numeric" => format!(r#"("{name}", FieldType::Numeric),"#),
+                        "encoded" => format!(r#"("{name}", FieldType::Encoded),"#),
+                        _ => format!(r#"("{name}", FieldType::Invalid),"#),
                     }),
             ),
         )
@@ -117,8 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/* @CONSTANTS@ */",
             &String::from_iter(constants.iter().map(|(name, value)| {
                 format!(
-                    "#[allow(dead_code)] pub const {}: MessageType = MessageType({});\n",
-                    name, value
+                    "#[allow(dead_code)] pub const {name}: MessageType = MessageType({value});\n",
                 )
             })),
         )
@@ -143,8 +142,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=const.rs.in");
     #[cfg(target_os = "linux")]
     println!("cargo:rerun-if-changed=src/sockaddr.h");
-    println!("cargo:rerun-if-changed={}", msg_file);
-    println!("cargo:rerun-if-changed={}", fields_file);
+    println!("cargo:rerun-if-changed={msg_file}");
+    println!("cargo:rerun-if-changed={fields_file}");
 
     Ok(())
 }

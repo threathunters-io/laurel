@@ -62,7 +62,7 @@ impl FileRotate {
             let mut old = self.basename.clone();
             match suffix {
                 0 => (),
-                _ => old.push(format!(".{}", suffix)),
+                _ => old.push(format!(".{suffix}")),
             };
             let mut new = self.basename.clone();
             new.push(format!(".{}", suffix + 1));
@@ -87,7 +87,7 @@ impl FileRotate {
             AclEntry::allow_other(Perm::empty(), None),
         ];
         for uid in &self.uids {
-            acl.push(AclEntry::allow_user(&format!("{}", uid), Perm::READ, None));
+            acl.push(AclEntry::allow_user(&format!("{uid}"), Perm::READ, None));
         }
 
         if let Ok(mut f) = OpenOptions::new().append(true).open(&self.basename) {

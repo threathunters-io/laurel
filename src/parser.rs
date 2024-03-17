@@ -569,7 +569,7 @@ mod test {
         );
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "arch: Num:<0xc000003e>",
@@ -622,7 +622,7 @@ mod test {
         );
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!("argc: Num:<0>", "a0: Str:<whoami>")
         );
@@ -638,7 +638,7 @@ mod test {
         );
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "item: Num:<0>",
@@ -668,7 +668,7 @@ mod test {
         );
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "item: Num:<1>",
@@ -698,7 +698,7 @@ mod test {
                 sequence: 15220
             }
         );
-        assert_eq!(rv.into_iter().map(|(k,v)| format!("{:?}: {:?}", k, v)).collect::<Vec<_>>(),
+        assert_eq!(rv.into_iter().map(|(k,v)| format!("{k:?}: {v:?}")).collect::<Vec<_>>(),
                    vec!("pid: Num:<9460>",
                         "uid: Num:<1000>",
                         "auid: Num:<1000>",
@@ -722,7 +722,7 @@ mod test {
         assert_eq!(t, AVC);
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "pid: Num:<15381>",
@@ -740,7 +740,7 @@ mod test {
         assert_eq!(t, AVC);
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "pid: Num:<11209>",
@@ -756,7 +756,7 @@ mod test {
         assert_eq!(t, MAC_UNLBL_ALLOW);
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "auid: Num:<0>",
@@ -772,7 +772,7 @@ mod test {
         let (_, _, _, rv) = do_parse(include_bytes!("testdata/line-broken-subj1.txt")).unwrap();
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "arch: Num:<0xc000003e>",
@@ -807,7 +807,7 @@ mod test {
         let (_, _, _, rv) = do_parse(include_bytes!("testdata/line-broken-subj2.txt")).unwrap();
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "arch: Num:<0xc000003e>",
@@ -842,7 +842,7 @@ mod test {
         let (_, _, _, rv) = do_parse(include_bytes!("testdata/line-broken-avc-info.txt")).unwrap();
         assert_eq!(
             rv.into_iter()
-                .map(|(k, v)| format!("{:?}: {:?}", k, v))
+                .map(|(k, v)| format!("{k:?}: {v:?}"))
                 .collect::<Vec<_>>(),
             vec!(
                 "apparmor: Str:<STATUS>",

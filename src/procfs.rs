@@ -137,7 +137,7 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         })
         .ok();
 
-    let exe = read_link(format!("/proc/{}/exe", pid))
+    let exe = read_link(format!("/proc/{pid}/exe"))
         .map(|p| Vec::from(p.as_os_str().as_bytes()))
         .ok();
 
@@ -232,7 +232,7 @@ mod tests {
 "#;
         {
             parse_cgroup_buf(testdata).map_err(|e| -> Box<dyn std::error::Error> {
-                format!("{}: {}", String::from_utf8_lossy(testdata), e).into()
+                format!("{}: {e}", String::from_utf8_lossy(testdata)).into()
             })?;
         }
         Ok(())

@@ -190,11 +190,11 @@ fn run_app() -> Result<(), anyhow::Error> {
 
     let runas_user = match config.user {
         Some(ref username) => {
-            User::from_name(username)?.ok_or_else(|| anyhow!("user {} not found", username))?
+            User::from_name(username)?.ok_or_else(|| anyhow!("user {username} not found"))?
         }
         None => {
             let uid = Uid::effective();
-            User::from_uid(uid)?.ok_or_else(|| anyhow!("uid {} not found", uid))?
+            User::from_uid(uid)?.ok_or_else(|| anyhow!("uid {uid} not found"))?
         }
     };
 
@@ -245,7 +245,7 @@ fn run_app() -> Result<(), anyhow::Error> {
         for user in &def.clone().users.unwrap_or_default() {
             rot = rot.with_uid(
                 User::from_name(user)?
-                    .ok_or_else(|| anyhow!("user {} not found", &user))?
+                    .ok_or_else(|| anyhow!("user {user} not found"))?
                     .uid,
             );
         }
@@ -270,7 +270,7 @@ fn run_app() -> Result<(), anyhow::Error> {
     }
     #[cfg(target_os = "linux")]
     if let Err(e) = caps::clear(None, CapSet::Ambient) {
-        log::warn!("could not set ambient capabilities: {}", e);
+        log::warn!("could not set ambient capabilities: {e}");
     }
 
     // Initial setup is done at this point.
@@ -343,7 +343,7 @@ fn run_app() -> Result<(), anyhow::Error> {
                             .context("write log")?;
                     }
                     let line = String::from_utf8_lossy(line).replace('\n', "");
-                    log::error!("Error {} processing msg: {}", e, &line);
+                    log::error!("Error {e} processing msg: {line}");
                 }
             }
             coalesce.flush();
@@ -351,7 +351,7 @@ fn run_app() -> Result<(), anyhow::Error> {
             use std::ffi::CString;
             let argv: Vec<CString> = env::args().map(|a| CString::new(a).unwrap()).collect();
             let env: Vec<CString> = env::vars()
-                .map(|(k, v)| CString::new(format!("{}={}", k, v)).unwrap())
+                .map(|(k, v)| CString::new(format!("{k}={v}")).unwrap())
                 .collect();
 
             #[cfg(target_os = "linux")]
@@ -360,7 +360,7 @@ fn run_app() -> Result<(), anyhow::Error> {
                 capabilities.insert(Capability::CAP_SYS_PTRACE);
                 capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
                 if let Err(e) = caps::set(None, CapSet::Ambient, &capabilities) {
-                    log::warn!("could not set ambient capabilities: {}", e);
+                    log::warn!("could not set ambient capabilities: {e}");
                 }
             }
             execve(&argv[0], &argv, &env)?;
@@ -386,7 +386,7 @@ fn run_app() -> Result<(), anyhow::Error> {
                         .context("write log")?;
                 }
                 let line = String::from_utf8_lossy(&line).replace('\n', "");
-                log::error!("Error {} processing msg: {}", e, &line);
+                log::error!("Error {e} processing msg: {line}");
                 continue;
             }
         };
@@ -461,8 +461,7 @@ pub fn main() {
                 Some(l) => format!("{}:{},{}", l.file(), l.line(), l.column()),
                 None => "(unknown)".to_string(),
             };
-            let e = format!("fatal error '{}' at {}", &message, &location);
-            log::error!("{}", &e);
+            log::error!("fatal error '{message}' at {location}");
         }));
     }
 

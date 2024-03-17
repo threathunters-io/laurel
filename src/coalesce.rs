@@ -359,7 +359,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 } else if let Some(user) = self.userdb.get_user(*d as u32) {
                     user
                 } else {
-                    format!("unknown({})", d)
+                    format!("unknown({d})")
                 };
                 rec.push((Key::NameTranslated(r.clone()), Value::from(translated)));
                 true
@@ -370,7 +370,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 } else if let Some(group) = self.userdb.get_group(*d as u32) {
                     group
                 } else {
-                    format!("unknown({})", d)
+                    format!("unknown({d})")
                 };
                 rec.push((Key::NameTranslated(r.clone()), Value::from(translated)));
                 true
@@ -1162,7 +1162,7 @@ mod test {
             .unwrap()
             .name;
         let output = event_to_json(ec.borrow().last().unwrap());
-        println!("{}", output);
+        println!("{output}");
         assert!(
             output.contains(r#""UID":"root","#),
             "output contains translated UID"
@@ -1202,8 +1202,7 @@ mod test {
             let l = records[0].len();
             assert!(
                 l == 12,
-                "expected 12 fields, got {}: {:?}",
-                l,
+                "expected 12 fields, got {l}: {:?}",
                 records[0].into_iter().collect::<Vec<_>>()
             );
         } else {
@@ -1245,18 +1244,16 @@ mod test {
             for (k, v) in record {
                 if k.to_string().ends_with("UID") {
                     uids += 1;
-                    assert!(v == "root", "Got {}={:?}, expected root", k, v);
+                    assert!(v == "root", "Got {k}={v:?}, expected root");
                 }
                 if k.to_string().ends_with("GID") {
                     gids += 1;
-                    assert!(v == gid0name.as_str(), "Got {}={:?}, expected root", k, v);
+                    assert!(v == gid0name.as_str(), "Got {k}={v:?}, expected root");
                 }
             }
             assert!(
                 uids == 5 && gids == 4,
-                "Got {} uids/{} gids, expected 5/4",
-                uids,
-                gids
+                "Got {uids} uids/{gids} gids, expected 5/4",
             );
         }
 
@@ -1485,25 +1482,23 @@ mod test {
         let npath = 40000;
 
         buf.extend(
-            format!(r#"type=SYSCALL msg=audit({}): arch=c000003e syscall=59 success=yes exit=0 a0=1468e584be18 a1=1468e57f5078 a2=1468e584bd68 a3=7ffc3e352220 items=2 ppid=9264 pid=9279 auid=4294967295 uid=995 gid=992 euid=995 suid=995 fsuid=995 egid=992 sgid=992 fsgid=992 tty=(none) ses=4294967295 comm="find" exe="/usr/bin/find" key=(null)
-"#, msgid).bytes());
+            format!(r#"type=SYSCALL msg=audit({msgid}): arch=c000003e syscall=59 success=yes exit=0 a0=1468e584be18 a1=1468e57f5078 a2=1468e584bd68 a3=7ffc3e352220 items=2 ppid=9264 pid=9279 auid=4294967295 uid=995 gid=992 euid=995 suid=995 fsuid=995 egid=992 sgid=992 fsgid=992 tty=(none) ses=4294967295 comm="find" exe="/usr/bin/find" key=(null)
+"#).bytes());
         buf.extend(
             format!(
-                r#"type=EXECVE msg=audit({}): argc={} a0="/usr/bin/find" "#,
-                msgid,
+                r#"type=EXECVE msg=audit({msgid}): argc={} a0="/usr/bin/find" "#,
                 npath + 9
             )
             .bytes(),
         );
         for i in 1..npath {
             if i % 70 == 0 {
-                buf.extend(format!("\ntype=EXECVE msg=audit({}): ", msgid).bytes());
+                buf.extend(format!("\ntype=EXECVE msg=audit({msgid}): ").bytes());
             } else {
                 buf.push(b' ');
             }
-            buf.extend(format!(r#"a{}="/opt/app/redacted/to/protect/the/guilty/output_processing.2022-09-06.{:05}.garbage""#,i,i).bytes());
+            buf.extend(format!(r#"a{i}="/opt/app/redacted/to/protect/the/guilty/output_processing.2022-09-06.{i:05}.garbage""#).bytes());
         }
-        // buf.extend(format!("type=EXECVE msg=audit({}):", msgid).bytes());
         for (i, param) in [
             "-type",
             "f",
@@ -1518,9 +1513,9 @@ mod test {
         .iter()
         .enumerate()
         {
-            buf.extend(format!(r#" a{}="{}""#, npath + i, param).bytes());
+            buf.extend(format!(r#" a{}="{param}""#, npath + i).bytes());
         }
-        buf.extend(format!("\ntype=EOE msg=audit({}): \n", msgid).bytes());
+        buf.extend(format!("\ntype=EOE msg=audit({msgid}): \n").bytes());
 
         process_record(&mut c, &buf)?;
         {

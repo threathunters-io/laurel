@@ -92,13 +92,10 @@ pub struct EventID {
 
 impl Display for EventID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}.{:03}:{}",
-            self.timestamp / 1000,
-            self.timestamp % 1000,
-            self.sequence
-        )
+        let sec = self.timestamp / 1000;
+        let msec = self.timestamp % 1000;
+        let seq = self.sequence;
+        write!(f, "{sec}.{msec:03}:{seq}")
     }
 }
 
@@ -132,7 +129,7 @@ pub struct MessageType(pub u32);
 impl Display for MessageType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match EVENT_NAMES.get(&(self.0)) {
-            Some(name) => write!(f, "{}", name),
+            Some(name) => write!(f, "{name}"),
             None => write!(f, "UNKNOWN[{}]", self.0),
         }
     }
@@ -140,14 +137,10 @@ impl Display for MessageType {
 
 impl Debug for MessageType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "MessageType({})",
-            match EVENT_NAMES.get(&(self.0)) {
-                Some(name) => name.to_string(),
-                None => format!("{}", self.0),
-            }
-        )
+        match EVENT_NAMES.get(&(self.0)) {
+            Some(name) => write!(f, "MessageType({name})"),
+            None => write!(f, "MessageType({})", self.0),
+        }
     }
 }
 
@@ -248,7 +241,8 @@ impl From<Common> for &'static str {
 
 impl Display for Common {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", COMMON[*self as usize].0)
+        let c = COMMON[*self as usize].0;
+        write!(f, "{c}")
     }
 }
 
@@ -290,15 +284,15 @@ impl Debug for Key {
 impl Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Key::Arg(x, Some(y)) => write!(f, "a{}[{}]", x, y),
-            Key::Arg(x, None) => write!(f, "a{}", x),
-            Key::ArgLen(x) => write!(f, "a{}_len", x),
+            Key::Arg(x, Some(y)) => write!(f, "a{x}[{y}]"),
+            Key::Arg(x, None) => write!(f, "a{x}"),
+            Key::ArgLen(x) => write!(f, "a{x}_len"),
             Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
                 // safety: The parser guarantees an ASCII-only key.
                 let s = unsafe { str::from_utf8_unchecked(r) };
                 f.write_str(s)
             }
-            Key::Common(c) => write!(f, "{}", c),
+            Key::Common(c) => write!(f, "{c}"),
             Key::NameTranslated(r) => {
                 // safety: The parser guarantees an ASCII-only key.
                 let s = unsafe { str::from_utf8_unchecked(r) };
@@ -313,14 +307,14 @@ impl Serialize for Key {
     #[inline(always)]
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
-            Key::Arg(x, Some(y)) => s.collect_str(&format_args!("a{}[{}]", x, y)),
-            Key::Arg(x, None) => s.collect_str(&format_args!("a{}", x)),
-            Key::ArgLen(x) => s.collect_str(&format_args!("a{}_len", x)),
+            Key::Arg(x, Some(y)) => s.collect_str(&format_args!("a{x}[{y}]")),
+            Key::Arg(x, None) => s.collect_str(&format_args!("a{x}")),
+            Key::ArgLen(x) => s.collect_str(&format_args!("a{x}_len")),
             Key::Name(r) | Key::NameUID(r) | Key::NameGID(r) => {
                 // safety: The parser guarantees an ASCII-only key.
                 s.collect_str(unsafe { str::from_utf8_unchecked(r) })
             }
-            Key::Common(c) => s.collect_str(&format_args!("{}", c)),
+            Key::Common(c) => s.collect_str(c),
             Key::NameTranslated(r) => {
                 // safety: The parser guarantees an ASCII-only key.
                 s.collect_str(&str::to_ascii_uppercase(unsafe {
@@ -377,16 +371,16 @@ pub enum Number {
 
 impl Debug for Number {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Num:<{}>", self)
+        write!(f, "Num:<{self}>")
     }
 }
 
 impl Display for Number {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Number::Hex(n) => write!(f, "0x{:x}", n),
-            Number::Dec(n) => write!(f, "{}", n),
-            Number::Oct(n) => write!(f, "0o{:o}", n),
+            Number::Hex(n) => write!(f, "0x{n:x}"),
+            Number::Oct(n) => write!(f, "0o{n:o}"),
+            Number::Dec(n) => write!(f, "{n}"),
         }
     }
 }
@@ -396,7 +390,7 @@ impl Serialize for Number {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self {
             Number::Dec(n) => s.serialize_i64(*n),
-            _ => s.collect_str(&format_args!("{}", self)),
+            _ => s.collect_str(&self),
         }
     }
 }
@@ -701,16 +695,16 @@ impl Debug for Value<'_> {
                                 write!(f, "{}", String::from_utf8_lossy(r))?;
                             }
                         }
-                        Value::Number(n) => write!(f, "{:?}", n)?,
-                        Value::Skipped(n) => {
-                            write!(f, "Skip<elems{} bytes={}>", n.0, n.1)?;
+                        Value::Number(n) => write!(f, "{n:?}")?,
+                        Value::Skipped((elems, bytes)) => {
+                            write!(f, "Skip<elems{elems} bytes={bytes}>")?;
                         }
                         Value::Empty => panic!("list can't contain empty value"),
                         Value::List(_) | Value::StringifiedList(_) => {
                             panic!("list can't contain list")
                         }
                         Value::Map(_) => panic!("list can't contain map"),
-                        Value::Literal(v) => write!(f, "{:?}", v)?,
+                        Value::Literal(v) => write!(f, "{v:?}")?,
                         Value::Owned(v) => write!(f, "{}", String::from_utf8_lossy(v))?,
                     }
                 }
@@ -731,16 +725,16 @@ impl Debug for Value<'_> {
                                 write!(f, "{}", String::from_utf8_lossy(r))?;
                             }
                         }
-                        Value::Number(n) => write!(f, "{:?}", n)?,
-                        Value::Skipped(n) => {
-                            write!(f, "Skip<elems={} bytes={}>", n.0, n.1)?;
+                        Value::Number(n) => write!(f, "{n:?}")?,
+                        Value::Skipped((elems, bytes)) => {
+                            write!(f, "Skip<elems={elems} bytes={bytes}>")?;
                         }
                         Value::Empty => panic!("list can't contain empty value"),
                         Value::List(_) | Value::StringifiedList(_) => {
                             panic!("list can't contain list")
                         }
                         Value::Map(_) => panic!("List can't contain mapr"),
-                        Value::Literal(v) => write!(f, "{}", v)?,
+                        Value::Literal(v) => write!(f, "{v}")?,
                         Value::Owned(v) => write!(f, "{}", String::from_utf8_lossy(v))?,
                     }
                 }
@@ -748,22 +742,17 @@ impl Debug for Value<'_> {
             }
             Value::Map(vs) => {
                 write!(f, "Map:<")?;
-                for (n, v) in vs.iter().enumerate() {
+                for (n, (k, v)) in vs.iter().enumerate() {
                     if n > 0 {
                         write!(f, " ")?;
                     }
-                    let v = match &v.1 {
-                        Value::Str(r, _q) => String::from_utf8_lossy(r).into(),
-                        Value::Number(n) => format!("{:?}", n),
-                        _ => todo!(),
-                    };
-                    write!(f, "{}={}", n, v)?;
+                    write!(f, "{k:?}={v:?}")?;
                 }
                 write!(f, ">")
             }
-            Value::Number(n) => write!(f, "{:?}", n),
-            Value::Skipped(n) => write!(f, "Skip<elems={} bytes={}>", n.0, n.1),
-            Value::Literal(s) => write!(f, "{:?}", s),
+            Value::Number(n) => write!(f, "{n:?}"),
+            Value::Skipped((elems, bytes)) => write!(f, "Skip<elems={elems} bytes={bytes}>"),
+            Value::Literal(s) => write!(f, "{s:?}"),
             Value::Owned(v) => write!(f, "{}", String::from_utf8_lossy(v)),
         }
     }
@@ -801,9 +790,7 @@ impl Serialize for Value<'_> {
                         buf.push(b' ');
                     }
                     if let Value::Skipped((args, bytes)) = v {
-                        buf.extend(
-                            format!("<<< Skipped: args={}, bytes={} >>>", args, bytes).bytes(),
-                        );
+                        buf.extend(format!("<<< Skipped: args={args}, bytes={bytes} >>>").bytes());
                     } else {
                         buf.extend(v.clone().try_into().unwrap_or_else(|_| vec![b'x']));
                     }

@@ -110,11 +110,11 @@ fn main() {
                     };
                     if let Some(serde_json::Value::String(s)) = r.0.get("ARGV_STR") {
                         for (n, arg) in s.split(' ').enumerate() {
-                            r2.0.insert(format!("a{}", n), serde_json::Value::String(arg.into()));
+                            r2.0.insert(format!("a{n}"), serde_json::Value::String(arg.into()));
                         }
                     } else if let Some(serde_json::Value::Array(a)) = r.0.get("ARGV") {
                         for (n, arg) in a.iter().enumerate() {
-                            r2.0.insert(format!("a{}", n), arg.clone());
+                            r2.0.insert(format!("a{n}"), arg.clone());
                         }
                     } else {
                         continue;
