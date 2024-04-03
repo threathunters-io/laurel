@@ -846,6 +846,8 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 _ => None,
             },
         };
+        #[cfg(not(all(feature = "procfs", target_os = "linux")))]
+        let script = None;
 
         #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let (Some(ref mut proc), Some(script)) = (&mut current_process, &script) {
