@@ -1052,6 +1052,10 @@ mod test {
         String::from_utf8_lossy(&out).to_string()
     }
 
+    fn find_event<'a>(events: &[Event<'a>], id: &str) -> Option<Event<'a>> {
+        events.iter().find(|e| &e.id == id).cloned()
+    }
+
     #[test]
     fn dump_state() -> Result<(), Box<dyn Error>> {
         let mut c = Coalesce::new(|_| {});
@@ -1578,10 +1582,7 @@ mod test {
             }
 
             for id in ids {
-                let event = events
-                    .iter()
-                    .find(|e| e.id.to_string() == id)
-                    .expect(&format!("Did not find {id}"));
+                let event = find_event(&events, id).expect(&format!("Did not find {id}"));
                 assert!(
                     event_to_json(&event).contains(r#""LABELS":["test-script"]"#),
                     "{id} was not labelled correctly."
@@ -1618,18 +1619,12 @@ mod test {
             let events = events.borrow();
 
             for id in ["1697091525.582:2588684", "1697091526.357:2638035"] {
-                let event = events
-                    .iter()
-                    .find(|e| e.id.to_string() == id)
-                    .expect(&format!("Did not find {id}"));
+                let event = find_event(&events, id).expect(&format!("Did not find {id}"));
                 println!("{}", event_to_json(&event));
             }
 
             let id = "1697091526.357:2638035";
-            let event = events
-                .iter()
-                .find(|e| e.id.to_string() == id)
-                .expect(&format!("Did not find {id}"));
+            let event = find_event(&events, id).expect(&format!("Did not find {id}"));
             assert!(
                 event_to_json(&event).contains(
                     r#""PPID":{"EVENT_ID":"1697091526.357:2638033","comm":"csh","exe":"/bin/tcsh","ppid":2542}"#),
