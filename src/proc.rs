@@ -235,7 +235,7 @@ impl ProcTable {
     ///
     /// It should be possible to run this every few seconds without
     /// incurring load.
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    #[cfg(all(feature = "procfs", target_os = "linux", not(test)))]
     pub fn expire(&mut self) {
         use std::collections::BTreeSet;
 
@@ -287,7 +287,7 @@ impl ProcTable {
 
     /// No expire mechanism has been implemented for the case where
     /// there's no procfs support.
-    #[cfg(not(all(feature = "procfs", target_os = "linux")))]
+    #[cfg(not(all(feature = "procfs", target_os = "linux", not(test))))]
     pub fn expire(&self) {}
 
     pub fn set_labels(&mut self, key: &ProcessKey, labels: &HashSet<Vec<u8>>) {
