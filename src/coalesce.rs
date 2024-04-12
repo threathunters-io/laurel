@@ -178,7 +178,7 @@ fn add_translated_socketaddr(rv: &mut Record, sa: SocketAddr) {
             m.push(("port".into(), (sa.port as i64).into()));
         }
     };
-    rv.push(("SADDRR".into(), Value::Map(m)));
+    rv.push(("SADDR".into(), Value::Map(m)));
 }
 
 /// Returns a script name from path if exe's dev / inode don't match
