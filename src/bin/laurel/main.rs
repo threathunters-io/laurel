@@ -220,7 +220,7 @@ fn run_app() -> Result<(), anyhow::Error> {
             != 0
         {
             log::warn!(
-                "Base directory {} must not be world-wirtable",
+                "Base directory {} must not be world-writable",
                 dir.to_string_lossy()
             );
         }
