@@ -926,9 +926,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// information), corresponding records are collected. The entire
     /// event is emitted only when an EOE ("end of event") line for
     /// the event is encountered.
-    ///
-    /// The line is consumed and serves as backing store for the
-    /// EventBody objects.
     pub fn process_line(&mut self, line: &[u8]) -> Result<(), CoalesceError> {
         let filter_raw = self.settings.filter_raw_lines.is_match(line);
 
