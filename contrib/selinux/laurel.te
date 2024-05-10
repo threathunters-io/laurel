@@ -52,10 +52,17 @@ files_getattr_all_files(laurel_t)
 ifdef(`distro_debian',`
 	gen_require(`type etc_t;')
 	allow laurel_t etc_t:file { open read };
+	ifdef(`systemd_stream_connect_userdb',`
+		systemd_stream_connect_userdb(laurel_t)
+	')
 ')
+
 ifdef(`distro_redhat',`
 	gen_require(`type passwd_file_t;')
 	allow laurel_t passwd_file_t:file { open read };
+	ifdef(`systemd_userdbd_stream_connect',`
+		systemd_userdbd_stream_connect(laurel_t)
+	')
 ')
 
 # Access user database via SSSD
