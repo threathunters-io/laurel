@@ -175,6 +175,10 @@ using them for internal processing such as process tracking.
   that contain such lines are then filtered. Default: empty
 - `filter-action`: What to do with filtered events? `drop` or `log` to the
   filterlog defined above.
+- `keep-first-per-process`: Keep the first event observed for any
+  given process even if it would be filtered otherwise. This should
+  only be turned off if reproducible process tracking or process tree
+  reconstruction is not required. Default: true
 
 # SIGNALS
 

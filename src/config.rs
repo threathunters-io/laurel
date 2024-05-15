@@ -165,6 +165,8 @@ pub struct Filter {
     pub filter_null_keys: bool,
     #[serde(default, rename = "filter-action")]
     pub filter_action: FilterAction,
+    #[serde(default = "true_value", rename = "keep-first-per-process")]
+    pub keep_first_per_process: bool,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -346,6 +348,7 @@ impl Config {
                 .collect(),
             filter_null_keys: self.filter.filter_null_keys,
             filter_raw_lines: self.filter.filter_raw_lines.clone(),
+            filter_first_per_process: !self.filter.keep_first_per_process,
         }
     }
 }
