@@ -4,7 +4,7 @@ version = "0.6.1"
 authors = ["Hilko Bengen <bengen@hilluzination.de>",
            "Sergej Schmidt <sergej@msgpeek.net>"]
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.70"
 description = "Transform Linux Audit logs for SIEM usage"
 homepage = "https://github.com/threathunters-io/laurel"
 repository = "https://github.com/threathunters-io/laurel"
