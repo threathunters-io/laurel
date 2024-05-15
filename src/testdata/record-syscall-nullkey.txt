@@ -1,9 +1,9 @@
-type=PROCTITLE msg=audit(1678282381.452:102337): proctitle="(systemd)"
+type=SYSCALL msg=audit(1678282381.452:102336): arch=c000003e syscall=59 success=yes exit=5 a0=9 a1=7ffd4ac563d1 a2=5 a3=0 items=0 ppid=1 pid=3489504 auid=34005 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=15589 comm="(systemd)" exe="/usr/lib/systemd/systemd" subj=system_u:system_r:init_t:s0 key=(null)
+type=EOE msg=audit(1678282381.452:102336): 
+
 type=SYSCALL msg=audit(1678282381.452:102337): arch=c000003e syscall=1 success=yes exit=5 a0=9 a1=7ffd4ac563d1 a2=5 a3=0 items=0 ppid=1 pid=3489504 auid=34005 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=15589 comm="(systemd)" exe="/usr/lib/systemd/systemd" subj=system_u:system_r:init_t:s0 key=(null)
 type=EOE msg=audit(1678282381.452:102337): 
-type=PROCTITLE msg=audit(1678282320.958:102262): proctitle=536f6d6552616e646f6d50726f63657373
-type=SYSCALL msg=audit(1678282320.958:102262): arch=c000003e syscall=1 success=yes exit=5 a0=3 a1=7ffd9f4453e0 a2=5 a3=0 items=0 ppid=8750 pid=3483623 auid=34025 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=15584 comm="sshd" exe="/bin/sshd" subj=system_u:system_r:sshd_t:s0-s0:c0.c1023 key=(null)
-type=EOE msg=audit(1678282320.958:102262): 
+
 type=PROCTITLE msg=audit(1678283440.683:225): proctitle=536f6d6552616e646f6d50726f63657373
 type=PATH msg=audit(1678283440.683:225): item=0 name="/proc/2414/root/usr/bin/su" inode=156161 dev=fd:00 mode=0104755 ouid=0 ogid=0 rdev=00:00 obj=system_u:object_r:su_exec_t:s0 objtype=NORMAL cap_fp=0000000000000000 cap_fi=0000000000000000 cap_fe=0 cap_fver=0
 type=SYSCALL msg=audit(1678283440.683:225): arch=c000003e syscall=4 success=yes exit=0 a0=7edd0caa2e7e0 a1=7345b64adba0 a2=7ff9874adba0 a3=feefeffefefefeff items=1 ppid=816 pid=818 auid=4292467295 uid=502 gid=502 euid=502 suid=502 fsuid=502 egid=502 sgid=502 fsgid=502 tty=(none) ses=4296967295 comm="cat" exe="/usr/bin/cat" subj=system_u:system_r:system_t:s0 key=(null)

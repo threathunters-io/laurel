@@ -158,6 +158,12 @@ filter-null-keys = false
 #     "^type=PATH msg=\\S*? item=\\S*? name=\"/var/run/nscd[.]sock\" "
 # ]
 
+# Keep the first event observed for any given process even if it would
+# be filtered otherwise. This should only be turned off if
+# reproducible process tracking or process tree reconstruction is not
+# required.
+# keep-first-per-processes = true
+
 # What to do with filtered events? "drop" or "log" to the filterlog
 # defined above.
 filter-action = "drop"

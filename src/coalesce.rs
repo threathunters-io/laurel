@@ -49,6 +49,7 @@ pub struct Settings {
     pub filter_labels: HashSet<Vec<u8>>,
     pub filter_null_keys: bool,
     pub filter_raw_lines: regex::bytes::RegexSet,
+    pub filter_first_per_process: bool,
 }
 
 impl Default for Settings {
@@ -75,6 +76,7 @@ impl Default for Settings {
             filter_labels: HashSet::new(),
             filter_null_keys: false,
             filter_raw_lines: regex::bytes::RegexSet::empty(),
+            filter_first_per_process: false,
         }
     }
 }
@@ -656,6 +658,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         let mut syscall_name: Option<&'static str> = None;
 
         let mut syscall_is_exec = false;
+        let mut force_keep = false;
         let mut current_process: Option<Process> = None;
         let mut parent: Option<Process> = None;
 
@@ -747,11 +750,12 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         // Process entry.
                         syscall_is_exec = sn.contains("execve");
                         parent = self.processes.get_or_retrieve(proc.ppid).cloned();
-                        let pr = if !syscall_is_exec {
-                            self.processes.get_or_retrieve(proc.pid)
+                        let pr;
+                        if syscall_is_exec {
+                            pr = None;
                         } else {
-                            None
-                        };
+                            pr = self.processes.get_or_retrieve(proc.pid);
+                        }
                         match pr {
                             Some(pr) if proc.ppid == pr.ppid && proc.exe == pr.exe => {
                                 // existing, plausible process in table
@@ -768,6 +772,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                             }
                             _ => {
                                 // first syscall in new process
+                                if !self.settings.filter_first_per_process {
+                                    ev.filter = false;
+                                    force_keep = true;
+                                }
                                 proc.key = ProcessKey::Event(ev.id);
                                 if let Some(pa) = &parent {
                                     proc.parent = Some(pa.key);
@@ -805,13 +813,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
 
             if let Some(key) = &key {
-                if self.settings.filter_keys.contains(key.as_ref()) {
+                if !force_keep && self.settings.filter_keys.contains(key.as_ref()) {
                     ev.filter = true;
                 }
                 if self.settings.proc_label_keys.contains(key.as_ref()) {
                     proc.labels.insert(key.to_vec());
                 }
-            } else if self.settings.filter_null_keys {
+            } else if !force_keep && self.settings.filter_null_keys {
                 ev.filter = true;
             }
 
@@ -866,10 +874,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         // filter early on labels
         if let Some(proc) = &current_process {
             self.processes.set_labels(&proc.key, &proc.labels);
-            if proc
-                .labels
-                .iter()
-                .any(|x| self.settings.filter_labels.contains(x))
+            if !force_keep
+                && proc
+                    .labels
+                    .iter()
+                    .any(|x| self.settings.filter_labels.contains(x))
             {
                 ev.filter = true;
             }
@@ -1398,7 +1407,19 @@ mod test {
         c.settings.filter_keys.insert(Vec::from(&b"this-too"[..]));
         process_record(&mut c, include_bytes!("testdata/record-syscall-key.txt"))?;
         drop(c);
-        assert!(events.borrow().is_empty());
+        // fist event for process -> don't filter
+        assert!(events
+            .borrow()
+            .iter()
+            .any(|e| &e.id == "1628602815.266:2365"));
+        assert!(!events
+            .borrow()
+            .iter()
+            .any(|e| &e.id == "1628602815.266:2366"));
+        assert!(!events
+            .borrow()
+            .iter()
+            .any(|e| &e.id == "1628602815.266:2367"));
 
         let mut c = Coalesce::new(mk_emit_vec(&events));
         c.settings.filter_null_keys = true;
@@ -1407,7 +1428,17 @@ mod test {
             include_bytes!("testdata/record-syscall-nullkey.txt"),
         )?;
         drop(c);
-        assert!(events.borrow().is_empty());
+
+        // not first event for process -> filter
+        assert!(!events
+            .borrow()
+            .iter()
+            .any(|e| &e.id == "1678282381.452:102337"));
+        // fist event for process -> don't filter
+        assert!(events
+            .borrow()
+            .iter()
+            .any(|e| &e.id == "1678283440.683:225"));
 
         let mut c = Coalesce::new(mk_emit_vec(&events));
         c.settings
@@ -1425,6 +1456,7 @@ mod test {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
 
         let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.filter_first_per_process = true;
         c.settings
             .proc_label_keys
             .insert(Vec::from(&b"software_mgmt"[..]));
@@ -1464,11 +1496,15 @@ mod test {
             "^type=SOCKADDR (?:node=\\$*? )?msg=audit\\(\\S*?\\): saddr=01002F7661722F72756E2F6E7363642F736F636B657400",
         ])
         .expect("failed to compile regex");
+        c.settings.filter_first_per_process = true;
 
         process_record(&mut c, include_bytes!("testdata/record-nscd.txt")).unwrap();
 
         assert!(
-            events.borrow().is_empty(),
+            !events
+                .borrow()
+                .iter()
+                .any(|e| &e.id == "1705071450.879:29498378"),
             "nscd connect event should be filtered"
         )
     }
@@ -1550,10 +1586,15 @@ mod test {
         };
         let s2 = Settings {
             filter_keys: [b"fork".to_vec()].into(),
+            filter_first_per_process: true,
             ..s1.clone()
         };
+        let s3 = Settings {
+            filter_first_per_process: false, // default in 0.6.2+
+            ..s2.clone()
+        };
 
-        for (n, s) in [s1, s2].iter().enumerate() {
+        for (n, s) in [s1, s2, s3].iter().enumerate() {
             let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
             let mut c = Coalesce::new(mk_emit_vec(&events));
 
@@ -1564,26 +1605,55 @@ mod test {
 
             let events = events.borrow();
 
-            let mut ids = vec![
+            let mut present_and_label = vec![
                 "1682609045.526:29238",
                 "1682609045.530:29242",
                 "1682609045.530:29244",
                 "1682609045.534:29245",
             ];
-            if n == 0 {
-                ids.extend([
-                    "1682609045.530:29240",
-                    "1682609045.530:29241",
-                    "1682609045.530:29243",
-                ]);
-            }
+            let mut absent = vec![];
+            match n {
+                0 => {
+                    present_and_label.extend([
+                        "1682609045.530:29239",
+                        "1682609045.530:29240",
+                        "1682609045.530:29241",
+                        "1682609045.530:29243",
+                    ]);
+                }
+                1 => {
+                    absent.extend([
+                        "1682609045.526:29237",
+                        "1682609045.530:29239",
+                        "1682609045.530:29240",
+                        "1682609045.530:29241",
+                        "1682609045.530:29243",
+                    ]);
+                }
+                2 => {
+                    // fork = first event in pid=71506
+                    present_and_label.extend(["1682609045.530:29241"]);
 
-            for id in ids {
+                    absent.extend([
+                        "1682609045.530:29239",
+                        "1682609045.530:29240",
+                        "1682609045.530:29243",
+                    ]);
+                }
+                _ => {}
+            };
+
+            for id in present_and_label {
                 let event = find_event(&events, id).expect(&format!("Did not find {id}"));
                 assert!(
                     event_to_json(&event).contains(r#""LABELS":["test-script"]"#),
                     "{id} was not labelled correctly."
                 );
+            }
+            for id in absent {
+                if find_event(&events, id).is_some() {
+                    panic!("Found {id} though it should have been filtered.");
+                }
             }
         }
     }

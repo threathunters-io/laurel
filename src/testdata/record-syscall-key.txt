@@ -1,3 +1,6 @@
-type=SYSCALL msg=audit(1628602815.266:2366): arch=c000003e syscall=59 success=yes exit=0 a0=2557470 a1=247b510 a2=2565820 a3=5bb items=2 ppid=3193 pid=6382 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="cat" exe="/usr/bin/cat" key="filter-this"
-type=SYSCALL msg=audit(1628602815.266:2366): arch=c000003e syscall=59 success=yes exit=0 a0=2557470 a1=247b510 a2=2565820 a3=5bb items=2 ppid=3193 pid=6382 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="cat" exe="/usr/bin/cat" key="this-too"
+type=SYSCALL msg=audit(1628602815.266:2365): arch=c000003e syscall=59 success=yes exit=0 a0=2557470 a1=247b510 a2=2565820 a3=5bb items=2 ppid=3193 pid=6382 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="cat" exe="/usr/bin/cat" key="filter-this"
+type=EOE msg=audit(1628602815.266:2365):
+type=SYSCALL msg=audit(1628602815.266:2366): arch=c000003e syscall=0 success=yes exit=0 a0=2557470 a1=247b510 a2=2565820 a3=5bb items=2 ppid=3193 pid=6382 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="cat" exe="/usr/bin/cat" key="filter-this"
 type=EOE msg=audit(1628602815.266:2366):
+type=SYSCALL msg=audit(1628602815.266:2367): arch=c000003e syscall=0 success=yes exit=0 a0=2557470 a1=247b510 a2=2565820 a3=5bb items=2 ppid=3193 pid=6382 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="cat" exe="/usr/bin/cat" key="this-too"
+type=EOE msg=audit(1628602815.266:2367):
