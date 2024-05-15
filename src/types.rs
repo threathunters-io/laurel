@@ -871,20 +871,6 @@ impl From<i64> for Value<'_> {
     }
 }
 
-/// The Offset trait provides an implementation for adding offset to Range.
-trait Offset {
-    fn offset(&self, offset: usize) -> Self;
-}
-
-impl Offset for Range<usize> {
-    fn offset(&self, offset: usize) -> Self {
-        Range {
-            start: self.start + offset,
-            end: self.end + offset,
-        }
-    }
-}
-
 /// Helper type to enforce that serialize_bytes() is used in serialization.
 pub(crate) struct Bytes<'a>(pub &'a [u8]);
 
