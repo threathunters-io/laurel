@@ -757,7 +757,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                                 // existing, plausible process in table
                                 proc.key = pr.key;
                                 proc.parent = pr.parent;
-                                proc.labels = pr.labels.clone();
+                                proc.labels.clone_from(&pr.labels);
                                 #[cfg(all(feature = "procfs", target_os = "linux"))]
                                 if self.settings.enrich_container {
                                     proc.container_info = match &pr.container_info {

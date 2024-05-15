@@ -292,7 +292,7 @@ impl ProcTable {
 
     pub fn set_labels(&mut self, key: &ProcessKey, labels: &HashSet<Vec<u8>>) {
         if let Some(p) = self.processes.get_mut(key) {
-            p.labels = labels.clone();
+            p.labels.clone_from(labels);
         }
     }
 }

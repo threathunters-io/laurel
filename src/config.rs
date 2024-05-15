@@ -168,16 +168,13 @@ pub struct Filter {
 }
 
 #[derive(Debug, Serialize)]
+#[derive(Default)]
 pub enum Input {
+    #[default]
     Stdin,
     Unix(PathBuf),
 }
 
-impl Default for Input {
-    fn default() -> Self {
-        Input::Stdin
-    }
-}
 
 impl std::fmt::Display for Input {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
