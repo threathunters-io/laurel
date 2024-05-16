@@ -167,14 +167,12 @@ pub struct Filter {
     pub filter_action: FilterAction,
 }
 
-#[derive(Debug, Serialize)]
-#[derive(Default)]
+#[derive(Debug, Serialize, Default)]
 pub enum Input {
     #[default]
     Stdin,
     Unix(PathBuf),
 }
-
 
 impl std::fmt::Display for Input {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
