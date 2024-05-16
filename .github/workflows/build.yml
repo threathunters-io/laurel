@@ -89,13 +89,18 @@ jobs:
 
   build_dynamic_glibc:
     runs-on: ubuntu-latest
-    container: debian:bookworm-slim
+    container: debian:trixie-slim
     steps:
       - name: Prepare
         run: |
           apt-get -qq update
           apt-get -qqy upgrade
-          apt-get -qqy install ca-certificates rustc cargo clang libacl1-dev jq file
+          apt-get -qqy install ca-certificates clang libacl1-dev jq file curl
+      - name: Install Rust toolchain (stable)
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
       - uses: actions/checkout@v2
       - name: Build
         run: |
