@@ -2,7 +2,7 @@
 title: laurel - About
 section: 7
 header: System Administration Utilities
-footer: laurel 0.6.1
+footer: laurel 0.6.2
 ---
 
 # NAME
