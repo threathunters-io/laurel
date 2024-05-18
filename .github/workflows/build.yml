@@ -3,9 +3,9 @@ on:
     paths:
       - src/**
       - audit-specs/**
+      - syscall-tables/**
       - build.rs
-      - Cargo.toml
-      - Cargo.lock
+      - Cargo.*
       - .github/workflows/build.yml
     tags-ignore:
       - "v*"
@@ -13,86 +13,174 @@ on:
     paths:
       - src/**
       - audit-specs/**
+      - syscall-tables/**
       - build.rs
-      - Cargo.toml
-      - Cargo.lock
+      - Cargo.*
       - .github/workflows/build.yml
 
 jobs:
   check_fmt:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+  
+      - name: check formatting
+        run: cargo fmt --check
 
-    - name: check formatting
-      run: cargo fmt --check
-
-  build_n_test:
+  build-test:
     runs-on: ubuntu-latest
     container: ubuntu:latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Install dependency
-      run: |
-        apt-get -qq update
-        apt-get -qqy dist-upgrade
-        apt-get -qqy install curl build-essential libclang-dev libacl1-dev selinux-policy-dev libgoogle-perftools-dev
+      - uses: actions/checkout@v2
+      - name: Install dependency
+        run: |
+          apt-get -qq update
+          apt-get -qqy dist-upgrade
+          apt-get -qqy install curl build-essential libclang-dev libacl1-dev selinux-policy-dev libgoogle-perftools-dev
+  
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+  
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
+  
+      - run: cargo build
+      - run: cargo test --no-default-features
+      - run: cargo test
+      - run: cargo bench --no-run
+      - run: make -C contrib/selinux
 
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-
-    - uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
-
-    - run: cargo build
-    - run: cargo test --no-default-features
-    - run: cargo test
-    - run: cargo bench --no-run
-    - run: make -C contrib/selinux
-
-  build_aarch64:
+  build-x86_64-gnu:
     runs-on: ubuntu-latest
     container: debian:bullseye
     steps:
-    - uses: actions/checkout@v2
-    - name: Install dependency
-      run: |
-        dpkg --add-architecture arm64
-        apt-get -qq update
-        apt-get -qqy dist-upgrade
-        apt-get -qqy install curl build-essential libclang-dev gcc-aarch64-linux-gnu libacl1-dev:arm64
+      - uses: actions/checkout@v2
+      - name: Install dependency
+        run: |
+          apt-get -qq update
+          apt-get -qqy dist-upgrade
+          apt-get -qqy install curl build-essential libclang-dev libacl1-dev
+  
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+  
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
+  
+      - run: cargo build --target=x86_64-unknown-linux-gnu --release
+  
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laurel-x86_64-gnu
+          path: target/x86_64-unknown-linux-gnu/release/laurel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laurel2audit-x86_64-gnu
+          path: target/x86_64-unknown-linux-gnu/release/laurel2audit
 
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: aarch64-unknown-linux-gnu
-
-    - uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
-
-    - run: cargo build --target=aarch64-unknown-linux-gnu
-
-  build_static_musl:
+  build-aarch64-gnu:
     runs-on: ubuntu-latest
-    container: alpine:3.18
+    container: debian:bullseye
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependency
+        run: |
+          dpkg --add-architecture arm64
+          apt-get -qq update
+          apt-get -qqy dist-upgrade
+          apt-get -qqy install curl build-essential libclang-dev gcc-aarch64-linux-gnu libacl1-dev:arm64
+  
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: aarch64-unknown-linux-gnu
+  
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
+  
+      - run: cargo build --target=aarch64-unknown-linux-gnu --release
+  
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laurel-aarch64-gnu
+          path: target/aarch64-unknown-linux-gnu/release/laurel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laurel2audit-aarch64-gnu
+          path: target/aarch64-unknown-linux-gnu/release/laurel2audit
+    
+  build-armv7-gnueabihf:
+    runs-on: ubuntu-latest
+    container: debian:bullseye
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependency
+        run: |
+          dpkg --add-architecture armhf
+          apt-get -qq update
+          apt-get -qqy dist-upgrade
+          apt-get -qqy install curl build-essential libclang-dev gcc-arm-linux-gnueabihf libacl1-dev:armhf
+  
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: armv7-unknown-linux-gnueabihf
+  
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
+  
+      - run: cargo build --target=armv7-unknown-linux-gnueabihf --release
+  
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laurel-armv7-gnueabihf
+          path: target/armv7-unknown-linux-gnueabihf/release/laurel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laurel2audit-armv7-gnueabihf
+          path: target/armv7-unknown-linux-gnueabihf/release/laurel2audit
+    
+  build-x86_64-musl:
+    runs-on: ubuntu-latest
+    container: alpine:3.19
     steps:
       - name: Prepare
         run: |
@@ -102,74 +190,29 @@ jobs:
       - name: Build
         run: |
           RUSTFLAGS='-C target-feature=+crt-static -L /lib -l static=acl' \
-              cargo build --target x86_64-alpine-linux-musl
+              cargo build --target x86_64-alpine-linux-musl --release
           make -C man
       - name: Show binary charcteristics
         run: |
           set -x
-          file target/x86_64-alpine-linux-musl/debug/laurel
-          ldd  target/x86_64-alpine-linux-musl/debug/laurel
-          objdump -x target/x86_64-alpine-linux-musl/debug/laurel | grep NEEDED || true
+          file target/x86_64-alpine-linux-musl/release/laurel
+          ldd  target/x86_64-alpine-linux-musl/release/laurel
+          objdump -x target/x86_64-alpine-linux-musl/release/laurel | grep NEEDED || true
           set +x
           if [ -n "$(objdump -x target/x86_64-alpine-linux-musl/debug/laurel | grep NEEDED)" ]; then
               echo "laurel is linked against shared libraries" >&2
               exit 1
           fi
-
-  build_dynamic_glibc:
-    runs-on: ubuntu-latest
-    container: debian:trixie-slim
-    steps:
-      - name: Prepare
-        run: |
-          apt-get -qq update
-          apt-get -qqy upgrade
-          apt-get -qqy install ca-certificates clang libacl1-dev jq file curl
-      - name: Install Rust toolchain (stable)
-        uses: actions-rs/toolchain@v1
+      - uses: actions/upload-artifact@v4
         with:
-          profile: minimal
-          toolchain: stable
-      - uses: actions/checkout@v2
-      - name: Build
-        run: |
-          cargo build
-      - name: Show binary charcteristics
-        run: |
-          set -x
-          file target/debug/laurel
-          ldd  target/debug/laurel
-          objdump -x target/debug/laurel | grep NEEDED || true
+          name: laurel-x86_64-musl
+          path: target/x86_64-alpine-linux-musl/release/laurel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laurel2audit-x86_64-musl
+          path: target/x86_64-alpine-linux-musl/release/laurel2audit
 
-      - name: Launch test
-        run: |
-          pid1=$$
-          pid2=$(($$ + 1000))
-          pid3=$(($$ + 2000))
-          now=$(date +%s)
-
-          ./target/debug/laurel <<EOF
-          type=SYSCALL msg=audit($now.276:327308): arch=c000003e syscall=59 success=yes exit=0 a0=5645feb17d20 a1=5645feba4100 a2=5645feb24c30 a3=fffffffffffff286 items=3 ppid=$pid1 pid=$pid2 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="sh" exe="/usr/bin/dash" subj==unconfined key=(null)
-          type=EXECVE msg=audit($now.276:327308): argc=3 a0="sh" a1="-c" a2="whoami"
-          type=CWD msg=audit($now.276:327308): cwd="/home/user/tmp"
-          type=PATH msg=audit($now.276:327308): item=0 name="/usr/bin/sh" inode=393917 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
-          type=PATH msg=audit($now.276:327308): item=1 name="/usr/bin/sh" inode=393927 dev=fd:01 mode=0120777 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
-          type=PATH msg=audit($now.276:327308): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=404798 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
-          type=PROCTITLE msg=audit($now.276:327308): proctitle=7368002D630077686F616D69
-          type=EOE msg=audit($now.276:327308): 
-          type=SYSCALL msg=audit($now.276:327309): arch=c000003e syscall=59 success=yes exit=0 a0=56362955c9c0 a1=56362955c858 a2=56362955c868 a3=8 items=3 ppid=$pid2 pid=$pid3 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="whoami" exe="/usr/bin/whoami" subj==unconfined key=(null)
-          type=EXECVE msg=audit($now.276:327309): argc=1 a0="whoami"
-          type=CWD msg=audit($now.276:327309): cwd="/home/user/tmp"
-          type=PATH msg=audit($now.276:327309): item=0 name="/usr/bin/whoami" inode=393829 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
-          type=PATH msg=audit($now.276:327309): item=1 name="/usr/bin/whoami" inode=393829 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
-          type=PATH msg=audit($now.276:327309): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=404798 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
-          type=PROCTITLE msg=audit($now.276:327309): proctitle="whoami"
-          type=EOE msg=audit($now.276:327309): 
-          EOF
-
-          jq . < audit.log
-
-  build_dynamic_oldglibc:
+  build-x86_64-gnu-old:
     runs-on: ubuntu-latest
     container: centos:7
     steps:
@@ -186,4 +229,12 @@ jobs:
       - uses: actions/checkout@v2
       - name: Build
         run: |
-          scl enable llvm-toolset-7 "cargo build"
+          scl enable llvm-toolset-7 "cargo build --release"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: laurel-x86_64-gnu-old
+          path: target/release/laurel
+      - uses: actions/upload-artifact@v3
+        with:
+          name: laurel2audit-x86_64-gnu-old
+          path: target/release/laurel
