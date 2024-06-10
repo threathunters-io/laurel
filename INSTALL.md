@@ -44,7 +44,7 @@ $ sudo install -m755 laurel /usr/local/sbin/laurel
     ``` console
     $ make -C contrib/selinux
     $ sudo semodule -i contrib/selinux/laurel.pp
-    $ sudo restorecon -v -R -F /usr/local/sbin/laurel /etc/laurel /var/log/laurel
+    $ sudo restorecon -v -R -F /usr/local/sbin/laurel /etc/laurel /var/log/laurel /etc/audit/plugins.d/laurel.conf
     ```
 - Tell _auditd(8)_ to re-evaluate its configuration:
     ``` console
