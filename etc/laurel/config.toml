@@ -24,7 +24,7 @@ size = 5000000
 generations = 10
 # Grant read permissions on the log files to these users, using
 # POSIX ACLs
-read-users = [ "splunk" ]
+# read-users = [ "splunk" ]
 
 # Add a prefix to every output line. The CEE cookie can be used to
 # instruct consumers to parse the JSON document, cf.
