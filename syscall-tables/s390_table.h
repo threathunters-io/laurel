@@ -420,4 +420,5 @@ _S(458, "listmount")
 _S(459, "lsm_get_self_attr")
 _S(460, "lsm_set_self_attr")
 _S(461, "lsm_list_modules")
+_S(462, "mseal")
 
