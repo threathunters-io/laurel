@@ -55,6 +55,9 @@ ifdef(`distro_debian',`
 	ifdef(`systemd_stream_connect_userdb',`
 		systemd_stream_connect_userdb(laurel_t)
 	')
+	ifdef(`systemd_connect_machined',`
+		systemd_connect_machined(laurel_t)
+	')
 ')
 
 ifdef(`distro_redhat',`
@@ -62,6 +65,9 @@ ifdef(`distro_redhat',`
 	allow laurel_t passwd_file_t:file { open read };
 	ifdef(`systemd_userdbd_stream_connect',`
 		systemd_userdbd_stream_connect(laurel_t)
+	')
+	ifdef(`systemd_machined_stream_connect',`
+		systemd_machined_stream_connect(laurel_t)
 	')
 ')
 
