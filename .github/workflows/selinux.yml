@@ -9,7 +9,7 @@ on:
       - .github/workflows/selinux.yml
 
 jobs:
-  build-c7:
+  build-el7:
     env:
       ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node16
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
@@ -33,13 +33,13 @@ jobs:
           name: selinux-el7
           path: contrib/selinux/laurel.pp
 
-  build-c8:
+  build-el8:
     runs-on: ubuntu-latest
     container: rockylinux:8
     steps:
       - name: Prepare
         run: |
-          yum install -y selinux-policy-devel findutils
+          dnf install -y selinux-policy-devel findutils
       - uses: actions/checkout@v2
       - name: Build
         run: |
@@ -48,6 +48,23 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: selinux-el8
+          path: contrib/selinux/laurel.pp
+
+  build-el9:
+    runs-on: ubuntu-latest
+    container: rockylinux:9
+    steps:
+      - name: Prepare
+        run: |
+          dnf install -y selinux-policy-devel findutils
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v3
+        with:
+          name: selinux-el9
           path: contrib/selinux/laurel.pp
 
   build-al2:
