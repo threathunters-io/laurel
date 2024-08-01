@@ -113,11 +113,8 @@ impl Logger {
                 filename.push(p);
                 let mut rot = FileRotate::new(filename);
                 for user in &def.clone().users.unwrap_or_default() {
-                    rot = rot.with_uid(
-                        User::from_name(user)?
-                            .ok_or_else(|| anyhow!("user {user} not found"))?
-                            .uid,
-                    );
+                    _ = User::from_name(user)?.ok_or_else(|| anyhow!("user {user} not found"))?;
+                    rot = rot.with_user(user);
                 }
                 if let Some(generations) = &def.generations {
                     rot = rot.with_generations(*generations);
@@ -243,11 +240,8 @@ fn run_app() -> Result<(), anyhow::Error> {
         filename.push(&def.file);
         let mut rot = FileRotate::new(filename);
         for user in &def.clone().users.unwrap_or_default() {
-            rot = rot.with_uid(
-                User::from_name(user)?
-                    .ok_or_else(|| anyhow!("user {user} not found"))?
-                    .uid,
-            );
+            _ = User::from_name(user)?.ok_or_else(|| anyhow!("user {user} not found"))?;
+            rot = rot.with_user(user);
         }
         if let Some(generations) = &def.generations {
             rot = rot.with_generations(*generations);
@@ -297,9 +291,15 @@ fn run_app() -> Result<(), anyhow::Error> {
             Logger::new(&config.filterlog, &dir).context("can't create filterlog logger")?;
         emit_fn_log = move |e: &Event| {
             if e.filter {
-                filter_logger.log(e).expect("Error writing to filter log");
+                filter_logger
+                    .log(e)
+                    .map_err(|e| anyhow!("Error writing to filter log: {e}"))
+                    .unwrap();
             } else {
-                logger.log(e).expect("Error writing to audit log");
+                logger
+                    .log(e)
+                    .map_err(|e| anyhow!("Error writing to audit log: {e}"))
+                    .unwrap();
             }
         };
         coalesce = Coalesce::new(emit_fn_log);
@@ -307,7 +307,10 @@ fn run_app() -> Result<(), anyhow::Error> {
         log::info!("Dropping filtered audit records");
         emit_fn_drop = move |e: &Event| {
             if !e.filter {
-                logger.log(e).expect("Error writing to audit log");
+                logger
+                    .log(e)
+                    .map_err(|e| anyhow!("Error writing to audit log: {e}"))
+                    .unwrap();
             }
         };
         coalesce = Coalesce::new(emit_fn_drop);
