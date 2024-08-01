@@ -213,18 +213,30 @@ jobs:
           path: target/x86_64-alpine-linux-musl/release/laurel2audit
 
   build-x86_64-gnu-old:
+    env:
+      ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node16
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     runs-on: ubuntu-latest
     container: centos:7
     steps:
       - name: Prepare
         run: |
           sed -i \
-              -e 's,^#baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
-              -e 's,^mirrorlist=http://mirrorlist.centos.org/,#&1,' \
+              -e 's,^# *baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
+              -e 's,^mirrorlist=http://mirrorlist.centos.org,#&1,' \
               /etc/yum.repos.d/*.repo
           yum -q -y update
           yum -q -y install centos-release-scl
-          yum -q -y install gcc llvm-toolset-7-clang file libacl-devel
+          sed -i \
+              -e 's,^# *baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
+              -e 's,^mirrorlist=http://mirrorlist.centos.org,#&1,' \
+              /etc/yum.repos.d/*.repo
+      - name: Install misc.
+        run: |
+          yum -q -y install gcc file libacl-devel
+      - name: Install LLVM
+        run: |
+          yum -q -y install llvm-toolset-7-clang
       - name: Install Rust toolchain (stable)
         uses: actions-rs/toolchain@v1
         with:

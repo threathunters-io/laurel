@@ -19,8 +19,8 @@ jobs:
       - name: Prepare
         run: |
           sed -i \
-              -e 's,^#baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
-              -e 's,^mirrorlist=http://mirrorlist.centos.org/,#&1,' \
+              -e 's,^# *baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
+              -e 's,^mirrorlist=http://mirrorlist.centos.org,#&1,' \
               /etc/yum.repos.d/*.repo
           yum install -y selinux-policy-devel
       - uses: actions/checkout@v2
