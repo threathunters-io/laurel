@@ -91,7 +91,7 @@ jobs:
               -e 's,^mirrorlist=http://mirrorlist.centos.org,#&1,' \
               /etc/yum.repos.d/*.repo
           yum -q -y install gcc llvm-toolset-7-clang file libacl-devel
-          yum -q -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+          yum -q -y install https://dl.fedoraproject.org/pub/archive/epel/7/x86_64/Packages/e/epel-release-7-14.noarch.rpm
           yum -q -y install make pandoc
       - name: Install Rust toolchain (stable)
         uses: actions-rs/toolchain@v1
