@@ -86,6 +86,10 @@ jobs:
               /etc/yum.repos.d/*.repo
           yum -q -y update
           yum -q -y install centos-release-scl
+          sed -i \
+              -e 's,^# baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
+              -e 's,^mirrorlist=http://mirrorlist.centos.org,#&1,' \
+              /etc/yum.repos.d/*.repo
           yum -q -y install gcc llvm-toolset-7-clang file libacl-devel
           yum -q -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
           yum -q -y install make pandoc
