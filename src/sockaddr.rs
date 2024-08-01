@@ -201,7 +201,9 @@ mod test {
         #[cfg(target_endian = "big")]
         {
             assert_eq!(
-                SocketAddr::parse( b"\x00\x02\xD9\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")?,
+                SocketAddr::parse(
+                    b"\x00\x02\xD9\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                )?,
                 SocketAddr::Inet("0.0.0.0:55555".parse().unwrap())
             );
         }
