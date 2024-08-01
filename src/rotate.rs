@@ -7,7 +7,6 @@ use std::os::unix::io::AsRawFd;
 use exacl::{setfacl, AclEntry, Perm};
 
 use nix::sys::stat::{fchmod, Mode};
-use nix::unistd::Uid;
 
 /// A rotating (log) file writer
 ///
@@ -22,7 +21,7 @@ pub struct FileRotate {
     /// size, a [`FileRotate::rotate`] operation is triggered.
     pub filesize: u64,
     pub generations: u64,
-    pub uids: Vec<Uid>,
+    pub users: Vec<String>,
     file: Option<File>,
     offset: u64,
 }
@@ -36,7 +35,7 @@ impl FileRotate {
             basename: OsString::from(path.as_ref()),
             filesize: 0,
             generations: 0,
-            uids: vec![],
+            users: vec![],
             file: None,
             offset: 0,
         }
@@ -50,8 +49,8 @@ impl FileRotate {
         self.generations = p;
         self
     }
-    pub fn with_uid(mut self, uid: Uid) -> Self {
-        self.uids.push(uid);
+    pub fn with_user(mut self, user: &str) -> Self {
+        self.users.push(user.into());
         self
     }
 
@@ -86,8 +85,8 @@ impl FileRotate {
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             AclEntry::allow_other(Perm::empty(), None),
         ];
-        for uid in &self.uids {
-            acl.push(AclEntry::allow_user(&format!("{uid}"), Perm::READ, None));
+        for user in &self.users {
+            acl.push(AclEntry::allow_user(user, Perm::READ, None));
         }
 
         if let Ok(mut f) = OpenOptions::new().append(true).open(&self.basename) {
