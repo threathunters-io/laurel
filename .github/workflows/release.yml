@@ -81,13 +81,13 @@ jobs:
       - name: Prepare
         run: |
           sed -i \
-              -e 's,^# baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
+              -e 's,^# *baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
               -e 's,^mirrorlist=http://mirrorlist.centos.org,#&1,' \
               /etc/yum.repos.d/*.repo
           yum -q -y update
           yum -q -y install centos-release-scl
           sed -i \
-              -e 's,^# baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
+              -e 's,^# *baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
               -e 's,^mirrorlist=http://mirrorlist.centos.org,#&1,' \
               /etc/yum.repos.d/*.repo
           yum -q -y install gcc llvm-toolset-7-clang file libacl-devel
