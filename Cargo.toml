@@ -36,6 +36,7 @@ syslog = "6"
 thiserror = "1"
 anyhow = "1"
 faster-hex = "0.9"
+linux-audit-parser = ">= 0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = "0.5"
@@ -53,8 +54,4 @@ default = ["procfs"]
 
 [[bench]]
 name = "coalesce_execve"
-harness = false
-
-[[bench]]
-name = "parse"
 harness = false

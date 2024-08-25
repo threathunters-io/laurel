@@ -7,9 +7,10 @@ use faster_hex::hex_string;
 
 use serde_json::json;
 
-use crate::constants::{msg_type::*, ARCH_NAMES, SYSCALL_NAMES};
+use linux_audit_parser::*;
+
+use crate::constants::{ARCH_NAMES, SYSCALL_NAMES};
 use crate::label_matcher::LabelMatcher;
-use crate::parser::{parse, ParseError};
 use crate::proc::{self, ContainerInfo, ProcTable, Process, ProcessKey};
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
@@ -116,7 +117,7 @@ const EXPIRE_DONE_TIMEOUT: u64 = 120_000;
 /// generate translation of SocketAddr enum to a format similar to
 /// what auditd log_format=ENRICHED produces
 #[cfg(target_os = "linux")]
-fn add_translated_socketaddr(rv: &mut Record, sa: SocketAddr) {
+fn add_translated_socketaddr(rv: &mut Body, sa: SocketAddr) {
     let mut m: Vec<(Key, Value)> = Vec::with_capacity(5);
     match sa {
         SocketAddr::Local(sa) => {
@@ -197,7 +198,7 @@ fn add_translated_socketaddr(rv: &mut Record, sa: SocketAddr) {
 /// As an extra sanity check, exe is compared with normalized
 /// PATH.name. If they are equal, no script is returned.
 #[cfg(all(feature = "procfs", target_os = "linux"))]
-fn path_script_name(path: &Record, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
+fn path_script_name(path: &Body, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
     use std::{
         ffi::OsStr,
         os::unix::{ffi::OsStrExt, fs::MetadataExt},
@@ -262,7 +263,7 @@ fn path_script_name(path: &Record, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) 
 }
 
 /// Create an enriched pid entry in rv.
-fn add_record_procinfo(rec: &mut Record, key: &[u8], proc: &Process, include_names: bool) {
+fn add_record_procinfo(rec: &mut Body, key: &[u8], proc: &Process, include_names: bool) {
     let mut m: Vec<(Key, Value)> = Vec::with_capacity(4);
     match &proc.key {
         ProcessKey::Event(id) => {
@@ -347,10 +348,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Translates UID, GID and variants, e.g.:
     /// - auid=1000 -> AUID="user"
     /// - ogid=1000 -> OGID="user"
+    ///
     /// IDs that can't be resolved are translated into "unknown(n)".
     /// `(uint32)-1` is translated into "unset".
     #[inline(always)]
-    fn add_record_userdb(&mut self, rec: &mut Record, key: &Key, value: &Value) -> bool {
+    fn add_record_userdb(&mut self, rec: &mut Body, key: &Key, value: &Value) -> bool {
         if !self.settings.translate_userdb {
             return false;
         }
@@ -381,7 +383,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
     }
 
-    fn add_record_uid_groups(&mut self, rec: &mut Record, key: &Key, value: &Value) {
+    fn add_record_uid_groups(&mut self, rec: &mut Body, key: &Key, value: &Value) {
         if !self.settings.enrich_uid_groups {
             return;
         }
@@ -399,7 +401,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
     /// Enrich "pid" entries using `ppid`, `exe`, `ID` (generating
     /// event id) from the shadow process table
-    fn enrich_pid(&mut self, rv: &mut Record, k: &Key, v: &Value) {
+    fn enrich_pid(&mut self, rv: &mut Body, k: &Key, v: &Value) {
         if !self.settings.enrich_pid {
             return;
         }
@@ -417,8 +419,8 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     }
 
     /// Apply uid, gid, pid enrichment to generic records
-    fn enrich_generic(&mut self, rv: &mut Record) {
-        let mut nrv = Record::default();
+    fn enrich_generic(&mut self, rv: &mut Body) {
+        let mut nrv = Body::default();
         rv.retain(|(k, v)| {
             if self.add_record_userdb(&mut nrv, k, v) {
                 if self.settings.drop_translated {
@@ -429,13 +431,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
             true
         });
-        rv.concat(nrv);
+        rv.extend(nrv);
     }
 
     /// Transform PROCTITLE record
     ///
     /// The flat proctitle field is turned into a list.
-    fn transform_proctitle(&mut self, rv: &mut Record) {
+    fn transform_proctitle(&mut self, rv: &mut Body) {
         let mut argv = vec![];
         rv.retain(|(k, v)| {
             match (k, v) {
@@ -463,8 +465,8 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     }
 
     /// Enrich SOCKADDR record
-    fn enrich_sockaddr(&mut self, rv: &mut Record) {
-        let mut nrv = Record::default();
+    fn enrich_sockaddr(&mut self, rv: &mut Body) {
+        let mut nrv = Body::default();
         rv.retain(|(k, v)| match (k, v) {
             (k, Value::Str(vr, _q)) if self.settings.translate_universal => {
                 if k == "saddr" {
@@ -480,7 +482,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
             _ => true,
         });
-        rv.concat(nrv);
+        rv.extend(nrv);
     }
 
     /// Enrich SYSCALL record
@@ -488,12 +490,12 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Add ARCH, SYSCALL, PID, PPID, SCRIPT, LABELS if appropriate
     fn enrich_syscall(
         &mut self,
-        rv: &mut Record,
+        rv: &mut Body,
         arch_sys: (Option<&'static str>, Option<&'static str>),
         current_process: &Option<Process>,
         parent: &Option<Process>,
         script: &Option<NVec>,
-        container_info: &mut Option<Record>,
+        container_info: &mut Option<Body>,
     ) {
         if let (true, (Some(arch), Some(syscall))) = (self.settings.translate_universal, arch_sys) {
             rv.push((Key::Literal("ARCH"), Value::Literal(arch)));
@@ -528,7 +530,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
             #[cfg(all(feature = "procfs", target_os = "linux"))]
             if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
-                let mut ci = Record::default();
+                let mut ci = Body::default();
                 ci.push((
                     Key::Literal("ID"),
                     Value::Str(hex_string(&c.id).as_bytes(), Quote::None),
@@ -538,7 +540,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
     }
 
-    fn transform_execve(&mut self, rv: &mut Record, current_process: &Option<Process>) {
+    fn transform_execve(&mut self, rv: &mut Body, current_process: &Option<Process>) {
         let mut argv: Vec<Value> = Vec::with_capacity(rv.len() - 1);
         rv.retain(|(k, v)| {
             match k {
@@ -662,7 +664,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         let mut current_process: Option<Process> = None;
         let mut parent: Option<Process> = None;
 
-        if let Some(EventValues::Single(rv)) = ev.body.get_mut(&SYSCALL) {
+        if let Some(EventValues::Single(rv)) = ev.body.get_mut(&MessageType::SYSCALL) {
             let mut proc = Process::default();
             let mut extra = 2; // pid, ppid
             if self.settings.translate_universal {
@@ -671,8 +673,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             if self.settings.translate_userdb {
                 extra += 9; // uid, gid
             }
+            // FIXME
             rv.reserve(extra);
-            let mut nrv = Record::default();
+            let mut nrv = Body::default();
             let mut argv = Vec::with_capacity(4);
             rv.retain(|(k, v)| {
                 match (k, v) {
@@ -723,7 +726,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 true
             });
             rv.push((Key::Literal("ARGV"), Value::List(argv)));
-            rv.concat(nrv);
+            rv.extend(nrv);
 
             if let (Some(arch), Some(syscall)) = (arch, syscall) {
                 if let Some(an) = ARCH_NAMES.get(&arch) {
@@ -750,12 +753,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         // Process entry.
                         syscall_is_exec = sn.contains("execve");
                         parent = self.processes.get_or_retrieve(proc.ppid).cloned();
-                        let pr;
-                        if syscall_is_exec {
-                            pr = None;
+                        let pr = if syscall_is_exec {
+                            None
                         } else {
-                            pr = self.processes.get_or_retrieve(proc.pid);
-                        }
+                            self.processes.get_or_retrieve(proc.pid)
+                        };
                         match pr {
                             Some(pr) if proc.ppid == pr.ppid && proc.exe == pr.exe => {
                                 // existing, plausible process in table
@@ -826,7 +828,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             current_process = Some(proc);
         }
 
-        if let Some(EventValues::Single(rv)) = ev.body.get_mut(&EXECVE) {
+        if let Some(EventValues::Single(rv)) = ev.body.get_mut(&MessageType::EXECVE) {
             self.transform_execve(rv, &current_process);
         }
 
@@ -835,10 +837,14 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         let script: Option<NVec> = match (self.settings.enrich_script, &self.settings.label_script)
         {
             (false, None) => None,
-            _ => match (&current_process, ev.body.get(&PATH), syscall_is_exec) {
+            _ => match (
+                &current_process,
+                ev.body.get(&MessageType::PATH),
+                syscall_is_exec,
+            ) {
                 (Some(proc), Some(EventValues::Multi(paths)), true) => {
                     let mut cwd = &b"/"[..];
-                    if let Some(EventValues::Single(r)) = ev.body.get(&CWD) {
+                    if let Some(EventValues::Single(r)) = ev.body.get(&MessageType::CWD) {
                         if let Some(Value::Str(rv, _)) = r.get("cwd") {
                             cwd = rv;
                         }
@@ -891,11 +897,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         // Since the event may have been dropped here, don't
         // manipulate the current process below.
         let current_process = current_process;
-        let mut container_info: Option<Record> = None;
+        let mut container_info: Option<Body> = None;
 
         for tv in ev.body.iter_mut() {
             match tv {
-                (&SYSCALL, EventValues::Single(rv)) => self.enrich_syscall(
+                (&MessageType::SYSCALL, EventValues::Single(rv)) => self.enrich_syscall(
                     rv,
                     (arch_name, syscall_name),
                     &current_process,
@@ -903,11 +909,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     &script,
                     &mut container_info,
                 ),
-                (&EXECVE, EventValues::Single(_)) => {}
-                (&SOCKADDR, EventValues::Multi(rvs)) => {
+                (&MessageType::EXECVE, EventValues::Single(_)) => {}
+                (&MessageType::SOCKADDR, EventValues::Multi(rvs)) => {
                     rvs.iter_mut().for_each(|rv| self.enrich_sockaddr(rv))
                 }
-                (&PROCTITLE, EventValues::Single(rv)) => self.transform_proctitle(rv),
+                (&MessageType::PROCTITLE, EventValues::Single(rv)) => self.transform_proctitle(rv),
                 (_, EventValues::Single(rv)) => self.enrich_generic(rv),
                 (_, EventValues::Multi(rvs)) => {
                     rvs.iter_mut().for_each(|rv| self.enrich_generic(rv))
@@ -915,7 +921,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
-        container_info.map(|ci| ev.body.insert(CONTAINER_INFO, EventValues::Single(ci)));
+        ev.container_info = container_info;
     }
 
     /// Do bookkeeping on event, transform, emit it via the provided
@@ -939,60 +945,61 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         let filter_raw = self.settings.filter_raw_lines.is_match(line);
 
         let skip_enriched = self.settings.translate_universal && self.settings.translate_userdb;
-        let (node, typ, id, rv) = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
-        let nid = (node.clone(), id);
+        let msg = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
+        let nid = (msg.node.clone(), msg.id);
 
         // clean out state every EXPIRE_PERIOD
         match self.next_expire {
-            Some(t) if t < id.timestamp => {
-                self.expire_inflight(id.timestamp);
-                self.expire_done(id.timestamp);
+            Some(t) if t < msg.id.timestamp => {
+                self.expire_inflight(msg.id.timestamp);
+                self.expire_done(msg.id.timestamp);
                 self.processes.expire();
-                self.next_expire = Some(id.timestamp + EXPIRE_PERIOD)
+                self.next_expire = Some(msg.id.timestamp + EXPIRE_PERIOD)
             }
-            None => self.next_expire = Some(id.timestamp + EXPIRE_PERIOD),
+            None => self.next_expire = Some(msg.id.timestamp + EXPIRE_PERIOD),
             _ => (),
         };
 
-        if typ == EOE {
+        if msg.ty == MessageType::EOE {
             if self.done.contains(&nid) {
-                return Err(CoalesceError::DuplicateEvent(id));
+                return Err(CoalesceError::DuplicateEvent(msg.id));
             }
             let ev = self
                 .inflight
                 .remove(&nid)
-                .ok_or(CoalesceError::SpuriousEOE(id))?;
+                .ok_or(CoalesceError::SpuriousEOE(msg.id))?;
             self.emit_event(ev);
-        } else if typ.is_multipart() {
+        } else if msg.ty.is_multipart() {
             // kernel-level messages
             if !self.inflight.contains_key(&nid) {
-                self.inflight.insert(nid.clone(), Event::new(node, id));
+                self.inflight
+                    .insert(nid.clone(), Event::new(msg.node, msg.id));
             }
             let ev = self.inflight.get_mut(&nid).unwrap();
             ev.filter |= filter_raw;
-            match ev.body.get_mut(&typ) {
-                Some(EventValues::Single(v)) => v.concat(rv),
-                Some(EventValues::Multi(v)) => v.push(rv),
-                None => match typ {
-                    SYSCALL => {
-                        ev.body.insert(typ, EventValues::Single(rv));
+            match ev.body.get_mut(&msg.ty) {
+                Some(EventValues::Single(v)) => v.extend(msg.body),
+                Some(EventValues::Multi(v)) => v.push(msg.body),
+                None => match msg.ty {
+                    MessageType::SYSCALL => {
+                        ev.body.insert(msg.ty, EventValues::Single(msg.body));
                     }
-                    EXECVE | PROCTITLE | CWD => {
-                        ev.body.insert(typ, EventValues::Single(rv));
+                    MessageType::EXECVE | MessageType::PROCTITLE | MessageType::CWD => {
+                        ev.body.insert(msg.ty, EventValues::Single(msg.body));
                     }
                     _ => {
-                        ev.body.insert(typ, EventValues::Multi(vec![rv]));
+                        ev.body.insert(msg.ty, EventValues::Multi(vec![msg.body]));
                     }
                 },
             };
         } else {
             // user-space messages
             if self.done.contains(&nid) {
-                return Err(CoalesceError::DuplicateEvent(id));
+                return Err(CoalesceError::DuplicateEvent(msg.id));
             }
-            let mut ev = Event::new(node, id);
+            let mut ev = Event::new(msg.node, msg.id);
             ev.filter |= filter_raw;
-            ev.body.insert(typ, EventValues::Single(rv));
+            ev.body.insert(msg.ty, EventValues::Single(msg.body));
             self.emit_event(ev);
         }
         Ok(())
@@ -1058,7 +1065,7 @@ mod test {
         String::from_utf8_lossy(&out).to_string()
     }
 
-    fn find_event<'a>(events: &[Event<'a>], id: &str) -> Option<Event<'a>> {
+    fn find_event<'a>(events: &'a [Event], id: &str) -> Option<Event<'a>> {
         events.iter().find(|e| &e.id == id).cloned()
     }
 
@@ -1209,7 +1216,9 @@ mod test {
         c.settings.translate_userdb = true;
         c.settings.translate_universal = true;
         process_record(&mut c, include_bytes!("testdata/record-login.txt")).unwrap();
-        if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
+        if let EventValues::Multi(records) =
+            &ec.borrow().as_ref().unwrap().body[&MessageType::LOGIN]
+        {
             // Check for: pid uid subj old-auid auid tty old-ses ses res UID OLD-AUID AUID
             let l = records[0].len();
             assert!(
@@ -1250,7 +1259,9 @@ mod test {
         )
         .unwrap();
 
-        if let EventValues::Single(record) = &ec.borrow().as_ref().unwrap().body[&SYSCALL] {
+        if let EventValues::Single(record) =
+            &ec.borrow().as_ref().unwrap().body[&MessageType::SYSCALL]
+        {
             let mut uids = 0;
             let mut gids = 0;
             for (k, v) in record {
@@ -1269,7 +1280,9 @@ mod test {
             );
         }
 
-        if let EventValues::Multi(records) = &ec.borrow().as_ref().unwrap().body[&LOGIN] {
+        if let EventValues::Multi(records) =
+            &ec.borrow().as_ref().unwrap().body[&MessageType::LOGIN]
+        {
             let mut uid = false;
             let mut old_auid = false;
             let mut auid = false;
