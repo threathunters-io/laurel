@@ -2,7 +2,6 @@ use std::env;
 use std::fs;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::iter::FromIterator;
 use std::path::Path;
 use std::string::String;
 
@@ -49,78 +48,12 @@ fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("const.rs");
-    let msg_file = "audit-specs/messages/message-dictionary.csv";
-    let fields_file = "audit-specs/fields/field-dictionary.csv";
-
-    let mut constants: Vec<(String, String)> = BufReader::new(fs::File::open(msg_file)?)
-        .lines()
-        .skip(1) // skip over header
-        .map(|line| {
-            line.unwrap()
-                .split(',')
-                .map(|x| x.to_string())
-                .collect::<Vec<_>>()
-        })
-        .map(|fields| {
-            (
-                fields[0].strip_prefix("AUDIT_").unwrap().to_string(),
-                fields[1].clone(),
-            )
-        })
-        .collect();
-
-    // Artificial record
-    constants.push(("CONTAINER_INFO".into(), "0xffffff01".into()));
-
-    let fields: Vec<(String, String)> = BufReader::new(fs::File::open(fields_file)?)
-        .lines()
-        .skip(3) // skip over heder and regex describing a* mess
-        .map(|line| {
-            line.unwrap()
-                .split(',')
-                .map(|x| x.to_string())
-                .collect::<Vec<_>>()
-        })
-        .map(|fields| (fields[0].clone(), fields[1].clone()))
-        .collect();
 
     let mut template = Vec::new();
     fs::File::open("src/const.rs.in")?.read_to_end(&mut template)?;
     let template = String::from_utf8(template)?;
 
     let buf = template
-        .replace(
-            "/* @EVENT_CONST@ */",
-            &String::from_iter(
-                constants
-                    .iter()
-                    .map(|(name, value)| format!(r#"("{name}", {value}), "#)),
-            ),
-        )
-        .replace(
-            "/* @FIELD_TYPES@ */",
-            &String::from_iter(
-                fields
-                    .iter()
-                    .filter(|(_, typ)| typ == "encoded" || typ.starts_with("numeric"))
-                    .map(|(name, typ)| match typ.as_str() {
-                        "numeric hexadecimal" => format!(r#"("{name}", FieldType::NumericHex),"#),
-                        "numeric decimal" => format!(r#"("{name}", FieldType::NumericDec),"#),
-                        "numeric octal" => format!(r#"("{name}", FieldType::NumericOct),"#),
-                        "numeric" => format!(r#"("{name}", FieldType::Numeric),"#),
-                        "encoded" => format!(r#"("{name}", FieldType::Encoded),"#),
-                        _ => format!(r#"("{name}", FieldType::Invalid),"#),
-                    }),
-            ),
-        )
-        .replace(
-            "/* @CONSTANTS@ */",
-            &String::from_iter(constants.iter().map(|(name, value)| {
-                format!(
-                    "#[allow(dead_code)] pub const {name}: MessageType = MessageType({value});\n",
-                )
-            })),
-        )
         .replace("/* @SYSCALL_BUILD@ */", &gen_syscall()?)
         .into_bytes();
 
@@ -142,8 +75,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=const.rs.in");
     #[cfg(target_os = "linux")]
     println!("cargo:rerun-if-changed=src/sockaddr.h");
-    println!("cargo:rerun-if-changed={msg_file}");
-    println!("cargo:rerun-if-changed={fields_file}");
 
     Ok(())
 }

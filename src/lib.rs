@@ -6,7 +6,6 @@ pub mod constants;
 pub mod json;
 pub mod label_matcher;
 pub mod logger;
-pub mod parser;
 pub mod proc;
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 pub mod procfs;

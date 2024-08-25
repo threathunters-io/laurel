@@ -11,22 +11,6 @@ pub enum FieldType {
 }
 
 lazy_static! {
-    pub static ref EVENT_IDS: HashMap<&'static[u8], u32> = {
-        let els: &[(&str, u32)] = &[ /* @EVENT_CONST@ */ ];
-        let mut hm = HashMap::with_capacity(els.len());
-        for (name, value) in els {
-            hm.insert(name.as_bytes(), *value);
-        }
-        hm
-    };
-    pub static ref EVENT_NAMES: HashMap<u32, &'static str> = {
-        let els: &[(&str, u32)] = &[ /* @EVENT_CONST@ */ ];
-        let mut hm = HashMap::with_capacity(els.len());
-        for (name, value) in els {
-            hm.insert(*value, *name);
-        }
-        hm
-    };
     pub static ref FIELD_TYPES: HashMap<&'static[u8],FieldType> = {
         let els: &[(&str, FieldType)] = &[ /* @FIELD_TYPES@ */ ];
         let mut hm = HashMap::with_capacity(els.len());
@@ -41,8 +25,3 @@ lazy_static! {
         hm
     };
 }            
-
-pub mod msg_type {
-    use crate::types::MessageType;
-    /* @CONSTANTS@ */
-}
