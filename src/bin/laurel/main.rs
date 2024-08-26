@@ -99,10 +99,27 @@ impl Logger {
 
     fn new(def: &Logfile, dir: &Path) -> anyhow::Result<Self> {
         match &def.file {
-            p if p.as_os_str() == "-" => Ok(Logger {
-                prefix: def.line_prefix.clone(),
-                output: BufWriter::new(Box::new(io::stdout())),
-            }),
+            p if p.as_os_str() == "-" => {
+            if let Some(command) = &def.stdoutprocess  {
+                // If `def.stdoutprocess ` is defined, spawn the process and write to its stdin
+                let mut child = std::process::Command::new(command)
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                    .map_err(|e| anyhow!("failed to start process: {}", e))?;
+                
+                let stdin = child.stdin.take().ok_or_else(|| anyhow!("failed to open stdin"))?;
+                Ok(Logger {
+                    prefix: def.line_prefix.clone(),
+                    output: BufWriter::new(Box::new(stdin)),
+                })
+            } else {
+                // If no stdoutprocess is defined, fall back to writing to stdout
+                Ok(Logger {
+                    prefix: def.line_prefix.clone(),
+                    output: BufWriter::new(Box::new(io::stdout())),
+                    })
+                }
+            },
             p if p.has_root() && p.parent().is_none() => Err(anyhow!(
                 "invalid file directory={} file={}",
                 dir.to_string_lossy(),
