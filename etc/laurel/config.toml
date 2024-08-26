@@ -18,6 +18,8 @@ input = "stdin"
 # Base file name for the JSONL-based log file. Set to "-" to log to stdout. In this case 
 # other log file related settings will be ignored.
 file = "audit.log"
+# If 'file' is set to stdout, optionally specify a script to directly send to stdin.
+# stdoutprocess = "/usr/local/script.sh"
 # Rotate when log file reaches this size (in bytes)
 size = 5000000
 # When rotating, keep this number of generations around
