@@ -254,6 +254,7 @@ impl Default for Config {
             marker: None,
             auditlog: Logfile {
                 file: "audit.log".into(),
+                stdoutprocess: None,
                 users: None,
                 size: Some(10 * 1024 * 1024),
                 generations: Some(5),
