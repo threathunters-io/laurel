@@ -14,6 +14,7 @@ use crate::label_matcher::LabelMatcher;
 pub struct Logfile {
     #[serde(default)]
     pub file: PathBuf,
+    pub stdoutprocess: Option<PathBuf>,
     #[serde(rename = "read-users")]
     pub users: Option<Vec<String>>,
     pub size: Option<u64>,
