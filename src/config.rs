@@ -262,6 +262,7 @@ impl Default for Config {
             },
             filterlog: Logfile {
                 file: "filtered.log".into(),
+                stdoutprocess: None,
                 users: None,
                 size: Some(10 * 1024 * 1024),
                 generations: Some(5),
