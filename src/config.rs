@@ -14,7 +14,6 @@ use crate::label_matcher::LabelMatcher;
 pub struct Logfile {
     #[serde(default)]
     pub file: PathBuf,
-    pub stdoutprocess: Option<PathBuf>,
     #[serde(rename = "read-users")]
     pub users: Option<Vec<String>>,
     pub size: Option<u64>,
@@ -254,7 +253,6 @@ impl Default for Config {
             marker: None,
             auditlog: Logfile {
                 file: "audit.log".into(),
-                stdoutprocess: None,
                 users: None,
                 size: Some(10 * 1024 * 1024),
                 generations: Some(5),
@@ -262,7 +260,6 @@ impl Default for Config {
             },
             filterlog: Logfile {
                 file: "filtered.log".into(),
-                stdoutprocess: None,
                 users: None,
                 size: Some(10 * 1024 * 1024),
                 generations: Some(5),
