@@ -100,19 +100,22 @@ impl Logger {
     fn new(def: &Logfile, dir: &Path) -> anyhow::Result<Self> {
         match &def.file {
             p if p.as_os_str().to_str().unwrap().starts_with('|') => {
-				let command = &p.as_os_str().to_str().unwrap()[1..].trim_start();
-				let mut child = std::process::Command::new(command)
+                let command = &p.as_os_str().to_str().unwrap()[1..].trim_start();
+                let mut child = std::process::Command::new(command)
                     .stdin(std::process::Stdio::piped())
                     .spawn()
                     .map_err(|e| anyhow!("failed to start process: {}", e))?;
-                let stdin = child.stdin.take().ok_or_else(|| anyhow!("failed to open stdin"))?;
+                let stdin = child
+                    .stdin
+                    .take()
+                    .ok_or_else(|| anyhow!("failed to open stdin"))?;
                 Ok(Logger {
                     prefix: def.line_prefix.clone(),
                     output: BufWriter::new(Box::new(stdin)),
                 })
-			},
-			p if p.as_os_str() == "-" => Ok(Logger {
-				prefix: def.line_prefix.clone(),
+            }
+            p if p.as_os_str() == "-" => Ok(Logger {
+                prefix: def.line_prefix.clone(),
                 output: BufWriter::new(Box::new(io::stdout())),
             }),
             p if p.has_root() && p.parent().is_none() => Err(anyhow!(
