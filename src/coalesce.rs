@@ -244,7 +244,7 @@ fn path_script_name(path: &Record, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) 
         } else if k == "dev" {
             if let Value::Str(r, _) = v {
                 p_dev = String::from_utf8_lossy(r)
-                    .split(|c| c == ':')
+                    .split(':')
                     .filter_map(|part| u64::from_str_radix(part, 16).ok())
                     .collect::<Vec<_>>()
                     .try_into()
