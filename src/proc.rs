@@ -9,7 +9,8 @@ use serde::{Serialize, Serializer};
 use thiserror::Error;
 
 use crate::label_matcher::LabelMatcher;
-use crate::types::EventID;
+
+use linux_audit_parser::*;
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
