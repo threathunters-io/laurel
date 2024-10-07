@@ -15,8 +15,10 @@ input = "stdin"
 # marker = "correct-horse-battery-staple"
 
 [auditlog]
-# Base file name for the JSONL-based log file. Set to "-" to log to stdout. In this case 
-# other log file related settings will be ignored.
+# Base file name for the JSONL-based log file. Set to "-" to log to stdout. You can set
+# it to send the stdout directly to another script or process by specifying that script
+# or process, preceeded with a pipe. ex. "| /usr/local/script.sh"
+# In these cases other log file related settings will be ignored.
 file = "audit.log"
 # Rotate when log file reaches this size (in bytes)
 size = 5000000
