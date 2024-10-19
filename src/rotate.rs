@@ -1,12 +1,9 @@
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, remove_file, rename, File, OpenOptions};
-use std::io::{Error, ErrorKind, Result, Seek, SeekFrom, Write};
+use std::io::{Error, Result, Seek, SeekFrom, Write};
 use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::AsRawFd;
 
 use exacl::{setfacl, AclEntry, Perm};
-
-use nix::sys::stat::{fchmod, Mode};
 
 /// A rotating (log) file writer
 ///
@@ -90,9 +87,6 @@ impl FileRotate {
         }
 
         if let Ok(mut f) = OpenOptions::new().append(true).open(&self.basename) {
-            fchmod(f.as_raw_fd(), Mode::from_bits(0o600).unwrap())
-                .map_err(|e| Error::new(ErrorKind::Other, e))?;
-
             setfacl(&[&self.basename], &acl, None).map_err(|e| Error::new(e.kind(), e))?;
 
             self.offset = f.seek(SeekFrom::End(0))?;
