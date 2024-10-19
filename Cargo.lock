@@ -358,7 +358,6 @@ dependencies = [
  "linux-audit-parser",
  "log",
  "nix",
- "nom",
  "regex",
  "serde",
  "serde_json",
