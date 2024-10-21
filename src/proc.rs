@@ -193,8 +193,9 @@ impl ProcTable {
     }
 
     pub fn insert(&mut self, proc: Process) {
-        self.processes.insert(proc.key, proc.clone());
-        self.current.insert(proc.pid, proc.key);
+        let (pid, key) = (proc.pid, proc.key);
+        self.processes.insert(proc.key, proc);
+        self.current.insert(pid, key);
     }
 
     /// Retrieves a process by key.
