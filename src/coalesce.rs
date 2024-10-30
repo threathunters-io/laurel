@@ -1502,24 +1502,26 @@ mod test {
 
     #[test]
     fn filter_raw() {
-        let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
-
-        let mut c = Coalesce::new(mk_emit_vec(&events));
-        c.settings.filter_raw_lines = regex::bytes::RegexSet::new(&[
-            "^type=SOCKADDR (?:node=\\$*? )?msg=audit\\(\\S*?\\): saddr=01002F7661722F72756E2F6E7363642F736F636B657400",
-        ])
-        .expect("failed to compile regex");
-        c.settings.filter_first_per_process = true;
-
-        process_record(&mut c, include_bytes!("testdata/record-nscd.txt")).unwrap();
-
-        assert!(
-            !events
-                .borrow()
-                .iter()
-                .any(|e| &e.id == "1705071450.879:29498378"),
-            "nscd connect event should be filtered"
-        )
+        for (name, filter) in &[
+            ("sockaddr", "^type=SOCKADDR (?:node=\\$*? )?msg=audit\\(\\S*?\\): saddr=01002F7661722F72756E2F6E7363642F736F636B657400"),
+            ("syscall", "^type=SYSCALL (?:node=\\$*? )?msg=audit\\(.*?\\): arch=c000003e syscall=42 success=no"),
+        ] {
+            let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+            let mut c = Coalesce::new(mk_emit_vec(&events));
+            c.settings.filter_raw_lines = regex::bytes::RegexSet::new(&[
+                filter
+            ])
+                .expect("failed to compile regex");
+            c.settings.filter_first_per_process = true;
+            process_record(&mut c, include_bytes!("testdata/record-nscd.txt")).unwrap();
+            assert!(
+                !events
+                    .borrow()
+                    .iter()
+                    .any(|e| &e.id == "1705071450.879:29498378"),
+                "nscd connect event should be filtered using {name}"
+            )
+        }
     }
 
     #[test]
