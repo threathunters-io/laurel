@@ -1,5 +1,5 @@
 //! Laurel is an "audisp" plugin plugins that consume data fed by the
-//! the Linux Audit daemon and reformats events as JSON lines.
+//! the Linux Audit daemon and reformats events as JSON Lines.
 
 use getopts::Options;
 use std::env;

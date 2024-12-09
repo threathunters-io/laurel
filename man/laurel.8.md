@@ -12,7 +12,7 @@ laurel(8) -- transform, enrich Linux audit logs
 
 `laurel` is an `auditd(8)` plug-in that parses Linux audit events,
 enriches them with local information, and transforms them into a
-JSONlines-based output format intended for consumption by log
+JSON Lines-based output format intended for consumption by log
 processing and SIEM software.
 
 # OPTIONS
