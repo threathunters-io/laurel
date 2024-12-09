@@ -45,7 +45,7 @@ In addition to (or instead of) writing log files, `auditd(8)` can pass log lines
 
 ### Output format
 
-Log records carrying the same event ID (the `msg=audit(TIME:SEQUENCE):` part) are collected into coherent events and output as a JSONlines-based log format. Most importantly, hex-encoded strings are output as regular JSON strings. [RfC8259] mandates that "text exchanged between systems that are not part of a closed ecosystem MUST be encoded using UTF-8", therefore any bytes or byte sequences that are not valid UTF-8 are percent-encoded as described in [RfC3986]. Numbers are parsed as decimal, octal, or hexadecimal values and output in an unambiguous format. List data (`SYSCALL.{a0 … a3}` and `EXECVE.a*`) are turned into JSON arrays. `PROCTITLE.proctitle` is split at NULL bytes and transformed into a list.
+Log records carrying the same event ID (the `msg=audit(TIME:SEQUENCE):` part) are collected into coherent events and output as a JSON lines-based log format. Most importantly, hex-encoded strings are output as regular JSON strings. [RfC8259] mandates that "text exchanged between systems that are not part of a closed ecosystem MUST be encoded using UTF-8", therefore any bytes or byte sequences that are not valid UTF-8 are percent-encoded as described in [RfC3986]. Numbers are parsed as decimal, octal, or hexadecimal values and output in an unambiguous format. List data (`SYSCALL.{a0 … a3}` and `EXECVE.a*`) are turned into JSON arrays. `PROCTITLE.proctitle` is split at NULL bytes and transformed into a list.
 
 [RfC8259]: https://datatracker.ietf.org/doc/html/rfc8259 'The JavaScript Object Notation (JSON) Data Interchange Format'
 
@@ -105,7 +105,7 @@ The log lines from the Perl reverse shell execution above are processed by `laur
 
 ## Audit rule set advice
 
-For process tracking to work properly, the kernel should be configured to log all `execve`-like calls and all `fork`-like for processes that are expected to ose `fork` without `execve`, e.g. shells:
+For process tracking to work properly, the kernel should be configured to log all `execve`-like calls and all `fork`-like for processes that are expected to use `fork` without `execve`, e.g. shells:
 ```
 -a exit,always -F arch=b32 -S execve,execveat -F success=1
 -a exit,always -F arch=b64 -S execve,execveat -F success=1
