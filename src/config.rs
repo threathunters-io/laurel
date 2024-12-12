@@ -25,6 +25,7 @@ pub struct Logfile {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Debug {
     pub log: Option<Logfile>,
+    pub inputlog: Option<Logfile>,
     #[serde(rename = "parse-error-log")]
     pub parse_error_log: Option<Logfile>,
     #[serde(rename = "dump-state-period")]
