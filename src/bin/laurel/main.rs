@@ -331,6 +331,12 @@ fn run_app() -> Result<(), anyhow::Error> {
         coalesce = Coalesce::new(emit_fn_drop);
     }
 
+    let mut inputlog = if let Some(ref w) = config.debug.inputlog {
+        Some(Logger::new(w, &dir).context("can't create inputlog logger")?)
+    } else {
+        None
+    };
+
     coalesce.settings = config.make_coalesce_settings();
     coalesce.initialize().context("Failed to initialize")?;
 
@@ -391,6 +397,11 @@ fn run_app() -> Result<(), anyhow::Error> {
             == 0
         {
             break;
+        }
+
+        if let Some(ref mut l) = inputlog {
+            l.output.write_all(&line)?;
+            l.output.flush()?;
         }
 
         stats.lines += 1;
