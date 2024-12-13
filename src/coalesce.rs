@@ -756,7 +756,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         let pr = if syscall_is_exec {
                             None
                         } else {
-                            self.processes.get_or_retrieve(proc.pid)
+                            self.processes.get_pid(proc.pid)
                         };
                         match pr {
                             Some(pr) if proc.ppid == pr.ppid && proc.exe == pr.exe => {
