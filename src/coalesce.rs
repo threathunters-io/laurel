@@ -5,9 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use faster_hex::hex_string;
 
-use serde_json::json;
-
 use linux_audit_parser::*;
+
+use serde::Serialize;
 
 use crate::constants::{ARCH_NAMES, SYSCALL_NAMES};
 use crate::label_matcher::LabelMatcher;
@@ -1011,34 +1011,57 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     }
 
     pub fn dump_state(&self, mut w: &mut dyn Write) -> Result<(), Box<dyn Error>> {
-        serde_json::to_writer(
+        #[derive(Serialize)]
+        struct Message<'a> {
+            #[serde(rename = "type")]
+            typ: &'static str,
+            inflight: BTreeMap<String, &'a Event<'a>>,
+            done: Vec<String>,
+            processes: &'a ProcTable,
+            next_expire: Option<u64>,
+        }
+
+        #[derive(Serialize)]
+        struct Out<'a> {
+            ts: u64,
+            message: &'a Message<'a>,
+        }
+
+        crate::json::to_writer(
             &mut w,
-            &json!({
-                "ts": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                "message": {
-                    "type": "dump_state",
-                    "label_exe": self.settings.label_exe,
-                    "inflight": self.inflight.iter().map(
-                        |(k,v)| {
+            &Out {
+                ts: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                message: &Message {
+                    typ: "dump_state",
+                    inflight: self
+                        .inflight
+                        .iter()
+                        .map(|(k, v)| {
                             if let Some(node) = &k.0 {
                                 (format!("{}::{}", String::from_utf8_lossy(node), k.1), v)
                             } else {
                                 (format!("{}", k.1), v)
                             }
-                        }
-                    ).collect::<BTreeMap<_,_>>(),
-                    "done": self.done.iter().map(
-                        |v| if let Some(node ) = &v.0 {
-                            format!("{}::{}", String::from_utf8_lossy(node), v.1)
-                        } else {
-                            format!("{}", v.1)
-                        }
-                    ).collect::<Vec<_>>(),
-                    "processes": self.processes,
-                    "userdb": self.userdb,
-                    "next_expire": self.next_expire,
+                        })
+                        .collect::<BTreeMap<_, _>>(),
+                    done: self
+                        .done
+                        .iter()
+                        .map(|v| {
+                            if let Some(node) = &v.0 {
+                                format!("{}::{}", String::from_utf8_lossy(node), v.1)
+                            } else {
+                                format!("{}", v.1)
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                    processes: &self.processes,
+                    next_expire: self.next_expire,
                 },
-            }),
+            },
         )?;
         w.write_all(b"\n")?;
         w.flush()?;

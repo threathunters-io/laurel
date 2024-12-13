@@ -90,13 +90,22 @@ pub struct Process {
     /// parent's porocess ID
     pub ppid: u32,
     /// path to binary
+    #[serde(serialize_with = "serialize_name")]
     pub exe: Option<Vec<u8>>,
     /// process-settable argv[0]
+    #[serde(serialize_with = "serialize_name")]
     pub comm: Option<Vec<u8>>,
     /// Labels assigned to process
     pub labels: HashSet<Vec<u8>>,
     #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub container_info: Option<ContainerInfo>,
+}
+
+fn serialize_name<S>(t: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_bytes(&t.clone().unwrap_or_default())
 }
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
