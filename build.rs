@@ -62,7 +62,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "linux")]
     bindgen::Builder::default()
         .header("src/sockaddr.h")
-        .rust_target(bindgen::RustTarget::Stable_1_47)
         .allowlist_type("^sockaddr_.*")
         .allowlist_var("^AF_.*")
         .layout_tests(false)

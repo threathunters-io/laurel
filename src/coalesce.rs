@@ -1247,7 +1247,7 @@ mod test {
             assert!(
                 l == 12,
                 "expected 12 fields, got {l}: {:?}",
-                records[0].into_iter().collect::<Vec<_>>()
+                records[0].clone().into_iter().collect::<Vec<_>>()
             );
         } else {
             panic!("expected EventValues::Multi");
@@ -1324,17 +1324,17 @@ mod test {
             assert!(
                 uid,
                 "missing UID: {:?}",
-                records[0].into_iter().collect::<Vec<_>>()
+                records[0].clone().into_iter().collect::<Vec<_>>()
             );
             assert!(
                 old_auid,
                 "missing OLD-AUID: {:?}",
-                records[0].into_iter().collect::<Vec<_>>()
+                records[0].clone().into_iter().collect::<Vec<_>>()
             );
             assert!(
                 auid,
                 "missing AUID: {:?}",
-                records[0].into_iter().collect::<Vec<_>>()
+                records[0].clone().into_iter().collect::<Vec<_>>()
             );
         } else {
             panic!("expected EventValues::Multi");
