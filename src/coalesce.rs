@@ -807,7 +807,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         }
                         if let Some(unlabel_exe) = &self.settings.unlabel_exe {
                             for label in unlabel_exe.matches(&proc.exe.clone().unwrap()) {
-                                proc.labels.insert(label.into());
+                                proc.labels.remove(label.into());
                             }
                         }
                     }
