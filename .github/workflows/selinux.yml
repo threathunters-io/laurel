@@ -9,30 +9,6 @@ on:
       - .github/workflows/selinux.yml
 
 jobs:
-  build-el7:
-    env:
-      ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node16
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-    runs-on: ubuntu-latest
-    container: centos:7
-    steps:
-      - name: Prepare
-        run: |
-          sed -i \
-              -e 's,^# *baseurl=http://mirror.centos.org/centos/,baseurl=https://vault.centos.org/centos/,g' \
-              -e 's,^mirrorlist=http://mirrorlist.centos.org,#&1,' \
-              /etc/yum.repos.d/*.repo
-          yum install -y selinux-policy-devel
-      - uses: actions/checkout@v2
-      - name: Build
-        run: |
-          make -C contrib/selinux AUDITD_VERSIONS=2
-      - name: Archive policy
-        uses: actions/upload-artifact@v3
-        with:
-          name: selinux-el7
-          path: contrib/selinux/laurel.pp
-
   build-el8:
     runs-on: ubuntu-latest
     container: rockylinux:8
@@ -65,26 +41,6 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: selinux-el9
-          path: contrib/selinux/laurel.pp
-
-  build-al2:
-    env:
-      ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node16
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-    runs-on: ubuntu-latest
-    container: amazonlinux:2
-    steps:
-      - name: Prepare
-        run: |
-          yum install -y selinux-policy-devel findutils tar
-      - uses: actions/checkout@v2
-      - name: Build
-        run: |
-          make -C contrib/selinux AUDITD_VERSIONS=2
-      - name: Archive policy
-        uses: actions/upload-artifact@v3
-        with:
-          name: selinux-al2
           path: contrib/selinux/laurel.pp
 
   build-al2023:

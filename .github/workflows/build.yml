@@ -218,8 +218,10 @@ jobs:
     steps:
       - name: Prepare
         run: |
+          dnf -q -y install 'dnf-command(config-manager)'
+          dnf config-manager --enable powertools
           dnf -q -y update
-          dnf -q -y install gcc file libacl-devel clang
+          dnf -q -y install gcc file libacl-devel clang make pandoc
       - name: Install Rust toolchain (stable)
         uses: actions-rs/toolchain@v1
         with:
@@ -229,6 +231,7 @@ jobs:
       - name: Build
         run: |
           cargo build --release
+          make -C man
       - uses: actions/upload-artifact@v3
         with:
           name: laurel-x86_64-gnu-old
