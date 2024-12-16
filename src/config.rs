@@ -109,6 +109,13 @@ impl Default for Enrich {
     }
 }
 
+fn default_32() -> usize {
+    32
+}
+fn default_4096() -> usize {
+    4096
+}
+
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct LabelProcess {
     #[serde(default, rename = "label-keys")]
@@ -117,6 +124,14 @@ pub struct LabelProcess {
     pub label_exe: Option<LabelMatcher>,
     #[serde(default, rename = "unlabel-exe")]
     pub unlabel_exe: Option<LabelMatcher>,
+    #[serde(default, rename = "label-argv")]
+    pub label_argv: Option<LabelMatcher>,
+    #[serde(default, rename = "unlabel-argv")]
+    pub unlabel_argv: Option<LabelMatcher>,
+    #[serde(default = "default_4096", rename = "label-argv-bytes")]
+    pub label_argv_bytes: usize,
+    #[serde(default = "default_32", rename = "label-argv-count")]
+    pub label_argv_count: usize,
     #[serde(default, rename = "label-script")]
     pub label_script: Option<LabelMatcher>,
     #[serde(default, rename = "unlabel-script")]
@@ -333,6 +348,10 @@ impl Config {
             drop_translated: self.translate.drop_raw,
             label_exe: self.label_process.label_exe.clone(),
             unlabel_exe: self.label_process.unlabel_exe.clone(),
+            label_argv: self.label_process.label_argv.clone(),
+            unlabel_argv: self.label_process.unlabel_argv.clone(),
+            label_argv_bytes: self.label_process.label_argv_bytes,
+            label_argv_count: self.label_process.label_argv_count,
             label_script: self.label_process.label_script.clone(),
             unlabel_script: self.label_process.unlabel_script.clone(),
             filter_keys: self

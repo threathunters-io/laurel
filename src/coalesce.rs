@@ -43,6 +43,10 @@ pub struct Settings {
 
     pub label_exe: Option<LabelMatcher>,
     pub unlabel_exe: Option<LabelMatcher>,
+    pub label_argv: Option<LabelMatcher>,
+    pub unlabel_argv: Option<LabelMatcher>,
+    pub label_argv_bytes: usize,
+    pub label_argv_count: usize,
     pub label_script: Option<LabelMatcher>,
     pub unlabel_script: Option<LabelMatcher>,
 
@@ -71,6 +75,10 @@ impl Default for Settings {
             drop_translated: false,
             label_exe: None,
             unlabel_exe: None,
+            label_argv: None,
+            unlabel_argv: None,
+            label_argv_bytes: 4096,
+            label_argv_count: 32,
             label_script: None,
             unlabel_script: None,
             filter_keys: HashSet::new(),
@@ -540,7 +548,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
     }
 
-    fn transform_execve(&mut self, rv: &mut Body, current_process: &Option<Process>) {
+    fn transform_execve(&mut self, rv: &mut Body, mut current_process: &mut Option<Process>) {
         let mut argv: Vec<Value> = Vec::with_capacity(rv.len() - 1);
         rv.retain(|(k, v)| {
             match k {
@@ -577,6 +585,47 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 _ => true,
             }
         });
+
+        if current_process.is_some()
+            && self.settings.label_argv_count > 0
+            && self.settings.label_argv_bytes > 0
+            && (self.settings.label_argv.is_some() || self.settings.unlabel_argv.is_some())
+        {
+            let mut buf: Vec<u8> = Vec::with_capacity(self.settings.label_argv_bytes);
+
+            for arg in argv.iter().take(self.settings.label_argv_count) {
+                if !buf.is_empty() {
+                    buf.push(b' ');
+                }
+                // FIXME TryFrom<&Value> needs to be implemented in linux-audit-parser
+                let b: Vec<u8> = match arg.clone().try_into() {
+                    Ok(b) => b,
+                    Err(_) => continue,
+                };
+                if buf.len() + b.len() >= self.settings.label_argv_bytes {
+                    break;
+                }
+                buf.extend(b);
+            }
+
+            match (&mut current_process, &self.settings.label_argv) {
+                (Some(ref mut proc), Some(ref m)) => {
+                    for label in m.matches(&buf) {
+                        proc.labels.insert(label.into());
+                    }
+                }
+                _ => {}
+            }
+
+            match (&mut current_process, &self.settings.unlabel_argv) {
+                (Some(ref mut proc), Some(ref m)) => {
+                    for label in m.matches(&buf) {
+                        proc.labels.remove(label.into());
+                    }
+                }
+                _ => {}
+            }
+        }
 
         // Strip data from the middle of excessively long ARGV
         if let Some(argv_max) = self.settings.execve_argv_limit_bytes {
@@ -623,7 +672,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         // ENV
         #[cfg(all(feature = "procfs", target_os = "linux"))]
-        if let (Some(proc), false) = (&current_process, self.settings.execve_env.is_empty()) {
+        if let (Some(ref proc), false) = (&current_process, self.settings.execve_env.is_empty()) {
             if let Ok(vars) =
                 procfs::get_environ(proc.pid, |k| self.settings.execve_env.contains(k))
             {
@@ -829,7 +878,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if let Some(EventValues::Single(rv)) = ev.body.get_mut(&MessageType::EXECVE) {
-            self.transform_execve(rv, &current_process);
+            self.transform_execve(rv, &mut current_process);
         }
 
         // Handle script enrichment
@@ -1408,6 +1457,24 @@ mod test {
         )?;
         drop(c);
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["recon"]"#));
+
+        Ok(())
+    }
+
+    #[test]
+    fn label_argv() -> Result<(), Box<dyn Error>> {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.label_argv = Some(LabelMatcher::new(&[(
+            r#"^\S*java .* -Dweblogic"#,
+            "weblogic",
+        )])?);
+
+        process_record(&mut c, include_bytes!("testdata/record-weblogic.txt"))?;
+        drop(c);
+
+        assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["weblogic"]"#));
 
         Ok(())
     }

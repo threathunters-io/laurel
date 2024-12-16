@@ -146,7 +146,10 @@ associated with those processes. These labels can be propagated from
 parent to child processes.
 
 - `label-exe.<regexp> = <label-name>`: Regular expressions/label
-  mappings applied to binary executables (`SYSCALL.exe`) on `exec`
+  mappings applied to binary executables (`SYSCALL.exe`) on `execve`
+  calls. Default: none
+- `label-argv.<regexp> = <label-name>`: Regular expressions/label
+  mappings applied to the command line (`EXECVE.a*`) on `execve`
   calls. Default: none
 - `label-script.<regexp> = <label-name>`: Regular expressions/label
   mappings applied to scripts (`SYSCALL.SCRIPT`, see `enrich.script`
@@ -155,8 +158,14 @@ parent to child processes.
   see `auditctl(8)`'s `-k` option. Default: none
 - `unlabel-exe.<regexp> = <label-name>`: Like `label-exe`, but for
   removing labels
+- `unlabel-argv.<regexp> = <label-name>`: Like `label-argv`, but for
+  removing labels
 - `unlabel-script.<regexp> = <label-name>`: Like `label-script`, but
   for removing labels
+- `label-argv-count` Number of command line arguments that are
+  considered for `label-argv`, `unlabel-argv`. Default: 32
+- `label-argv-bytes` Number of bytes that are considered for
+  `label-argv`, `unlabel-argv`. Default: 4096
 - `propagate-labels`: List of labels that are propagated to child
   processes. Default: empty
 

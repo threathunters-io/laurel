@@ -126,6 +126,19 @@ label-exe.'^/snap/amazon-ssm-agent/\d+/' = 'amazon-ssm-agent'
 
 unlabel-exe."bin/php$" = "java"
 
+# Labels can be attached to or removed from processes that are started
+# using certain command lines. Note that there are limits on the
+# number of arguments and the number of bytes considered by the
+# matcher, see label-argv-count and label-argv-bytes
+label-argv."^(?:\\S+/)?java .* -Dweblogic" = "weblogic"
+# unlabel-argv."…" = "…"
+
+# Number of command line arguments that are considered for label-argv,
+# unlabel-argv.
+label-argv-count = 32
+# Number of bytes that are considered for label-argv, unlabel-argv.
+label-argv-bytes = 4096
+
 # Labels can be attached to or removed from processes that have been identified as
 # scripts.
 label-script."^/root/maint-.*[.]sh$" = "maint"
