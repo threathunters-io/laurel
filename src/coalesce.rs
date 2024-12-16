@@ -1472,9 +1472,28 @@ mod test {
         )])?);
 
         process_record(&mut c, include_bytes!("testdata/record-weblogic.txt"))?;
-        drop(c);
 
         assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["weblogic"]"#));
+
+        // Ensure this does not crash with long command lines
+        // TODO: check matcher behavior
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.label_argv = Some(LabelMatcher::new(&[(
+            r#"/opt/app/redacted/to/protect/the/guilty/"#,
+            "protect-the-guilty",
+        )])?);
+        let buf = gen_long_find_execve();
+        process_record(&mut c, buf)?;
+        assert!(event_to_json(ec.borrow().as_ref().unwrap())
+            .contains(r#"LABELS":["protect-the-guilty"]"#));
+
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.label_argv = Some(LabelMatcher::new(&[
+            (r#"^/bin/echo "#, "echo"), // this should match.
+            (r#"aaaaaaaaaa"#, "aaaa"),  // this shouldn't. argv[1] is too long for the buffer.
+        ])?);
+        process_record(&mut c, include_bytes!("testdata/record-execve-long.txt"))?;
+        assert!(event_to_json(ec.borrow().as_ref().unwrap()).contains(r#"LABELS":["echo"]"#));
 
         Ok(())
     }
@@ -1614,13 +1633,7 @@ mod test {
         }
     }
 
-    #[test]
-    fn strip_long_argv() -> Result<(), Box<dyn Error>> {
-        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
-
-        let mut c = Coalesce::new(mk_emit(&ec));
-
-        c.settings.execve_argv_limit_bytes = Some(10000);
+    fn gen_long_find_execve() -> Vec<u8> {
         let mut buf = vec![];
         let msgid = "1663143990.204:2148478";
         let npath = 40000;
@@ -1660,6 +1673,17 @@ mod test {
             buf.extend(format!(r#" a{}="{param}""#, npath + i).bytes());
         }
         buf.extend(format!("\ntype=EOE msg=audit({msgid}): \n").bytes());
+        buf
+    }
+
+    #[test]
+    fn strip_long_argv() -> Result<(), Box<dyn Error>> {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new(mk_emit(&ec));
+
+        c.settings.execve_argv_limit_bytes = Some(10000);
+        let buf = gen_long_find_execve();
 
         process_record(&mut c, &buf)?;
         {
