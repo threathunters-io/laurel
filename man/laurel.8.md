@@ -195,6 +195,9 @@ using them for internal processing such as process tracking.
 can be used to reconfigure `laurel` without having restarting
 `auditd(8)` which would likely lead to lost audit messages.
 
+# SEE ALSO
+`auditd(8)`, `auditd-plugins(5)`, `audit.rules(7)`, `laurel-about(7)`, `laurel-audit-rules(7)`
+
 # AUTHORS
 - Hilko Bengen <<bengen@hilluzination.de>>
 - Sergej Schmidt <<sergej@msgpeek.net>>

@@ -105,23 +105,10 @@ The log lines from the Perl reverse shell execution above are processed by `laur
 
 ## Audit rule set advice
 
-For process tracking to work properly, the kernel should be configured to log all `execve`-like calls and all `fork`-like for processes that are expected to use `fork` without `execve`, e.g. shells:
-```
--a exit,always -F arch=b32 -S execve,execveat -F success=1
--a exit,always -F arch=b64 -S execve,execveat -F success=1
-
--a exit,always -F arch=b32 -S fork,vfork,clone,clone3 -F success=1 -F exe=/bin/sh
--a exit,always -F arch=b64 -S fork,vfork,clone,clone3 -F success=1 -F exe=/bin/sh
--a exit,always -F arch=b32 -S fork,vfork,clone,clone3 -F success=1 -F exe=/bin/bash
--a exit,always -F arch=b64 -S fork,vfork,clone,clone3 -F success=1 -F exe=/bin/bash
-# …
-```
-If the `fork` calls are not needed in the log file, they can be filtered out by assigning a key to those rules in the audit ruleset and adding this key to `filter.filter-keys`.
-
-Note that older versions of auditd may not understand all the syscalls. In those cases, it may be necessary to substitute the syscall numbers for the ruleset.
+For process tracking to work properly, the kernel should be configured to log all `execve`-like calls and all `fork`-like for processes that are expected to use `fork` without `execve`. See `laurel-audit-rules(7)` for details.
 
 # SEE ALSO
-`laurel(8)`, `auditd(8)`, `audit.rules(7)`
+`laurel(8)`, `auditd(8)`, `audit.rules(7)`, `laurel-audit-rules(7)`
 
 # AUTHORS
 - Hilko Bengen <<bengen@hilluzination.de>>
