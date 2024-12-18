@@ -212,6 +212,11 @@ impl ProcTable {
         self.processes.get(key)
     }
 
+    /// Retrieves a mutable process by key.
+    pub fn get_key_mut(&mut self, key: &ProcessKey) -> Option<&mut Process> {
+        self.processes.get_mut(key)
+    }
+
     /// Retrieves a process by pid.
     pub fn get_pid(&self, pid: u32) -> Option<&Process> {
         self.current.get(&pid).and_then(|pk| self.get_key(pk))
