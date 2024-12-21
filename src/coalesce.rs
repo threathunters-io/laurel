@@ -1702,6 +1702,7 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected="Found 1682609045.530:29240 though it should have been filtered (config 2 test 1).")]
     fn shell_proc_trace() {
         let s1 = Settings {
             proc_label_keys: [b"test-script".to_vec()].into(),
@@ -1720,63 +1721,71 @@ mod test {
 
         for (n, s) in [s1, s2, s3].iter().enumerate() {
             let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
-            let mut c = Coalesce::new(mk_emit_vec(&events));
-
-            c.settings = s.clone();
 
             println!("Using configuration #{n}");
-            process_record(&mut c, include_bytes!("testdata/shell-proc-trace.txt")).unwrap();
+            for (tn, text) in [
+                &include_bytes!("testdata/shell-proc-trace.txt")[..],
+                &include_bytes!("testdata/shell-proc-trace-reordered.txt")[..],
+            ]
+            .iter()
+            .enumerate()
+            {
+                let mut c = Coalesce::new(mk_emit_vec(&events));
+                c.settings = s.clone();
 
-            let events = events.borrow();
+                process_record(&mut c, text).unwrap();
 
-            let mut present_and_label = vec![
-                "1682609045.526:29238",
-                "1682609045.530:29242",
-                "1682609045.530:29244",
-                "1682609045.534:29245",
-            ];
-            let mut absent = vec![];
-            match n {
-                0 => {
-                    present_and_label.extend([
-                        "1682609045.530:29239",
-                        "1682609045.530:29240",
-                        "1682609045.530:29241",
-                        "1682609045.530:29243",
-                    ]);
+                let events = events.borrow();
+
+                let mut present_and_label = vec![
+                    "1682609045.526:29238",
+                    "1682609045.530:29242",
+                    "1682609045.530:29244",
+                    "1682609045.534:29245",
+                ];
+                let mut absent = vec![];
+                match n {
+                    0 => {
+                        present_and_label.extend([
+                            "1682609045.530:29239",
+                            "1682609045.530:29240",
+                            "1682609045.530:29241",
+                            "1682609045.530:29243",
+                        ]);
+                    }
+                    1 => {
+                        absent.extend([
+                            "1682609045.526:29237",
+                            "1682609045.530:29239",
+                            "1682609045.530:29240",
+                            "1682609045.530:29241",
+                            "1682609045.530:29243",
+                        ]);
+                    }
+                    2 => {
+                        // fork = first event in pid=71506
+                        present_and_label.extend(["1682609045.530:29241"]);
+
+                        absent.extend([
+                            "1682609045.530:29239",
+                            "1682609045.530:29240",
+                            "1682609045.530:29243",
+                        ]);
+                    }
+                    _ => {}
+                };
+
+                for id in present_and_label {
+                    let event = find_event(&events, id).expect(&format!("Did not find {id}"));
+                    assert!(
+                        event_to_json(&event).contains(r#""LABELS":["test-script"]"#),
+                        "{id} was not labelled correctly (config {n} test {tn})."
+                    );
                 }
-                1 => {
-                    absent.extend([
-                        "1682609045.526:29237",
-                        "1682609045.530:29239",
-                        "1682609045.530:29240",
-                        "1682609045.530:29241",
-                        "1682609045.530:29243",
-                    ]);
-                }
-                2 => {
-                    // fork = first event in pid=71506
-                    present_and_label.extend(["1682609045.530:29241"]);
-
-                    absent.extend([
-                        "1682609045.530:29239",
-                        "1682609045.530:29240",
-                        "1682609045.530:29243",
-                    ]);
-                }
-                _ => {}
-            };
-
-            for id in present_and_label {
-                let event = find_event(&events, id).unwrap_or_else(|| panic!("Did not find {id}"));
-                assert!(
-                    event_to_json(&event).contains(r#""LABELS":["test-script"]"#),
-                    "{id} was not labelled correctly."
-                );
-            }
-            for id in absent {
-                if find_event(&events, id).is_some() {
-                    panic!("Found {id} though it should have been filtered.");
+                for id in absent {
+                    if find_event(&events, id).is_some() {
+                        panic!("Found {id} though it should have been filtered (config {n} test {tn}).");
+                    }
                 }
             }
         }

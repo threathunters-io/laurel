@@ -1,0 +1,52 @@
+# The script execution has been marked with the key "test-script".
+
+# fork + exec by parent shell
+type=SYSCALL msg=audit(1682609045.526:29237): arch=c000003e syscall=56 success=yes exit=71505 a0=1200011 a1=0 a2=0 a3=7fb30981aa10 items=0 ppid=3505 pid=71432 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="bash" exe="/usr/bin/bash" subj=unconfined key="fork"
+
+type=SYSCALL msg=audit(1682609045.526:29238): arch=c000003e syscall=59 success=yes exit=0 a0=55fdabf92380 a1=55fdabf99b20 a2=55fdabf2f2d0 a3=6ba537a8c6848fb8 items=4 ppid=71432 pid=71505 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="test-script.sh" exe="/usr/bin/dash" subj=unconfined key="test-script"
+type=EXECVE msg=audit(1682609045.526:29238): argc=2 a0="/bin/sh" a1="./src/testdata/double-fork/test-script.sh"
+type=CWD msg=audit(1682609045.526:29238): cwd="/home/user/src/laurel"
+type=PATH msg=audit(1682609045.526:29238): item=0 name="./src/testdata/double-fork/test-script.sh" inode=6309361 dev=fd:02 mode=0100755 ouid=1000 ogid=1000 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.526:29238): item=1 name="./src/testdata/double-fork/test-script.sh" inode=6309361 dev=fd:02 mode=0100755 ouid=1000 ogid=1000 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.526:29238): item=2 name="/bin/sh" inode=394147 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.526:29238): item=3 name="/lib64/ld-linux-x86-64.so.2" inode=393521 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+
+# forks for pipe setup
+type=SYSCALL msg=audit(1682609045.530:29239): arch=c000003e syscall=56 success=yes exit=71506 a0=1200011 a1=0 a2=0 a3=7fd85beaba10 items=0 ppid=71432 pid=71505 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="test-script.sh" exe="/usr/bin/dash" subj=unconfined key="fork"
+
+type=SYSCALL msg=audit(1682609045.530:29240): arch=c000003e syscall=56 success=yes exit=71507 a0=1200011 a1=0 a2=0 a3=7fd85beaba10 items=0 ppid=71432 pid=71505 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="test-script.sh" exe="/usr/bin/dash" subj=unconfined key="fork"
+
+type=SYSCALL msg=audit(1682609045.530:29241): arch=c000003e syscall=56 success=yes exit=71508 a0=1200011 a1=0 a2=0 a3=7fd85beaba10 items=0 ppid=71505 pid=71506 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="test-script.sh" exe="/usr/bin/dash" subj=unconfined key="fork"
+
+type=SYSCALL msg=audit(1682609045.530:29242): arch=c000003e syscall=59 success=yes exit=0 a0=55d85f7e6ea8 a1=55d85f7e6bc0 a2=55d85f7e6bd8 a3=6b85af46a9ffd8dd items=3 ppid=71505 pid=71507 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="grep" exe="/usr/bin/grep" subj=unconfined key=(null)
+type=EXECVE msg=audit(1682609045.530:29242): argc=2 a0="grep" a1="baz"
+type=CWD msg=audit(1682609045.530:29242): cwd="/home/user/src/laurel"
+type=PATH msg=audit(1682609045.530:29242): item=0 name="/usr/bin/grep" inode=394770 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.530:29242): item=1 name="/usr/bin/grep" inode=394770 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.530:29242): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=393521 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+
+type=SYSCALL msg=audit(1682609045.530:29243): arch=c000003e syscall=56 success=yes exit=71509 a0=1200011 a1=0 a2=0 a3=7fd85beaba10 items=0 ppid=71505 pid=71506 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="test-script.sh" exe="/usr/bin/dash" subj=unconfined key="fork"
+
+type=SYSCALL msg=audit(1682609045.530:29244): arch=c000003e syscall=59 success=yes exit=0 a0=55d85f7e6b88 a1=55d85f7e6bc8 a2=55d85f7e6be0 a3=6b85af46a9ffd8dd items=3 ppid=71506 pid=71508 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="echo" exe="/usr/bin/echo" subj=unconfined key=(null)
+type=EXECVE msg=audit(1682609045.530:29244): argc=2 a0="/bin/echo" a1="foo"
+type=CWD msg=audit(1682609045.530:29244): cwd="/home/user/src/laurel"
+type=PATH msg=audit(1682609045.530:29244): item=0 name="/bin/echo" inode=398735 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.530:29244): item=1 name="/bin/echo" inode=398735 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.530:29244): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=393521 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+
+type=SYSCALL msg=audit(1682609045.534:29245): arch=c000003e syscall=59 success=yes exit=0 a0=55d85f7e6b88 a1=55d85f7e6be8 a2=55d85f7e6e78 a3=6b85af46a9ffd8dd items=3 ppid=71506 pid=71509 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts7 ses=3 comm="sed" exe="/usr/bin/sed" subj=unconfined key=(null)
+type=EXECVE msg=audit(1682609045.534:29245): argc=3 a0="/bin/sed" a1="-e" a2="s/foo/bar/"
+type=CWD msg=audit(1682609045.534:29245): cwd="/home/user/src/laurel"
+type=PATH msg=audit(1682609045.534:29245): item=0 name="/bin/sed" inode=432247 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.534:29245): item=1 name="/bin/sed" inode=432247 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1682609045.534:29245): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=393521 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+
+type=EOE msg=audit(1682609045.534:29245): 
+type=EOE msg=audit(1682609045.530:29244): 
+type=EOE msg=audit(1682609045.530:29243): 
+type=EOE msg=audit(1682609045.530:29242): 
+type=EOE msg=audit(1682609045.530:29241): 
+type=EOE msg=audit(1682609045.530:29240): 
+type=EOE msg=audit(1682609045.530:29239): 
+type=EOE msg=audit(1682609045.526:29238): 
+type=EOE msg=audit(1682609045.526:29237): 
