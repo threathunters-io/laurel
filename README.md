@@ -27,7 +27,7 @@ This happens at the source because _LAUREL_ runs on the host where the audit eve
 Configuration and operational details are described in the [laurel(8)](man/laurel.8.md) manual page.
 Details about the log format and rationales can be found in the [laurel-about(7)](man/laurel-about.7.md) manual page. The [laurel-audit-rules(7)](man/laurel-audit-rules.7.md) page contains advice and examples for configuring audit rules useful for detecting attackers' tactics.
 
-The [_LAUREL_ installation instructions](INSTALL.md) contain instructions on how to build _LARUEL_ from source and how to install and configure it.
+The [_LAUREL_ installation instructions](INSTALL.md) contain instructions on how to build _LAUREL_ from source and how to install and configure it.
 
 We developed _LAUREL_ because we were not content with feature sets and performance characteristics of existing projects and products. Please refer to the [Performance](performance.md) document for details.
 
