@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn parse_self() {
         let pid = std::process::id();
-        let proc = parse_proc_pid(pid).expect(&format!("parse entry for {pid}"));
+        let proc = parse_proc_pid(pid).unwrap_or_else(|_| panic!("parse entry for {pid}"));
         println!("{:?}", proc);
     }
 

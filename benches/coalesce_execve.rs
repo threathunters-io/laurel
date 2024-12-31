@@ -1,5 +1,3 @@
-use divan;
-
 use gperftools::profiler::PROFILER;
 
 use laurel::coalesce::Coalesce;

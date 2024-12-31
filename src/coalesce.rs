@@ -608,22 +608,20 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 buf.extend(b);
             }
 
-            match (&mut current_process, &self.settings.label_argv) {
-                (Some(ref mut proc), Some(ref m)) => {
-                    for label in m.matches(&buf) {
-                        proc.labels.insert(label.into());
-                    }
+            if let (Some(ref mut proc), Some(ref m)) =
+                (&mut current_process, &self.settings.label_argv)
+            {
+                for label in m.matches(&buf) {
+                    proc.labels.insert(label.into());
                 }
-                _ => {}
             }
 
-            match (&mut current_process, &self.settings.unlabel_argv) {
-                (Some(ref mut proc), Some(ref m)) => {
-                    for label in m.matches(&buf) {
-                        proc.labels.remove(label.into());
-                    }
+            if let (Some(ref mut proc), Some(ref m)) =
+                (&mut current_process, &self.settings.unlabel_argv)
+            {
+                for label in m.matches(&buf) {
+                    proc.labels.remove(label);
                 }
-                _ => {}
             }
         }
 
@@ -856,7 +854,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         }
                         if let Some(unlabel_exe) = &self.settings.unlabel_exe {
                             for label in unlabel_exe.matches(&proc.exe.clone().unwrap()) {
-                                proc.labels.remove(label.into());
+                                proc.labels.remove(label);
                             }
                         }
                     }
@@ -1166,7 +1164,7 @@ mod test {
                     _ => out.push(*c),
                 };
             }
-            out.push('\n' as u8);
+            out.push(b'\n');
         }
         out
     }
@@ -1178,7 +1176,7 @@ mod test {
         for line in BufReader::new(text.as_ref())
             .lines()
             .filter(|line| match line {
-                Ok(l) if l.len() == 0 => false,
+                Ok(l) if l.is_empty() => false,
                 Ok(l) if l.starts_with("#") => false,
                 _ => true,
             })
@@ -1204,7 +1202,7 @@ mod test {
             }
         );
 
-        if let Ok(_) = process_record(&mut c, include_bytes!("testdata/line-user-acct.txt")) {
+        if process_record(&mut c, include_bytes!("testdata/line-user-acct.txt")).is_ok() {
             panic!("failed to detect duplicate entries");
         };
 
@@ -1502,20 +1500,20 @@ mod test {
     fn mk_emit<'c, 'ev: 'c>(
         ec: &'c Rc<RefCell<Option<Event<'ev>>>>,
     ) -> impl FnMut(&Event<'ev>) + 'c {
-        return |ev: &Event| {
+        |ev: &Event| {
             if !ev.filter {
                 *ec.borrow_mut() = Some(ev.clone());
             }
-        };
+        }
     }
 
     // Returns an emitter function that appends the event onto a Vec
     fn mk_emit_vec<'c, 'ev>(ec: &'c Rc<RefCell<Vec<Event<'ev>>>>) -> impl FnMut(&Event<'ev>) + 'c {
-        return |ev: &Event| {
+        |ev: &Event| {
             if !ev.filter {
                 ec.borrow_mut().push(ev.clone());
             }
-        };
+        }
     }
 
     #[test]
@@ -1617,7 +1615,7 @@ mod test {
         ] {
             let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
             let mut c = Coalesce::new(mk_emit_vec(&events));
-            c.settings.filter_raw_lines = regex::bytes::RegexSet::new(&[
+            c.settings.filter_raw_lines = regex::bytes::RegexSet::new([
                 filter
             ])
                 .expect("failed to compile regex");
@@ -1690,15 +1688,12 @@ mod test {
             let output = event_to_json(ec.borrow().as_ref().unwrap());
             assert!(output.len() < 15000);
             assert!(
-                output.find(".00020.garbage").is_some(),
+                output.contains(".00020.garbage"),
                 "Can't find start of argv"
             );
+            assert!(output.contains(".39980.garbage"), "Can't find end of argv");
             assert!(
-                output.find(".39980.garbage").is_some(),
-                "Can't find end of argv"
-            );
-            assert!(
-                output.find(".20000.garbage").is_none(),
+                !output.contains(".20000.garbage"),
                 "Should not see middle of argv"
             );
         }
@@ -1773,7 +1768,7 @@ mod test {
             };
 
             for id in present_and_label {
-                let event = find_event(&events, id).expect(&format!("Did not find {id}"));
+                let event = find_event(&events, id).unwrap_or_else(|| panic!("Did not find {id}"));
                 assert!(
                     event_to_json(&event).contains(r#""LABELS":["test-script"]"#),
                     "{id} was not labelled correctly."
@@ -1815,12 +1810,12 @@ mod test {
             let events = events.borrow();
 
             for id in ["1697091525.582:2588684", "1697091526.357:2638035"] {
-                let event = find_event(&events, id).expect(&format!("Did not find {id}"));
+                let event = find_event(&events, id).unwrap_or_else(|| panic!("Did not find {id}"));
                 println!("{}", event_to_json(&event));
             }
 
             let id = "1697091526.357:2638035";
-            let event = find_event(&events, id).expect(&format!("Did not find {id}"));
+            let event = find_event(&events, id).unwrap_or_else(|| panic!("Did not find {id}"));
             assert!(
                 event_to_json(&event).contains(
                     r#""PPID":{"EVENT_ID":"1697091526.357:2638033","comm":"csh","exe":"/bin/tcsh","ppid":2542}"#),
