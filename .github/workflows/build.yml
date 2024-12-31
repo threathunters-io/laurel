@@ -7,8 +7,6 @@ on:
       - build.rs
       - Cargo.*
       - .github/workflows/build.yml
-    tags-ignore:
-      - "v*"
   pull_request:
     paths:
       - src/**
@@ -19,7 +17,7 @@ on:
       - .github/workflows/build.yml
 
 jobs:
-  check_fmt:
+  check-fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -27,9 +25,7 @@ jobs:
         with:
           toolchain: stable
           profile: minimal
-  
-      - name: check formatting
-        run: cargo fmt --check
+      - run: cargo fmt --check
 
   build-test:
     runs-on: ubuntu-latest
@@ -40,13 +36,11 @@ jobs:
         run: |
           apt-get -qq update
           apt-get -qqy dist-upgrade
-          apt-get -qqy install curl build-essential libclang-dev libacl1-dev selinux-policy-dev libgoogle-perftools-dev
-  
+          apt-get -qqy install curl build-essential libclang-dev libacl1-dev libgoogle-perftools-dev
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
-  
       - uses: actions/cache@v3
         with:
           path: |
@@ -55,15 +49,15 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
-  
+          key: "${{ runner.os }}-test-cargo-${{ hashFiles('**/Cargo.lock') }}"
+          restore-keys: ${{ runner.os }}-test-cargo-
       - run: cargo build
       - run: cargo test --no-default-features
       - run: cargo test
       - run: cargo bench --no-run
-      - run: make -C contrib/selinux
 
   build-x86_64-gnu:
+    needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
     container: debian:bullseye
     steps:
@@ -73,12 +67,10 @@ jobs:
           apt-get -qq update
           apt-get -qqy dist-upgrade
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev
-  
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
-  
       - uses: actions/cache@v3
         with:
           path: |
@@ -87,111 +79,42 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
-  
-      - run: cargo build --target=x86_64-unknown-linux-gnu --release
-  
+          key: "${{ runner.os }}-x86_64-gnu-cargo-${{ hashFiles('**/Cargo.lock') }}"
+          restore-keys: ${{ runner.os }}-cargo-x86_64-gnu-
+      - name: Build
+        run: cargo build --target=x86_64-unknown-linux-gnu --release
       - uses: actions/upload-artifact@v4
         with:
-          name: laurel-x86_64-gnu
-          path: target/x86_64-unknown-linux-gnu/release/laurel
-      - uses: actions/upload-artifact@v4
-        with:
-          name: laurel2audit-x86_64-gnu
-          path: target/x86_64-unknown-linux-gnu/release/laurel2audit
+          name: binaries-x86_64-gnu
+          path: |
+            target/*/release/laurel*
+            !target/*/release/*.*
+          if-no-files-found: error
 
-  build-aarch64-gnu:
-    runs-on: ubuntu-latest
-    container: debian:bullseye
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install dependency
-        run: |
-          dpkg --add-architecture arm64
-          apt-get -qq update
-          apt-get -qqy dist-upgrade
-          apt-get -qqy install curl build-essential libclang-dev gcc-aarch64-linux-gnu libacl1-dev:arm64
-  
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          target: aarch64-unknown-linux-gnu
-  
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
-  
-      - run: cargo build --target=aarch64-unknown-linux-gnu --release
-  
-      - uses: actions/upload-artifact@v4
-        with:
-          name: laurel-aarch64-gnu
-          path: target/aarch64-unknown-linux-gnu/release/laurel
-      - uses: actions/upload-artifact@v4
-        with:
-          name: laurel2audit-aarch64-gnu
-          path: target/aarch64-unknown-linux-gnu/release/laurel2audit
-    
-  build-armv7-gnueabihf:
-    runs-on: ubuntu-latest
-    container: debian:bullseye
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install dependency
-        run: |
-          dpkg --add-architecture armhf
-          apt-get -qq update
-          apt-get -qqy dist-upgrade
-          apt-get -qqy install curl build-essential libclang-dev gcc-arm-linux-gnueabihf libacl1-dev:armhf
-  
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          target: armv7-unknown-linux-gnueabihf
-  
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
-  
-      - run: cargo build --target=armv7-unknown-linux-gnueabihf --release
-  
-      - uses: actions/upload-artifact@v4
-        with:
-          name: laurel-armv7-gnueabihf
-          path: target/armv7-unknown-linux-gnueabihf/release/laurel
-      - uses: actions/upload-artifact@v4
-        with:
-          name: laurel2audit-armv7-gnueabihf
-          path: target/armv7-unknown-linux-gnueabihf/release/laurel2audit
-    
   build-x86_64-musl:
+    needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: alpine:3.19
+    container: alpine:3.21
     steps:
-      - name: Prepare
-        run: |
-          apk add git ca-certificates rust cargo clang-dev acl-static musl-dev linux-headers make pandoc
-          apk add binutils file jq
       - uses: actions/checkout@v2
+      - name: Install dependency
+        run: |
+          apk add git ca-certificates tar rust cargo clang-dev acl-dev acl-static musl-dev linux-headers
+          apk add binutils file
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: "${{ runner.os }}-x86_64-musl-cargo-${{ hashFiles('**/Cargo.lock') }}"
+          restore-keys: ${{ runner.os }}-cargo-x86_64-musl-
       - name: Build
         run: |
-          RUSTFLAGS='-C target-feature=+crt-static -L /lib -l static=acl' \
+          RUSTFLAGS='-C target-feature=+crt-static -L/usr/lib -l static=acl' \
               cargo build --target x86_64-alpine-linux-musl --release
-          make -C man
       - name: Show binary charcteristics
         run: |
           set -x
@@ -205,38 +128,176 @@ jobs:
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: laurel-x86_64-musl
-          path: target/x86_64-alpine-linux-musl/release/laurel
+          name: binaries-x86_64-musl
+          path: |
+            target/*/release/laurel*
+            !target/*/release/*.*
+          if-no-files-found: error
+
+  build-aarch64-gnu:
+    needs: [ check-fmt, build-test ]
+    runs-on: ubuntu-latest
+    container: debian:bullseye
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependency
+        run: |
+          dpkg --add-architecture arm64
+          apt-get -qq update
+          apt-get -qqy dist-upgrade
+          apt-get -qqy install curl build-essential libclang-dev gcc-aarch64-linux-gnu libacl1-dev:arm64
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: aarch64-unknown-linux-gnu
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: "${{ runner.os }}-aarch64-gnu-cargo-${{ hashFiles('**/Cargo.lock') }}"
+          restore-keys: ${{ runner.os }}-cargo-aarch64-gnu-
+      - name: Build
+        run: cargo build --target=aarch64-unknown-linux-gnu --release
       - uses: actions/upload-artifact@v4
         with:
-          name: laurel2audit-x86_64-musl
-          path: target/x86_64-alpine-linux-musl/release/laurel2audit
+          name: binaries-aarch64-gnu
+          path: |
+            target/*/release/laurel*
+            !target/*/release/*.*
+          if-no-files-found: error
 
-  build-x86_64-gnu-old:
+  build-armv7-gnueabihf:
+    needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: rockylinux:8
+    container: debian:bullseye
     steps:
-      - name: Prepare
-        run: |
-          dnf -q -y install 'dnf-command(config-manager)'
-          dnf config-manager --enable powertools
-          dnf -q -y update
-          dnf -q -y install gcc file libacl-devel clang make pandoc
-      - name: Install Rust toolchain (stable)
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
       - uses: actions/checkout@v2
-      - name: Build
+      - name: Install dependency
         run: |
-          cargo build --release
-          make -C man
-      - uses: actions/upload-artifact@v3
+          dpkg --add-architecture armhf
+          apt-get -qq update
+          apt-get -qqy dist-upgrade
+          apt-get -qqy install curl build-essential libclang-dev gcc-arm-linux-gnueabihf libacl1-dev:armhf
+      - uses: actions-rs/toolchain@v1
         with:
-          name: laurel-x86_64-gnu-old
-          path: target/release/laurel
-      - uses: actions/upload-artifact@v3
+          toolchain: stable
+          profile: minimal
+          target: armv7-unknown-linux-gnueabihf
+      - uses: actions/cache@v3
         with:
-          name: laurel2audit-x86_64-gnu-old
-          path: target/release/laurel
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: "${{ runner.os }}-armv7-gnueabihf-cargo-${{ hashFiles('**/Cargo.lock') }}"
+          restore-keys: ${{ runner.os }}-armv7-gnueabihf-cargo-
+      - name: Build
+        run: cargo build --target=armv7-unknown-linux-gnueabihf --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-armv7-gnueabihf
+          path: |
+            target/*/release/laurel*
+            !target/*/release/*.*
+          if-no-files-found: error
+
+  build-man:
+    runs-on: ubuntu-latest
+    container: debian:bullseye
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependency
+        run: |
+          apt-get -qq update
+          apt-get -qqy dist-upgrade
+          apt-get -qqy install make pandoc
+      - run: make -C man
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manpages
+          path: |
+            man/*.7
+            man/*.8
+          if-no-files-found: error
+
+  build-tarballs:
+    runs-on: ubuntu-latest
+    needs:
+      - build-x86_64-gnu
+      - build-x86_64-musl
+      - build-aarch64-gnu
+      - build-armv7-gnueabihf
+      - build-man
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: artifacts
+      - name: Collect/Build
+        run: |
+          version="$(cargo read-manifest | jq -r '.version')"
+
+          find -type f '(' -name laurel2audit -or -name laurel ')'
+
+          for arch in x86_64-glibc x86_64-musl aarch64-glibc armv7-glibc; do
+
+              tgt=${arch/-glibc/-unknown-linux-gnu}
+              tgt=${tgt/-musl/-alpine-linux-musl}
+              case $tgt in armv7*gnu) tgt=${tgt}eabihf ;; esac
+
+              mkdir -p pack/laurel-$version-$arch/bin \
+                       pack/laurel-$version-$arch/etc/{audit/plugins.d,laurel} \
+                       pack/laurel-$version-$arch/man/man{7,8} \
+                       pack/laurel-$version-$arch/doc
+
+              install -m644 etc/audit/plugins.d/laurel.conf pack/laurel-$version-$arch/etc/audit/plugins.d/
+              install -m644 etc/laurel/config.toml          pack/laurel-$version-$arch/etc/laurel/
+              install -m644 *.md                            pack/laurel-$version-$arch/doc/
+
+              install -m755 artifacts/$tgt/release/laurel* pack/laurel-$version-$arch/bin
+              install -m644 artifacts/*.7                  pack/laurel-$version-$arch/man/man7/
+              install -m644 artifacts/*.8                  pack/laurel-$version-$arch/man/man8/
+          done
+          
+          cd pack
+          find -mindepth 1 -maxdepth 1 -type d | xargs -ti tar -czf {}.tar.gz {}
+          
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarballs
+          path: pack/*.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build-tarballs
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Get Version
+        id: get_version
+        run: |
+          version_git=$(echo "$GITHUB_REF" | sed -e 's/refs\/tags\///')
+          version_cargo="v$(cargo read-manifest | jq -r '.version')"
+          if [ "$version_git" != "$version_cargo" ]; then
+              echo "git != cargo: $version_git != $version_cargo" >&2
+              exit 1
+          fi
+          echo "git_version=$version_git" >> $GITHUB_OUTPUT
+      - uses: actions/download-artifact@v4
+        with:
+          name: tarballs
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: laurel-*.tar.gz
+          fail_on_unmatched_files: true
+          draft: true
