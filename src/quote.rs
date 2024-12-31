@@ -8,7 +8,7 @@ pub(crate) struct BackslashEscapeWriter<'a, W>(pub &'a mut W)
 where
     W: ?Sized + Write;
 
-impl<'a, W> Write for BackslashEscapeWriter<'a, W>
+impl<W> Write for BackslashEscapeWriter<'_, W>
 where
     W: ?Sized + Write,
 {
@@ -61,7 +61,7 @@ pub(crate) struct URIEscapeWriter<'a, W>(pub &'a mut W)
 where
     W: ?Sized + Write;
 
-impl<'a, W> Write for URIEscapeWriter<'a, W>
+impl<W> Write for URIEscapeWriter<'_, W>
 where
     W: ?Sized + Write,
 {
@@ -146,7 +146,7 @@ mod test {
 
     fn uri_escaped(value: &[u8]) -> String {
         let mut buf = Vec::with_capacity(value.len());
-        URIEscapeWriter(&mut buf).write(&value).unwrap();
+        URIEscapeWriter(&mut buf).write(value).unwrap();
         String::from_utf8(buf).unwrap()
     }
 

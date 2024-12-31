@@ -36,7 +36,7 @@ mod test {
 
     fn serialized(value: &[u8]) -> String {
         let mut buf = vec![];
-        to_writer(&mut buf, &Bytes(&value)).unwrap();
+        to_writer(&mut buf, &Bytes(value)).unwrap();
         String::from_utf8(buf).unwrap()
     }
 

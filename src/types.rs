@@ -89,7 +89,7 @@ pub(crate) type NVec = tinyvec::TinyVec<[u8; 14]>;
 /// Helper type to enforce that serialize_bytes() is used in serialization.
 pub(crate) struct Bytes<'a>(pub &'a [u8]);
 
-impl<'a> Serialize for Bytes<'a> {
+impl Serialize for Bytes<'_> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_bytes(self.0)
     }
