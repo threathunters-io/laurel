@@ -822,7 +822,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                             _ => {
                                 // first syscall in new process
                                 if !self.settings.filter_first_per_process {
-                                    ev.filter = false;
+                                    ev.is_filtered = false;
                                     force_keep = true;
                                 }
                                 proc.key = ProcessKey::Event(ev.id);
@@ -863,13 +863,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
             if let Some(key) = &key {
                 if !force_keep && self.settings.filter_keys.contains(key.as_ref()) {
-                    ev.filter = true;
+                    ev.is_filtered = true;
                 }
                 if self.settings.proc_label_keys.contains(key.as_ref()) {
                     proc.labels.insert(key.to_vec());
                 }
             } else if !force_keep && self.settings.filter_null_keys {
-                ev.filter = true;
+                ev.is_filtered = true;
             }
 
             current_process = Some(proc);
@@ -933,11 +933,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     .iter()
                     .any(|x| self.settings.filter_labels.contains(x))
             {
-                ev.filter = true;
+                ev.is_filtered = true;
             }
         }
 
-        if ev.filter {
+        if ev.is_filtered {
             return;
         }
 
@@ -989,7 +989,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// event is emitted only when an EOE ("end of event") line for
     /// the event is encountered.
     pub fn process_line(&mut self, line: &[u8]) -> Result<(), CoalesceError> {
-        let filter_raw = self.settings.filter_raw_lines.is_match(line);
+        let do_filter = self.settings.filter_raw_lines.is_match(line);
 
         let skip_enriched = self.settings.translate_universal && self.settings.translate_userdb;
         let msg = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
@@ -1023,7 +1023,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     .insert(nid.clone(), Event::new(msg.node, msg.id));
             }
             let ev = self.inflight.get_mut(&nid).unwrap();
-            ev.filter |= filter_raw;
+            ev.is_filtered |= do_filter;
             match ev.body.get_mut(&msg.ty) {
                 Some(EventValues::Single(v)) => v.extend(msg.body),
                 Some(EventValues::Multi(v)) => v.push(msg.body),
@@ -1045,7 +1045,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 return Err(CoalesceError::DuplicateEvent(msg.id));
             }
             let mut ev = Event::new(msg.node, msg.id);
-            ev.filter |= filter_raw;
+            ev.is_filtered |= do_filter;
             ev.body.insert(msg.ty, EventValues::Single(msg.body));
             self.emit_event(ev);
         }
@@ -1501,7 +1501,7 @@ mod test {
         ec: &'c Rc<RefCell<Option<Event<'ev>>>>,
     ) -> impl FnMut(&Event<'ev>) + 'c {
         |ev: &Event| {
-            if !ev.filter {
+            if !ev.is_filtered {
                 *ec.borrow_mut() = Some(ev.clone());
             }
         }
@@ -1510,7 +1510,7 @@ mod test {
     // Returns an emitter function that appends the event onto a Vec
     fn mk_emit_vec<'c, 'ev>(ec: &'c Rc<RefCell<Vec<Event<'ev>>>>) -> impl FnMut(&Event<'ev>) + 'c {
         |ev: &Event| {
-            if !ev.filter {
+            if !ev.is_filtered {
                 ec.borrow_mut().push(ev.clone());
             }
         }

@@ -40,7 +40,7 @@ pub struct Event<'a> {
     pub id: EventID,
     pub body: IndexMap<MessageType, EventValues<'a>>,
     pub container_info: Option<Body<'a>>,
-    pub filter: bool,
+    pub is_filtered: bool,
 }
 
 impl Event<'_> {
@@ -50,7 +50,7 @@ impl Event<'_> {
             id,
             body: IndexMap::with_capacity(5),
             container_info: None,
-            filter: false,
+            is_filtered: false,
         }
     }
 }

@@ -305,7 +305,7 @@ fn run_app() -> Result<(), anyhow::Error> {
         let mut filter_logger =
             Logger::new(&config.filterlog, &dir).context("can't create filterlog logger")?;
         emit_fn_log = move |e: &Event| {
-            if e.filter {
+            if e.is_filtered {
                 filter_logger
                     .log(e)
                     .map_err(|e| anyhow!("Error writing to filter log: {e}"))
@@ -321,7 +321,7 @@ fn run_app() -> Result<(), anyhow::Error> {
     } else {
         log::info!("Dropping filtered audit records");
         emit_fn_drop = move |e: &Event| {
-            if !e.filter {
+            if !e.is_filtered {
                 logger
                     .log(e)
                     .map_err(|e| anyhow!("Error writing to audit log: {e}"))
