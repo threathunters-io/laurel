@@ -3,6 +3,7 @@ use std::error::Error;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_string;
 
 use linux_audit_parser::*;
@@ -391,22 +392,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
     }
 
-    fn add_record_uid_groups(&mut self, rec: &mut Body, key: &Key, value: &Value) {
-        if !self.settings.enrich_uid_groups {
-            return;
-        }
-        if let (Key::NameUID(r), Value::Number(Number::Dec(d))) = (key, value) {
-            if r.as_slice() == b"uid" {
-                if let Some(names) = self.userdb.get_user_groups(*d as _) {
-                    rec.push((
-                        Key::Literal("UID_GROUPS"),
-                        Value::List(names.iter().map(|n| Value::from(n.as_bytes())).collect()),
-                    ));
-                }
-            }
-        }
-    }
-
     /// Enrich "pid" entries using `ppid`, `exe`, `ID` (generating
     /// event id) from the shadow process table
     fn enrich_pid(&mut self, rv: &mut Body, k: &Key, v: &Value) {
@@ -499,21 +484,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     fn enrich_syscall(
         &mut self,
         rv: &mut Body,
-        arch_sys: (Option<&'static str>, Option<&'static str>),
-        current_process: &Option<Process>,
-        parent: &Option<Process>,
+        process_key: Option<ProcessKey>,
         script: &Option<NVec>,
         container_info: &mut Option<Body>,
     ) {
-        if let (true, (Some(arch), Some(syscall))) = (self.settings.translate_universal, arch_sys) {
-            rv.push((Key::Literal("ARCH"), Value::Literal(arch)));
-            rv.push((Key::Literal("SYSCALL"), Value::Literal(syscall)));
-        }
-
-        if let (true, Some(parent)) = (self.settings.enrich_pid, &parent) {
-            add_record_procinfo(rv, b"ppid", parent, true);
-        }
-
         #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let (true, Some(script)) = (self.settings.enrich_script, &script) {
             rv.push((
@@ -522,9 +496,15 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             ));
         }
 
-        if let Some(proc) = &current_process {
-            if self.settings.enrich_pid {
-                add_record_procinfo(rv, b"pid", proc, false);
+        if let Some(proc) = process_key.and_then(|k| self.processes.get_key(&k)) {
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
+            if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
+                let mut ci = Body::default();
+                ci.push((
+                    Key::Literal("ID"),
+                    Value::Str(hex_string(&c.id).as_bytes(), Quote::None),
+                ));
+                *container_info = Some(ci);
             }
 
             if !proc.labels.is_empty() {
@@ -535,20 +515,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     .collect::<Vec<_>>();
                 rv.push((Key::Literal("LABELS"), Value::List(labels)));
             }
-
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
-            if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
-                let mut ci = Body::default();
-                ci.push((
-                    Key::Literal("ID"),
-                    Value::Str(hex_string(&c.id).as_bytes(), Quote::None),
-                ));
-                *container_info = Some(ci);
-            }
         }
     }
 
-    fn transform_execve(&mut self, rv: &mut Body, mut current_process: &mut Option<Process>) {
+    fn transform_execve(&mut self, rv: &mut Body, process_key: Option<ProcessKey>) {
         let mut argv: Vec<Value> = Vec::with_capacity(rv.len() - 1);
         rv.retain(|(k, v)| {
             match k {
@@ -586,7 +556,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         });
 
-        if current_process.is_some()
+        if process_key.is_some()
             && self.settings.label_argv_count > 0
             && self.settings.label_argv_bytes > 0
             && (self.settings.label_argv.is_some() || self.settings.unlabel_argv.is_some())
@@ -608,19 +578,17 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 buf.extend(b);
             }
 
-            if let (Some(ref mut proc), Some(ref m)) =
-                (&mut current_process, &self.settings.label_argv)
-            {
-                for label in m.matches(&buf) {
-                    proc.labels.insert(label.into());
+            if let Some(ref mut proc) = self.processes.get_key_mut(&process_key.unwrap()) {
+                if let Some(ref m) = self.settings.label_argv {
+                    for label in m.matches(&buf) {
+                        proc.labels.insert(label.into());
+                    }
                 }
-            }
 
-            if let (Some(ref mut proc), Some(ref m)) =
-                (&mut current_process, &self.settings.unlabel_argv)
-            {
-                for label in m.matches(&buf) {
-                    proc.labels.remove(label);
+                if let Some(ref m) = self.settings.unlabel_argv {
+                    for label in m.matches(&buf) {
+                        proc.labels.remove(label);
+                    }
                 }
             }
         }
@@ -670,7 +638,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         // ENV
         #[cfg(all(feature = "procfs", target_os = "linux"))]
-        if let (Some(ref proc), false) = (&current_process, self.settings.execve_env.is_empty()) {
+        if let (Some(proc), false) = (
+            process_key.and_then(|k| self.processes.get_key(&k)),
+            self.settings.execve_env.is_empty(),
+        ) {
             if let Ok(vars) =
                 procfs::get_environ(proc.pid, |k| self.settings.execve_env.contains(k))
             {
@@ -699,196 +670,22 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// - collects environment variables for EXECVE events
     /// - registers process in shadow process table for EXECVE events
     fn transform_event(&mut self, ev: &mut Event) {
-        let mut arch: Option<u32> = None;
-        let mut syscall: Option<u32> = None;
-        let mut key: Option<NVec> = None;
-
-        let mut arch_name: Option<&'static str> = None;
-        let mut syscall_name: Option<&'static str> = None;
-
-        let mut syscall_is_exec = false;
-        let mut force_keep = false;
-        let mut current_process: Option<Process> = None;
-        let mut parent: Option<Process> = None;
-
-        if let Some(EventValues::Single(rv)) = ev.body.get_mut(&MessageType::SYSCALL) {
-            let mut proc = Process::default();
-            let mut extra = 2; // pid, ppid
-            if self.settings.translate_universal {
-                extra += 2; // syscall, arch
-            }
-            if self.settings.translate_userdb {
-                extra += 9; // uid, gid
-            }
-            // FIXME
-            rv.reserve(extra);
-            let mut nrv = Body::default();
-            let mut argv = Vec::with_capacity(4);
-            rv.retain(|(k, v)| {
-                match (k, v) {
-                    (Key::Arg(_, None), _) => {
-                        // FIXME: check argv length
-                        argv.push(v.clone());
-                        return false;
-                    }
-                    (Key::ArgLen(_), _) => return false,
-                    (Key::Common(c), Value::Number(n)) => match (c, n) {
-                        (Common::Arch, Number::Hex(n)) if arch.is_none() => {
-                            arch = Some(*n as u32);
-                            if self.settings.translate_universal && self.settings.drop_translated {
-                                return false;
-                            }
-                        }
-                        (Common::Syscall, Number::Dec(n)) if syscall.is_none() => {
-                            syscall = Some(*n as u32);
-                            if self.settings.translate_universal && self.settings.drop_translated {
-                                return false;
-                            }
-                        }
-                        (Common::Pid, Number::Dec(n)) => proc.pid = *n as u32,
-                        (Common::PPid, Number::Dec(n)) => proc.ppid = *n as u32,
-                        _ => (),
-                    },
-                    (Key::Common(c), Value::Str(r, _)) => match c {
-                        Common::Comm => proc.comm = Some((*r).into()),
-                        Common::Exe => proc.exe = Some((*r).into()),
-                        Common::Key => key = Some((*r).into()),
-                        _ => (),
-                    },
-                    (Key::Name(name), Value::Str(_, _)) => {
-                        match name.as_ref() {
-                            b"ARCH" | b"SYSCALL" if self.settings.translate_universal => {
-                                return false
-                            }
-                            _ => (),
-                        };
-                    }
-                    _ => {
-                        self.add_record_uid_groups(&mut nrv, k, v);
-                        if self.add_record_userdb(&mut nrv, k, v) && self.settings.drop_translated {
-                            return false;
-                        }
-                    }
-                };
-                true
-            });
-            rv.push((Key::Literal("ARGV"), Value::List(argv)));
-            rv.extend(nrv);
-
-            if let (Some(arch), Some(syscall)) = (arch, syscall) {
-                if let Some(an) = ARCH_NAMES.get(&arch) {
-                    arch_name = Some(*an);
-                    if let Some(sn) = SYSCALL_NAMES
-                        .get(*an)
-                        .and_then(|syscall_tbl| syscall_tbl.get(&syscall))
-                    {
-                        syscall_name = Some(sn);
-
-                        // If we are processing an execve or execveat
-                        // syscall, we'll create a new Process
-                        // instance, assuming that the current process
-                        // table entry for ppid holds the parent.
-                        //
-                        // For non-execve calls, we inspect the
-                        // process table for the current pid entry. If
-                        // the entry and the syscall do not match, we
-                        // assume that we are dealing with a new
-                        // process and create a new Process instance.
-                        //
-                        // If the entry and the syscall match, we keep
-                        // using (and possibly updating) the existing
-                        // Process entry.
-                        syscall_is_exec = sn.contains("execve");
-                        parent = self.processes.get_or_retrieve(proc.ppid).cloned();
-                        let pr = if syscall_is_exec {
-                            None
-                        } else {
-                            self.processes.get_pid(proc.pid)
-                        };
-                        match pr {
-                            Some(pr) if proc.ppid == pr.ppid && proc.exe == pr.exe => {
-                                // existing, plausible process in table
-                                proc.key = pr.key;
-                                proc.parent = pr.parent;
-                                proc.labels.clone_from(&pr.labels);
-                                #[cfg(all(feature = "procfs", target_os = "linux"))]
-                                if self.settings.enrich_container {
-                                    proc.container_info = match &pr.container_info {
-                                        Some(ci) => Some(ci.clone()),
-                                        _ => parent.as_ref().and_then(|p| p.container_info.clone()),
-                                    };
-                                }
-                            }
-                            _ => {
-                                // first syscall in new process
-                                if !self.settings.filter_first_per_process {
-                                    ev.is_filtered = false;
-                                    force_keep = true;
-                                }
-                                proc.key = ProcessKey::Event(ev.id);
-                                if let Some(pa) = &parent {
-                                    proc.parent = Some(pa.key);
-                                    let propagated_labels = self
-                                        .settings
-                                        .proc_propagate_labels
-                                        .intersection(&pa.labels)
-                                        .cloned();
-                                    proc.labels.extend(propagated_labels);
-                                }
-                                #[cfg(all(feature = "procfs", target_os = "linux"))]
-                                if self.settings.enrich_container {
-                                    let id = procfs::parse_proc_pid_cgroup(proc.pid).ok().flatten();
-                                    proc.container_info = match id {
-                                        Some(id) => Some(ContainerInfo { id }),
-                                        _ => parent.as_ref().and_then(|p| p.container_info.clone()),
-                                    };
-                                }
-                                self.processes.insert(proc.clone());
-                            }
-                        };
-
-                        if let Some(label_exe) = &self.settings.label_exe {
-                            for label in label_exe.matches(&proc.exe.clone().unwrap()) {
-                                proc.labels.insert(label.into());
-                            }
-                        }
-                        if let Some(unlabel_exe) = &self.settings.unlabel_exe {
-                            for label in unlabel_exe.matches(&proc.exe.clone().unwrap()) {
-                                proc.labels.remove(label);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(key) = &key {
-                if !force_keep && self.settings.filter_keys.contains(key.as_ref()) {
-                    ev.is_filtered = true;
-                }
-                if self.settings.proc_label_keys.contains(key.as_ref()) {
-                    proc.labels.insert(key.to_vec());
-                }
-            } else if !force_keep && self.settings.filter_null_keys {
-                ev.is_filtered = true;
-            }
-
-            current_process = Some(proc);
-        }
+        let mut proc = ev
+            .process_key
+            .as_ref()
+            .and_then(|p| self.processes.get_key(p).cloned());
 
         if let Some(EventValues::Single(rv)) = ev.body.get_mut(&MessageType::EXECVE) {
-            self.transform_execve(rv, &mut current_process);
+            self.transform_execve(rv, ev.process_key);
         }
 
         // Handle script enrichment
+        // TODO: Look up process per key.
         #[cfg(all(feature = "procfs", target_os = "linux"))]
         let script: Option<NVec> = match (self.settings.enrich_script, &self.settings.label_script)
         {
             (false, None) => None,
-            _ => match (
-                &current_process,
-                ev.body.get(&MessageType::PATH),
-                syscall_is_exec,
-            ) {
+            _ => match (&proc, ev.body.get(&MessageType::PATH), ev.is_exec) {
                 (Some(proc), Some(EventValues::Multi(paths)), true) => {
                     let mut cwd = &b"/"[..];
                     if let Some(EventValues::Single(r)) = ev.body.get(&MessageType::CWD) {
@@ -911,7 +708,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         let script = None;
 
         #[cfg(all(feature = "procfs", target_os = "linux"))]
-        if let (Some(ref mut proc), Some(script)) = (&mut current_process, &script) {
+        if let (Some(ref mut proc), Some(script)) = (&mut proc, &script) {
             if let Some(label_script) = &self.settings.label_script {
                 for label in label_script.matches(script.as_ref()) {
                     proc.labels.insert(label.into());
@@ -924,38 +721,17 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
-        // filter early on labels
-        if let Some(proc) = &current_process {
-            self.processes.set_labels(&proc.key, &proc.labels);
-            if !force_keep
-                && proc
-                    .labels
-                    .iter()
-                    .any(|x| self.settings.filter_labels.contains(x))
-            {
-                ev.is_filtered = true;
-            }
-        }
-
         if ev.is_filtered {
             return;
         }
 
-        // Since the event may have been dropped here, don't
-        // manipulate the current process below.
-        let current_process = current_process;
         let mut container_info: Option<Body> = None;
 
         for tv in ev.body.iter_mut() {
             match tv {
-                (&MessageType::SYSCALL, EventValues::Single(rv)) => self.enrich_syscall(
-                    rv,
-                    (arch_name, syscall_name),
-                    &current_process,
-                    &parent,
-                    &script,
-                    &mut container_info,
-                ),
+                (&MessageType::SYSCALL, EventValues::Single(rv)) => {
+                    self.enrich_syscall(rv, ev.process_key, &script, &mut container_info)
+                }
                 (&MessageType::EXECVE, EventValues::Single(_)) => {}
                 (&MessageType::SOCKADDR, EventValues::Multi(rvs)) => {
                     rvs.iter_mut().for_each(|rv| self.enrich_sockaddr(rv))
@@ -980,6 +756,291 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         (self.emit_fn)(&ev)
     }
 
+    /// Early handling of SYSCALL events
+    ///
+    /// This involves:
+    /// - deciding whether the process is known / updating the process table
+    ///   - determining a process key for new events
+    /// - early handling of process labels based on key, exe
+    /// - deciding whether the event should be filtered, avoiding unnecessary
+    ///   work for enrichment/transformation
+    pub fn handle_syscall(
+        &mut self,
+        id: EventID,
+        body: &mut Body,
+        filter_event: &mut bool,
+        is_exec: &mut bool,
+        process_key: &mut Option<ProcessKey>,
+    ) {
+        let mut arch: Option<u32> = None;
+        let mut syscall: Option<u32> = None;
+
+        let mut pid = 0;
+        let mut ppid = 0;
+
+        let mut comm: Option<&[u8]> = None;
+        let mut exe: Option<&[u8]> = None;
+        let mut key: Option<&[u8]> = None;
+
+        let mut argv = Vec::with_capacity(4);
+
+        #[derive(Default)]
+        struct UserGroupIDs {
+            auid: Option<u32>,
+            uid: Option<u32>,
+            gid: Option<u32>,
+            euid: Option<u32>,
+            suid: Option<u32>,
+            fsuid: Option<u32>,
+            egid: Option<u32>,
+            sgid: Option<u32>,
+            fsgid: Option<u32>,
+        }
+        let mut ids = UserGroupIDs::default();
+
+        // Filter / collect
+        body.retain(|(k, v)| {
+            match (k, v) {
+                (Key::Arg(_, None), v) => {
+                    argv.push(v.clone());
+                    return false;
+                }
+                (Key::ArgLen(_), _) => return false,
+                (Key::Common(Common::Arch), Value::Number(Number::Hex(n))) => {
+                    arch = Some(*n as u32);
+                    return !(self.settings.translate_universal && self.settings.drop_translated);
+                }
+                (Key::Common(Common::Syscall), Value::Number(Number::Dec(n))) => {
+                    syscall = Some(*n as u32);
+                    return !(self.settings.translate_universal && self.settings.drop_translated);
+                }
+                (Key::Common(Common::Pid), Value::Number(Number::Dec(n))) => {
+                    pid = *n as u32;
+                }
+                (Key::Common(Common::PPid), Value::Number(Number::Dec(n))) => {
+                    ppid = *n as u32;
+                }
+                (Key::Common(Common::Comm), Value::Str(s, _)) => comm = Some(*s),
+                (Key::Common(Common::Exe), Value::Str(s, _)) => exe = Some(*s),
+                (Key::Common(Common::Key), Value::Str(s, _)) => key = Some(*s),
+                (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
+                    match name.as_slice() {
+                        b"auid" => ids.auid = Some(*n as _),
+                        b"uid" => ids.uid = Some(*n as _),
+                        b"euid" => ids.euid = Some(*n as _),
+                        b"suid" => ids.suid = Some(*n as _),
+                        b"fsuid" => ids.fsuid = Some(*n as _),
+                        _ => {}
+                    }
+                    if self.settings.drop_translated {
+                        return false;
+                    }
+                }
+                (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
+                    match name.as_slice() {
+                        b"gid" => ids.gid = Some(*n as _),
+                        b"egid" => ids.egid = Some(*n as _),
+                        b"sgid" => ids.sgid = Some(*n as _),
+                        b"fsgid" => ids.fsgid = Some(*n as _),
+                        _ => {}
+                    }
+                    if self.settings.drop_translated {
+                        return false;
+                    }
+                }
+                (Key::Name(name), Value::Str(_, _)) => {
+                    match name.as_ref() {
+                        b"ARCH" | b"SYSCALL" if self.settings.translate_universal => return false,
+                        _ => (),
+                    };
+                }
+                _ => {}
+            }
+            true
+        });
+        body.push((Key::Literal("ARGV"), Value::List(argv)));
+
+        // Determine syscall.
+        let mut arch_name = None;
+        let mut syscall_name = None;
+        if let (Some(arch), Some(syscall)) = (arch, syscall) {
+            arch_name = ARCH_NAMES.get(&arch);
+            if let Some(arch_name) = arch_name {
+                syscall_name = SYSCALL_NAMES
+                    .get(*arch_name)
+                    .and_then(|syscall_tbl| syscall_tbl.get(&syscall));
+                if let Some(syscall_name) = syscall_name {
+                    if syscall_name.starts_with("execve") {
+                        *is_exec = true;
+                    }
+                }
+            }
+        }
+
+        let mut labels: HashSet<Vec<u8>> = HashSet::default();
+
+        if let Some(key) = key {
+            if self.settings.filter_keys.contains(key) {
+                *filter_event = true;
+            }
+            if self.settings.proc_label_keys.contains(key) {
+                labels.insert(key.to_vec());
+            }
+        } else if self.settings.filter_null_keys {
+            *filter_event = true;
+        }
+
+        let mut proc = None;
+        if !*is_exec {
+            // Look up process from our process table, but only use it
+            // if it matches the current record. Otherwise assume that
+            // this is a new process.
+            proc = self
+                .processes
+                .get_pid(pid)
+                .filter(|p| p.pid == pid && p.ppid == ppid && p.exe.as_deref() == exe)
+        }
+
+        let mut first_per_process = false;
+
+        if proc.is_none() {
+            first_per_process = true;
+
+            let parent_process = self.processes.get_or_retrieve(ppid);
+            let parent_key = parent_process.map(|p| p.key);
+
+            // inherit
+            if let Some(parent) = parent_process {
+                labels.extend(
+                    parent
+                        .labels
+                        .intersection(&self.settings.proc_propagate_labels)
+                        .cloned(),
+                );
+            }
+
+            // exe -> label
+            if let Some(label_exe) = &self.settings.label_exe {
+                for label in label_exe.matches(exe.unwrap_or_default()) {
+                    labels.insert(label.into());
+                }
+            }
+            if let Some(unlabel_exe) = &self.settings.unlabel_exe {
+                for label in unlabel_exe.matches(exe.unwrap_or_default()) {
+                    labels.insert(label.into());
+                }
+            }
+
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
+            let mut container_info: Option<ContainerInfo> = None;
+
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
+            if self.settings.enrich_container {
+                let id = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
+                container_info = match id {
+                    Some(id) => Some(ContainerInfo { id }),
+                    _ => self
+                        .processes
+                        .get_pid(ppid)
+                        .and_then(|p| p.container_info.clone()),
+                };
+            };
+
+            self.processes.insert(Process {
+                key: ProcessKey::Event(id),
+                parent: parent_key,
+                pid,
+                ppid,
+                exe: exe.map(Vec::from),
+                comm: comm.map(Vec::from),
+                labels,
+                #[cfg(all(feature = "procfs", target_os = "linux"))]
+                container_info,
+            });
+
+            proc = self.processes.get_pid(pid);
+        }
+
+        let proc = proc.unwrap();
+
+        if proc
+            .labels
+            .intersection(&self.settings.filter_labels)
+            .any(|_| true)
+        {
+            *filter_event = true;
+        }
+
+        // TODO: This logic needs to be split.
+        if first_per_process && !self.settings.filter_first_per_process {
+            *filter_event = false;
+        }
+
+        *process_key = Some(proc.key);
+
+        // No point in adding translations / enrichments to record if
+        // we are going to filter anyway.
+        if *filter_event {
+            return;
+        }
+
+        if let (Some(arch_name), true) = (arch_name, self.settings.translate_universal) {
+            body.push((Key::Literal("ARCH"), Value::Literal(arch_name)));
+        }
+        if let (Some(syscall_name), true) = (syscall_name, self.settings.translate_universal) {
+            body.push((Key::Literal("SYSCALL"), Value::Literal(syscall_name)));
+        }
+
+        add_record_procinfo(body, b"pid", proc, true);
+        if let Some(parent_process) = proc.parent.and_then(|key| self.processes.get_key(&key)) {
+            add_record_procinfo(body, b"ppid", parent_process, true);
+        }
+
+        if self.settings.translate_userdb {
+            for (name, id, is_user) in &[
+                (&b"auid"[..], ids.auid, true),
+                (&b"uid"[..], ids.uid, true),
+                (&b"gid"[..], ids.gid, false),
+                (&b"euid"[..], ids.euid, true),
+                (&b"suid"[..], ids.suid, true),
+                (&b"fsuid"[..], ids.fsuid, true),
+                (&b"egid"[..], ids.egid, false),
+                (&b"sgid"[..], ids.sgid, false),
+                (&b"fsgid"[..], ids.fsgid, false),
+            ] {
+                if id.is_none() {
+                    continue;
+                }
+                let id = id.unwrap();
+
+                let translated = if id == 0xffffffff {
+                    "unset".to_string()
+                } else {
+                    if *is_user {
+                        self.userdb.get_user(id)
+                    } else {
+                        self.userdb.get_group(id)
+                    }
+                    .unwrap_or(format!("unknown({id})"))
+                };
+
+                body.push((
+                    Key::NameTranslated(NVec::from(*name)),
+                    Value::from(translated),
+                ));
+            }
+        }
+
+        if self.settings.enrich_uid_groups {
+            if let Some(names) = ids.uid.and_then(|uid| self.userdb.get_user_groups(uid)) {
+                body.push((
+                    Key::Literal("UID_GROUPS"),
+                    Value::List(names.iter().map(|n| Value::from(n.as_bytes())).collect()),
+                ));
+            }
+        }
+    }
+
     /// Ingest a log line and add it to the coalesce object.
     ///
     /// Simple one-liner events are emitted immediately.
@@ -989,10 +1050,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// event is emitted only when an EOE ("end of event") line for
     /// the event is encountered.
     pub fn process_line(&mut self, line: &[u8]) -> Result<(), CoalesceError> {
-        let do_filter = self.settings.filter_raw_lines.is_match(line);
+        let mut do_filter = self.settings.filter_raw_lines.is_match(line);
 
         let skip_enriched = self.settings.translate_universal && self.settings.translate_userdb;
-        let msg = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
+        let mut msg = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
         let nid = (msg.node.clone(), msg.id);
 
         // clean out state every EXPIRE_PERIOD
@@ -1006,6 +1067,18 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             None => self.next_expire = Some(msg.id.timestamp + EXPIRE_PERIOD),
             _ => (),
         };
+
+        let mut is_exec = false;
+        let mut process_key = None;
+        if msg.ty == MessageType::SYSCALL {
+            self.handle_syscall(
+                msg.id,
+                &mut msg.body,
+                &mut do_filter,
+                &mut is_exec,
+                &mut process_key,
+            );
+        }
 
         if msg.ty == MessageType::EOE {
             if self.done.contains(&nid) {
@@ -1024,6 +1097,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
             let ev = self.inflight.get_mut(&nid).unwrap();
             ev.is_filtered |= do_filter;
+            ev.is_exec |= is_exec;
+            if process_key.is_some() {
+                ev.process_key = process_key;
+            }
+
             match ev.body.get_mut(&msg.ty) {
                 Some(EventValues::Single(v)) => v.extend(msg.body),
                 Some(EventValues::Multi(v)) => v.push(msg.body),
@@ -1702,7 +1780,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected="Found 1682609045.530:29240 though it should have been filtered (config 2 test 1).")]
     fn shell_proc_trace() {
         let s1 = Settings {
             proc_label_keys: [b"test-script".to_vec()].into(),
