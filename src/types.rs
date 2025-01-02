@@ -7,6 +7,8 @@ use serde::{Serialize, Serializer};
 
 use linux_audit_parser::*;
 
+use crate::proc::ProcessKey;
+
 /// Collect records in [`EventBody`] context as single or multiple
 /// instances.
 ///
@@ -41,6 +43,8 @@ pub struct Event<'a> {
     pub body: IndexMap<MessageType, EventValues<'a>>,
     pub container_info: Option<Body<'a>>,
     pub is_filtered: bool,
+    pub(crate) is_exec: bool,
+    pub(crate) process_key: Option<ProcessKey>,
 }
 
 impl Event<'_> {
@@ -51,6 +55,8 @@ impl Event<'_> {
             body: IndexMap::with_capacity(5),
             container_info: None,
             is_filtered: false,
+            is_exec: false,
+            process_key: None,
         }
     }
 }
