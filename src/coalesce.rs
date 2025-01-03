@@ -31,6 +31,7 @@ pub struct Settings {
     pub execve_env: HashSet<Vec<u8>>,
     pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
+    pub enrich_systemd: bool,
     pub enrich_pid: bool,
     pub enrich_script: bool,
     pub enrich_uid_groups: bool,
@@ -66,6 +67,7 @@ impl Default for Settings {
             execve_env: HashSet::new(),
             execve_argv_limit_bytes: None,
             enrich_container: false,
+            enrich_systemd: false,
             enrich_pid: true,
             enrich_script: true,
             enrich_uid_groups: true,
@@ -349,6 +351,21 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             if proc.ppid != 0 {
                 m.push(("ppid".into(), Value::from(proc.ppid as i64)));
             }
+        } else {
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
+            if let (true, Some(systemd_service)) =
+                (self.settings.enrich_systemd, &proc.systemd_service)
+            {
+                m.push((
+                    "systemd_service".into(),
+                    Value::List(
+                        systemd_service
+                            .iter()
+                            .map(|v| Value::from(v.as_slice()))
+                            .collect(),
+                    ),
+                ));
+            }
         }
 
         rec.push((Key::NameTranslated(key.into()), Value::Map(m)));
@@ -407,11 +424,8 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         if let Value::Number(Number::Dec(pid)) = v {
             if let Some(proc) = self.processes.get_pid(*pid as _) {
                 self.add_record_procinfo(rv, name, proc);
-            } else {
-                self.processes
-                    .get_or_retrieve(*pid as _)
-                    .cloned()
-                    .map(|proc| self.add_record_procinfo(rv, name, &proc));
+            } else if let Some(proc) = self.processes.get_or_retrieve(*pid as _).cloned() {
+                self.add_record_procinfo(rv, name, &proc)
             }
         }
     }
@@ -939,20 +953,30 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
             #[cfg(all(feature = "procfs", target_os = "linux"))]
             let mut container_info: Option<ContainerInfo> = None;
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
+            let mut systemd_service: Option<Vec<Vec<u8>>> = None;
 
             #[cfg(all(feature = "procfs", target_os = "linux"))]
-            if self.settings.enrich_container {
+            if self.settings.enrich_container || self.settings.enrich_systemd {
                 let cgroup = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
-                container_info = match cgroup {
-                    Some(path) => {
-                        proc::try_extract_container_id(&path).map(|id| ContainerInfo { id })
-                    }
-                    _ => self
-                        .processes
-                        .get_pid(ppid)
-                        .and_then(|p| p.container_info.clone()),
-                };
-            };
+                if self.settings.enrich_container {
+                    container_info = match cgroup {
+                        Some(ref path) => {
+                            proc::try_extract_container_id(path).map(|id| ContainerInfo { id })
+                        }
+                        _ => self
+                            .processes
+                            .get_pid(ppid)
+                            .and_then(|p| p.container_info.clone()),
+                    };
+                }
+                if self.settings.enrich_systemd {
+                    systemd_service = match cgroup {
+                        Some(ref path) => proc::try_extract_systemd_service(path),
+                        _ => None,
+                    };
+                }
+            }
 
             self.processes.insert(Process {
                 key: ProcessKey::Event(id),
@@ -964,6 +988,8 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 labels,
                 #[cfg(all(feature = "procfs", target_os = "linux"))]
                 container_info,
+                #[cfg(all(feature = "procfs", target_os = "linux"))]
+                systemd_service,
             });
 
             proc = self.processes.get_pid(pid);
@@ -1861,7 +1887,8 @@ mod test {
                 };
 
                 for id in present_and_label {
-                    let event = find_event(&events, id).expect(&format!("Did not find {id}"));
+                    let event =
+                        find_event(&events, id).unwrap_or_else(|| panic!("Did not find {id}"));
                     assert!(
                         event_to_json(&event).contains(r#""LABELS":["test-script"]"#),
                         "{id} was not labelled correctly (config {n} test {tn})."

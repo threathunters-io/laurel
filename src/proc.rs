@@ -102,6 +102,8 @@ pub struct Process {
     pub labels: HashSet<Vec<u8>>,
     #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub container_info: Option<ContainerInfo>,
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    pub systemd_service: Option<Vec<Vec<u8>>>,
 }
 
 fn serialize_name<S>(t: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error>
@@ -130,6 +132,7 @@ impl From<procfs::ProcPidInfo> for Process {
                 .as_deref()
                 .and_then(try_extract_container_id)
                 .map(|id| ContainerInfo { id }),
+            systemd_service: p.cgroup.as_deref().and_then(try_extract_systemd_service),
         }
     }
 }
@@ -160,6 +163,21 @@ pub(crate) fn try_extract_container_id(path: &[u8]) -> Option<Vec<u8>> {
         }
     }
     None
+}
+
+/// Try to extract "something.service" fragments from cgroup path
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+pub(crate) fn try_extract_systemd_service(path: &[u8]) -> Option<Vec<Vec<u8>>> {
+    let svc: Vec<_> = path
+        .split(|&c| c == b'/')
+        .filter_map(|f| f.strip_suffix(&b".service"[..]))
+        .map(Vec::from)
+        .collect();
+    if svc.is_empty() {
+        None
+    } else {
+        Some(svc)
+    }
 }
 
 impl Process {
@@ -428,6 +446,26 @@ mod tests {
              Some(Vec::from(&b"\x2b\x45\x24\x9a\x1a\x21\xd3\x80\x6e\xfd\x98\xe2\xeb\x93\xc7\xdc\x31\x9c\x64\x5a\x27\xe7\xcd\x85\x36\x22\x27\xbe\xcc\x68\xca\x44"[..]))),
         ] {
             let got = try_extract_container_id(raw);
+            assert_eq!(*expected, got);
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    fn extract_systemd_service() {
+        for (raw, expected) in &[
+            (&b""[..], None),
+            (&b"0::/init.scope"[..], None),
+            (
+                &b"0::/system.slice/nginx.service"[..],
+                Some(vec![b"nginx".to_vec()]),
+            ),
+            (
+                &b"0::/user.slice/user-1000.slice/user@1000.service/app.slice/emacs.service"[..],
+                Some(vec![b"user@1000".to_vec(), b"emacs".to_vec()]),
+            ),
+        ] {
+            let got = try_extract_systemd_service(raw);
             assert_eq!(*expected, got);
         }
     }
