@@ -991,7 +991,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             body.push((Key::Literal("SYSCALL"), Value::Literal(syscall_name)));
         }
 
-        add_record_procinfo(body, b"pid", proc, true);
+        add_record_procinfo(body, b"pid", proc, false);
         if let Some(parent_process) = proc.parent.and_then(|key| self.processes.get_key(&key)) {
             add_record_procinfo(body, b"ppid", parent_process, true);
         }
