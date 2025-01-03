@@ -670,6 +670,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// - collects environment variables for EXECVE events
     /// - registers process in shadow process table for EXECVE events
     fn transform_event(&mut self, ev: &mut Event) {
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
         let mut proc = ev
             .process_key
             .as_ref()
@@ -936,9 +937,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
             #[cfg(all(feature = "procfs", target_os = "linux"))]
             if self.settings.enrich_container {
-                let id = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
-                container_info = match id {
-                    Some(id) => Some(ContainerInfo { id }),
+                let cgroup = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
+                container_info = match cgroup {
+                    Some(path) => {
+                        proc::try_extract_container_id(&path).map(|id| ContainerInfo { id })
+                    }
                     _ => self
                         .processes
                         .get_pid(ppid)

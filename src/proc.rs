@@ -4,6 +4,9 @@ use std::fmt::{self, Display};
 use std::iter::Iterator;
 use std::vec::Vec;
 
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+use faster_hex::hex_decode;
+
 use serde::{Serialize, Serializer};
 
 use thiserror::Error;
@@ -122,9 +125,41 @@ impl From<procfs::ProcPidInfo> for Process {
             labels: HashSet::new(),
             exe: p.exe,
             comm: p.comm,
-            container_info: p.container_id.map(|id| ContainerInfo { id }),
+            container_info: p
+                .cgroup
+                .as_deref()
+                .and_then(try_extract_container_id)
+                .map(|id| ContainerInfo { id }),
         }
     }
+}
+
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+fn extract_sha256(buf: &[u8]) -> Option<Vec<u8>> {
+    let mut dec = [0u8; 32];
+    match buf.len() {
+        n if n < 64 => None,
+        _ if hex_decode(&buf[buf.len() - 64..], &mut dec).is_ok() => Some(Vec::from(dec)),
+        _ if hex_decode(&buf[..64], &mut dec).is_ok() => Some(Vec::from(dec)),
+        _ => None,
+    }
+}
+
+/// Try to determine container ID from cgroup path
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+pub(crate) fn try_extract_container_id(path: &[u8]) -> Option<Vec<u8>> {
+    for fragment in path.split(|&c| c == b'/') {
+        let fragment = if fragment.ends_with(&b".scope"[..]) {
+            &fragment[..fragment.len() - 6]
+        } else {
+            fragment
+        };
+        match extract_sha256(fragment) {
+            None => continue,
+            Some(id) => return Some(id),
+        }
+    }
+    None
 }
 
 impl Process {
@@ -379,5 +414,21 @@ mod tests {
         assert!(e3.cmp(&o1).is_gt());
         assert!(e3.cmp(&o2).is_gt());
         assert!(e3.cmp(&o3).is_gt());
+    }
+
+    #[test]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    fn extract_container_id() {
+        for (raw, expected) in &[
+            (&b""[..], None),
+            (&b"0::/init.scope"[..], None),
+            (&b"0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-f13b567f07e025055fa9fa2793f44695036e3d412d82d16ee03d72e8b4eb8387.scope/container"[..],
+             Some(Vec::from(&b"\xf1\x3b\x56\x7f\x07\xe0\x25\x05\x5f\xa9\xfa\x27\x93\xf4\x46\x95\x03\x6e\x3d\x41\x2d\x82\xd1\x6e\xe0\x3d\x72\xe8\xb4\xeb\x83\x87"[..]))),
+            (&b"0::/system.slice/docker-2b45249a1a21d3806efd98e2eb93c7dc319c645a27e7cd85362227becc68ca44.scope"[..],
+             Some(Vec::from(&b"\x2b\x45\x24\x9a\x1a\x21\xd3\x80\x6e\xfd\x98\xe2\xeb\x93\xc7\xdc\x31\x9c\x64\x5a\x27\xe7\xcd\x85\x36\x22\x27\xbe\xcc\x68\xca\x44"[..]))),
+        ] {
+            let got = try_extract_container_id(raw);
+            assert_eq!(*expected, got);
+        }
     }
 }

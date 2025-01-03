@@ -5,7 +5,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::str::FromStr;
 
-use faster_hex::hex_decode;
 use lazy_static::lazy_static;
 use nix::sys::time::TimeSpec;
 use nix::time::{clock_gettime, ClockId};
@@ -104,8 +103,8 @@ pub(crate) struct ProcPidInfo {
     pub comm: Option<Vec<u8>>,
     /// /proc/pid/exe
     pub exe: Option<Vec<u8>>,
-    /// sha256 from /proc/pid/cgroup
-    pub container_id: Option<Vec<u8>>,
+    /// from /proc/$PID/cgroup
+    pub cgroup: Option<Vec<u8>>,
 }
 
 /// Parses information from /proc entry corresponding to process pid
@@ -167,7 +166,7 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         (lt.tv_sec() as u64) * 1000 + (lt.tv_nsec() as u64) / 1_000_000
     };
 
-    let container_id = parse_proc_pid_cgroup(pid)?;
+    let cgroup = parse_proc_pid_cgroup(pid)?;
 
     Ok(ProcPidInfo {
         pid,
@@ -175,41 +174,20 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         starttime,
         comm,
         exe,
-        container_id,
+        cgroup,
     })
 }
 
-fn extract_sha256(buf: &[u8]) -> Option<Vec<u8>> {
-    let mut dec = [0u8; 32];
-    match buf.len() {
-        n if n < 64 => None,
-        _ if hex_decode(&buf[buf.len() - 64..], &mut dec).is_ok() => Some(Vec::from(dec)),
-        _ if hex_decode(&buf[..64], &mut dec).is_ok() => Some(Vec::from(dec)),
-        _ => None,
-    }
-}
-
-/// Parses "container id" (some SHA256 sum) from /proc/pid/cgroup
+/// Parses path (third field) /proc/pid/cgroup
 pub(crate) fn parse_proc_pid_cgroup(pid: u32) -> Result<Option<Vec<u8>>, ProcFSError> {
     parse_cgroup_buf(&slurp_pid_obj(pid, "cgroup")?)
 }
 
 fn parse_cgroup_buf(buf: &[u8]) -> Result<Option<Vec<u8>>, ProcFSError> {
     for line in buf.split(|c| *c == b'\n') {
-        let dir = line.split(|&c| c == b':').nth(2);
-        if dir.is_none() {
-            continue;
-        }
-        for fragment in dir.unwrap().split(|&c| c == b'/') {
-            let fragment = if fragment.ends_with(&b".scope"[..]) {
-                &fragment[..fragment.len() - 6]
-            } else {
-                fragment
-            };
-            match extract_sha256(fragment) {
-                None => continue,
-                Some(id) => return Ok(Some(id)),
-            }
+        match line.split(|&c| c == b':').nth(2) {
+            None => continue,
+            Some(dir) => return Ok(Some(dir.to_vec())),
         }
     }
     Ok(None)
@@ -223,18 +201,5 @@ mod tests {
         let pid = std::process::id();
         let proc = parse_proc_pid(pid).unwrap_or_else(|_| panic!("parse entry for {pid}"));
         println!("{:?}", proc);
-    }
-
-    #[test]
-    fn parse_cgroup() -> Result<(), Box<dyn std::error::Error>> {
-        let testdata = br#"0::/system.slice/docker-47335b04ebb4aefdc353dda62ddd38e5e1e00fc1372f0c8d0138417f0ccb9e6c.scope
-0::/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-974a75c8cf45648fcc6e718ba92ee1f2034463674f0d5b0c50f5cab041a4cbd6.scope/container
-"#;
-        {
-            parse_cgroup_buf(testdata).map_err(|e| -> Box<dyn std::error::Error> {
-                format!("{}: {e}", String::from_utf8_lossy(testdata)).into()
-            })?;
-        }
-        Ok(())
     }
 }
