@@ -90,6 +90,8 @@ pub struct Enrich {
     #[serde(default = "true_value")]
     pub container: bool,
     #[serde(default = "true_value")]
+    pub systemd: bool,
+    #[serde(default = "true_value")]
     pub pid: bool,
     #[serde(default = "true_value")]
     pub script: bool,
@@ -102,6 +104,7 @@ impl Default for Enrich {
         Enrich {
             execve_env: execve_env_default(),
             container: true,
+            systemd: true,
             pid: true,
             script: true,
             uid_groups: true,
@@ -328,6 +331,7 @@ impl Config {
                 .map(|s| s.as_bytes().to_vec())
                 .collect(),
             enrich_container: self.enrich.container,
+            enrich_systemd: self.enrich.systemd,
             enrich_pid: self.enrich.pid,
             enrich_script: self.enrich.script,
             enrich_uid_groups: self.enrich.uid_groups,

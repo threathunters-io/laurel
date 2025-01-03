@@ -99,6 +99,10 @@ execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
 # Add container context to SYSCALL-based events
 container = true
 
+# Add systemd cgroup information for processes running within systemd
+# services.
+systemd = true
+
 # Add script context to SYSCALL execve events
 script = true
 

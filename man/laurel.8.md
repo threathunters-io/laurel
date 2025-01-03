@@ -131,6 +131,8 @@ Options that can be configured here actually add information to events
   events. Default: `["LD_PRELOAD", "LD_LIBRARY_PATH"]`
 - `container`: Add container information for processes running within
   container runtimes. Default: true
+- `systemd`: Add systemd cgroup information for processes running
+  within systemd services. Default: true
 - `pid`: Add context information for process IDs. Default: true
 - `script`: If an `exec` syscall spawns a script (as opposed to a
   binary), add a `SCRIPT` entry to the `SYSCALL` record. A script is
