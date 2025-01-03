@@ -271,33 +271,6 @@ fn path_script_name(path: &Body, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) ->
     }
 }
 
-/// Create an enriched pid entry in rv.
-fn add_record_procinfo(rec: &mut Body, key: &[u8], proc: &Process, include_names: bool) {
-    let mut m: Vec<(Key, Value)> = Vec::with_capacity(4);
-    match &proc.key {
-        ProcessKey::Event(id) => {
-            m.push(("EVENT_ID".into(), format!("{id}").into()));
-        }
-        ProcessKey::Observed { time, pid: _ } => {
-            let (sec, msec) = (time / 1000, time % 1000);
-            m.push(("START_TIME".into(), format!("{sec}.{msec:03}").into()));
-        }
-    }
-    if include_names {
-        if let Some(comm) = &proc.comm {
-            m.push(("comm".into(), Value::from(comm.as_slice())));
-        }
-        if let Some(exe) = &proc.exe {
-            m.push(("exe".into(), Value::from(exe.as_slice())));
-        }
-        if proc.ppid != 0 {
-            m.push(("ppid".into(), Value::from(proc.ppid as i64)));
-        }
-    }
-
-    rec.push((Key::NameTranslated(key.into()), Value::Map(m)));
-}
-
 impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Creates a `Coalsesce`. `emit_fn` is the function that takes
     /// completed events.
@@ -354,6 +327,33 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
     }
 
+    /// Create an enriched pid entry in rv.
+    fn add_record_procinfo(&self, rec: &mut Body, key: &[u8], proc: &Process) {
+        let mut m: Vec<(Key, Value)> = Vec::with_capacity(4);
+        match &proc.key {
+            ProcessKey::Event(id) => {
+                m.push(("EVENT_ID".into(), format!("{id}").into()));
+            }
+            ProcessKey::Observed { time, pid: _ } => {
+                let (sec, msec) = (time / 1000, time % 1000);
+                m.push(("START_TIME".into(), format!("{sec}.{msec:03}").into()));
+            }
+        }
+        if key != b"pid" {
+            if let Some(comm) = &proc.comm {
+                m.push(("comm".into(), Value::from(comm.as_slice())));
+            }
+            if let Some(exe) = &proc.exe {
+                m.push(("exe".into(), Value::from(exe.as_slice())));
+            }
+            if proc.ppid != 0 {
+                m.push(("ppid".into(), Value::from(proc.ppid as i64)));
+            }
+        }
+
+        rec.push((Key::NameTranslated(key.into()), Value::Map(m)));
+    }
+
     /// Translates UID, GID and variants, e.g.:
     /// - auid=1000 -> AUID="user"
     /// - ogid=1000 -> OGID="user"
@@ -405,8 +405,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             _ => return,
         };
         if let Value::Number(Number::Dec(pid)) = v {
-            if let Some(proc) = self.processes.get_or_retrieve(*pid as _) {
-                add_record_procinfo(rv, name, proc, true)
+            if let Some(proc) = self.processes.get_pid(*pid as _) {
+                self.add_record_procinfo(rv, name, proc);
+            } else {
+                self.processes
+                    .get_or_retrieve(*pid as _)
+                    .cloned()
+                    .map(|proc| self.add_record_procinfo(rv, name, &proc));
             }
         }
     }
@@ -994,9 +999,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             body.push((Key::Literal("SYSCALL"), Value::Literal(syscall_name)));
         }
 
-        add_record_procinfo(body, b"pid", proc, false);
+        self.add_record_procinfo(body, b"pid", proc);
         if let Some(parent_process) = proc.parent.and_then(|key| self.processes.get_key(&key)) {
-            add_record_procinfo(body, b"ppid", parent_process, true);
+            self.add_record_procinfo(body, b"ppid", parent_process);
         }
 
         if self.settings.translate_userdb {
