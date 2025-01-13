@@ -35,6 +35,7 @@ pub struct Settings {
     pub enrich_pid: bool,
     pub enrich_script: bool,
     pub enrich_uid_groups: bool,
+    pub enrich_prefix: Option<String>,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
     pub proc_propagate_labels: HashSet<Vec<u8>>,
@@ -71,6 +72,7 @@ impl Default for Settings {
             enrich_pid: true,
             enrich_script: true,
             enrich_uid_groups: true,
+            enrich_prefix: None,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
             translate_universal: false,
@@ -330,7 +332,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     }
 
     /// Create an enriched pid entry in rv.
-    fn add_record_procinfo(&self, rec: &mut Body, key: &[u8], proc: &Process) {
+    fn add_record_procinfo(&self, rec: &mut Body, name: &[u8], proc: &Process) {
         let mut m: Vec<(Key, Value)> = Vec::with_capacity(4);
         match &proc.key {
             ProcessKey::Event(id) => {
@@ -341,7 +343,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 m.push(("START_TIME".into(), format!("{sec}.{msec:03}").into()));
             }
         }
-        if key != b"pid" {
+        if name != b"pid" {
             if let Some(comm) = &proc.comm {
                 m.push(("comm".into(), Value::from(comm.as_slice())));
             }
@@ -368,7 +370,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
-        rec.push((Key::NameTranslated(key.into()), Value::Map(m)));
+        let key = match &self.settings.enrich_prefix {
+            Some(s) => Key::Name(NVec::from_iter(s.bytes().chain(name.iter().cloned()))),
+            None => Key::NameTranslated(name.into()),
+        };
+        rec.push((key, Value::Map(m)));
     }
 
     /// Translates UID, GID and variants, e.g.:
@@ -383,7 +389,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             return false;
         }
         match (key, value) {
-            (Key::NameUID(r), Value::Number(Number::Dec(d))) => {
+            (Key::NameUID(name), Value::Number(Number::Dec(d))) => {
                 let translated = if *d == 0xffffffff {
                     "unset".to_string()
                 } else if let Some(user) = self.userdb.get_user(*d as u32) {
@@ -391,10 +397,14 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 } else {
                     format!("unknown({d})")
                 };
-                rec.push((Key::NameTranslated(r.clone()), Value::from(translated)));
+                let key = match &self.settings.enrich_prefix {
+                    Some(s) => Key::Name(NVec::from_iter(s.bytes().chain(name.iter().cloned()))),
+                    None => Key::NameTranslated(name.clone()),
+                };
+                rec.push((key, Value::from(translated)));
                 true
             }
-            (Key::NameGID(r), Value::Number(Number::Dec(d))) => {
+            (Key::NameGID(name), Value::Number(Number::Dec(d))) => {
                 let translated = if *d == 0xffffffff {
                     "unset".to_string()
                 } else if let Some(group) = self.userdb.get_group(*d as u32) {
@@ -402,7 +412,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 } else {
                     format!("unknown({d})")
                 };
-                rec.push((Key::NameTranslated(r.clone()), Value::from(translated)));
+                let key = match &self.settings.enrich_prefix {
+                    Some(s) => Key::Name(NVec::from_iter(s.bytes().chain(name.iter().cloned()))),
+                    None => Key::NameTranslated(name.clone()),
+                };
+                rec.push((key, Value::from(translated)));
                 true
             }
             _ => false,
@@ -1019,10 +1033,18 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if let (Some(arch_name), true) = (arch_name, self.settings.translate_universal) {
-            body.push((Key::Literal("ARCH"), Value::Literal(arch_name)));
+            let key = match &self.settings.enrich_prefix {
+                Some(s) => Key::Name(NVec::from_iter(s.bytes().chain(b"arch".iter().cloned()))),
+                None => Key::Literal("ARCH"),
+            };
+            body.push((key, Value::Literal(arch_name)));
         }
         if let (Some(syscall_name), true) = (syscall_name, self.settings.translate_universal) {
-            body.push((Key::Literal("SYSCALL"), Value::Literal(syscall_name)));
+            let key = match &self.settings.enrich_prefix {
+                Some(s) => Key::Name(NVec::from_iter(s.bytes().chain(b"syscall".iter().cloned()))),
+                None => Key::Literal("SYSCALL"),
+            };
+            body.push((key, Value::Literal(syscall_name)));
         }
 
         self.add_record_procinfo(body, b"pid", proc);
@@ -1058,10 +1080,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     .unwrap_or(format!("unknown({id})"))
                 };
 
-                body.push((
-                    Key::NameTranslated(NVec::from(*name)),
-                    Value::from(translated),
-                ));
+                let key = match &self.settings.enrich_prefix {
+                    Some(s) => Key::Name(NVec::from_iter(s.bytes().chain((*name).iter().cloned()))),
+                    None => Key::NameTranslated((*name).into()),
+                };
+                body.push((key, Value::from(translated)));
             }
         }
 
