@@ -97,6 +97,8 @@ pub struct Enrich {
     pub script: bool,
     #[serde(default = "true_value", rename = "uid-groups")]
     pub uid_groups: bool,
+    #[serde(default)]
+    pub prefix: Option<String>,
 }
 
 impl Default for Enrich {
@@ -108,6 +110,7 @@ impl Default for Enrich {
             pid: true,
             script: true,
             uid_groups: true,
+            prefix: None,
         }
     }
 }
@@ -335,6 +338,7 @@ impl Config {
             enrich_pid: self.enrich.pid,
             enrich_script: self.enrich.script,
             enrich_uid_groups: self.enrich.uid_groups,
+            enrich_prefix: self.enrich.prefix.clone(),
             proc_label_keys: self
                 .label_process
                 .label_keys

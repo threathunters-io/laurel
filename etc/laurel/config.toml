@@ -109,6 +109,13 @@ script = true
 # Add groups that the user (uid) is a member of. Default: true
 user-groups = true
 
+# Add a prefix to enriched fields; this may be useful if logs are
+# consumed by analysis software that doesn't properly understand
+# uppercase and lowercase JSON object fields as identical. This
+# setting has no affect enriched fields passed in from auditd.
+# Default: unset
+# prefix = "enriched_"
+
 [label-process]
 
 # Audit records that contain certain keys can be reused as a label

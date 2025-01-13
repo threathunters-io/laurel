@@ -140,6 +140,11 @@ Options that can be configured here actually add information to events
   mentioned  in `SYSCALL.exe`. Default: true
 - `user-groups`: Add groups that the user ("uid") is a member of.
   Default: true
+- `prefix`: Add a prefix to enriched fields; this may be useful if
+  logs are onsumed by analysis software that doesn't properly
+  understand uppercase and lowercase JSON object fields as identical.
+  This setting does not affect enriched fields passed in from
+  `auditd(8)`. Default: unset
 
 ## `[label-process]` section
 
