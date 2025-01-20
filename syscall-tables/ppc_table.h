@@ -20,6 +20,7 @@
  *      Steve Grubb <sgrubb@redhat.com>
  */
 
+_S(0, "restart_syscall")
 _S(1, "exit")
 _S(2, "fork")
 _S(3, "read")
@@ -274,6 +275,12 @@ _S(252, "statfs64")
 _S(253, "fstatfs64")
 _S(254, "fadvise64_64")
 _S(255, "rtas")
+_S(256, "sys_debug_setcontext")
+// 257 reserved for vserver
+_S(258, "migrate_pages")
+_S(259, "mbind")
+_S(260, "get_mempolicy")
+_S(261, "set_mempolicy")
 _S(262, "mq_open")
 _S(263, "mq_unlink")
 _S(264, "mq_timedsend")
@@ -378,6 +385,7 @@ _S(362, "execveat")
 _S(363, "switch_endian")
 _S(364, "userfaultfd")
 _S(365, "membarrier")
+// 366 - 377 originally left for IPC, now unused
 _S(378, "mlock2")
 _S(379, "copy_file_range")
 _S(380, "preadv2")
@@ -458,4 +466,8 @@ _S(459, "lsm_get_self_attr")
 _S(460, "lsm_set_self_attr")
 _S(461, "lsm_list_modules")
 _S(462, "mseal")
+_S(463, "setxattrat")
+_S(464, "getxattrat")
+_S(465, "listxattrat")
+_S(466, "removexattrat")
 
