@@ -1,5 +1,5 @@
-/* aarch64_table.h --
- * Copyright 2013-24 Red Hat Inc.
+/* riscv64_table.h --
+ * Copyright 2024 Rivos Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -17,7 +17,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors:
- *      Steve Grubb <sgrubb@redhat.com>
+ *      David Abdurachmanov <davidlt@rivosinc.com>
  */
 
 _S(0, "io_setup")
@@ -58,7 +58,6 @@ _S(34, "mkdirat")
 _S(35, "unlinkat")
 _S(36, "symlinkat")
 _S(37, "linkat")
-_S(38, "renameat")
 _S(39, "umount2")
 _S(40, "mount")
 _S(41, "pivot_root")
@@ -81,14 +80,14 @@ _S(57, "close")
 _S(58, "vhangup")
 _S(59, "pipe2")
 _S(60, "quotactl")
-_S(61, "getdents")
+_S(61, "getdents64")
 _S(62, "lseek")
 _S(63, "read")
 _S(64, "write")
 _S(65, "readv")
 _S(66, "writev")
-_S(67, "pread")
-_S(68, "pwrite")
+_S(67, "pread64")
+_S(68, "pwrite64")
 _S(69, "preadv")
 _S(70, "pwritev")
 _S(71, "sendfile")
@@ -100,7 +99,7 @@ _S(76, "splice")
 _S(77, "tee")
 _S(78, "readlinkat")
 _S(79, "newfstatat")
-_S(80, "newfstat")
+_S(80, "fstat")
 _S(81, "sync")
 _S(82, "fsync")
 _S(83, "fdatasync")
@@ -264,6 +263,8 @@ _S(240, "rt_tgsigqueueinfo")
 _S(241, "perf_event_open")
 _S(242, "accept4")
 _S(243, "recvmmsg")
+_S(258, "riscv_hwprobe")
+_S(259, "riscv_flush_icache")
 _S(260, "wait4")
 _S(261, "prlimit64")
 _S(262, "fanotify_init")
