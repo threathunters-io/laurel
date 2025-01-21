@@ -1,24 +1,7 @@
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-#[derive(PartialEq,Eq,Clone,Copy)]
-pub enum FieldType {
-    Encoded,
-    Numeric,
-    NumericDec,
-    NumericHex,
-    NumericOct,
-}
-
 lazy_static! {
-    pub static ref FIELD_TYPES: HashMap<&'static[u8],FieldType> = {
-        let els: &[(&str, FieldType)] = &[ /* @FIELD_TYPES@ */ ];
-        let mut hm = HashMap::with_capacity(els.len());
-        for (name, typ) in els {
-            hm.insert(name.as_bytes(), *typ);
-        }
-        hm
-    };
     pub static ref SYSCALL_NAMES: HashMap<&'static str, HashMap<u32, &'static str>> = {
         let mut hm = HashMap::new();
         /* @SYSCALL_BUILD@ */

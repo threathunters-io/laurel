@@ -115,7 +115,6 @@ lazy_static! {
 }
 
 pub fn initialize() {
-    lazy_static::initialize(&FIELD_TYPES);
     lazy_static::initialize(&SYSCALL_NAMES);
     lazy_static::initialize(&ARCH_IDS);
 }
