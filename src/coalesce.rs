@@ -10,7 +10,7 @@ use linux_audit_parser::*;
 
 use serde::Serialize;
 
-use crate::constants::{ARCH_NAMES, SYSCALL_NAMES};
+use crate::constants::{ARCH_NAMES, SYSCALL_NAMES, URING_OPS};
 use crate::label_matcher::LabelMatcher;
 use crate::proc::{self, ContainerInfo, ProcTable, Process, ProcessKey};
 #[cfg(all(feature = "procfs", target_os = "linux"))]
@@ -195,6 +195,43 @@ fn add_translated_socketaddr(rv: &mut Body, sa: SocketAddr) {
         }
     };
     rv.push(("SADDR".into(), Value::Map(m)));
+}
+
+#[derive(Default)]
+struct UserGroupIDs {
+    auid: Option<u32>,
+    uid: Option<u32>,
+    gid: Option<u32>,
+    euid: Option<u32>,
+    suid: Option<u32>,
+    fsuid: Option<u32>,
+    egid: Option<u32>,
+    sgid: Option<u32>,
+    fsgid: Option<u32>,
+    old_auid: Option<u32>,
+}
+
+impl UserGroupIDs {
+    fn collect_uid(&mut self, name: &[u8], uid: u32) {
+        match name {
+            b"auid" => self.auid = Some(uid),
+            b"uid" => self.uid = Some(uid),
+            b"euid" => self.euid = Some(uid),
+            b"suid" => self.suid = Some(uid),
+            b"fsuid" => self.fsuid = Some(uid),
+            b"old-auid" => self.old_auid = Some(uid),
+            _ => {}
+        }
+    }
+    fn collect_gid(&mut self, name: &[u8], gid: u32) {
+        match name {
+            b"gid" => self.gid = Some(gid),
+            b"egid" => self.egid = Some(gid),
+            b"sgid" => self.sgid = Some(gid),
+            b"fsgid" => self.fsgid = Some(gid),
+            _ => {}
+        }
+    }
 }
 
 /// Returns a script name from path if exe's dev / inode don't match
@@ -383,43 +420,40 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     ///
     /// IDs that can't be resolved are translated into "unknown(n)".
     /// `(uint32)-1` is translated into "unset".
-    #[inline(always)]
-    fn add_record_userdb(&mut self, rec: &mut Body, key: &Key, value: &Value) -> bool {
-        if !self.settings.translate_userdb {
-            return false;
-        }
-        match (key, value) {
-            (Key::NameUID(name), Value::Number(Number::Dec(d))) => {
-                let translated = if *d == 0xffffffff {
-                    "unset".to_string()
-                } else if let Some(user) = self.userdb.get_user(*d as u32) {
-                    user
-                } else {
-                    format!("unknown({d})")
-                };
-                let key = match &self.settings.enrich_prefix {
-                    Some(s) => Key::Name(NVec::from_iter(s.bytes().chain(name.iter().cloned()))),
-                    None => Key::NameTranslated(name.clone()),
-                };
-                rec.push((key, Value::from(translated)));
-                true
+    fn add_record_userdb(&mut self, body: &mut Body, ids: &UserGroupIDs) {
+        for (name, id, is_user) in &[
+            (&b"auid"[..], ids.auid, true),
+            (&b"uid"[..], ids.uid, true),
+            (&b"gid"[..], ids.gid, false),
+            (&b"euid"[..], ids.euid, true),
+            (&b"suid"[..], ids.suid, true),
+            (&b"fsuid"[..], ids.fsuid, true),
+            (&b"egid"[..], ids.egid, false),
+            (&b"sgid"[..], ids.sgid, false),
+            (&b"fsgid"[..], ids.fsgid, false),
+            (&b"old-auid"[..], ids.old_auid, true),
+        ] {
+            if id.is_none() {
+                continue;
             }
-            (Key::NameGID(name), Value::Number(Number::Dec(d))) => {
-                let translated = if *d == 0xffffffff {
-                    "unset".to_string()
-                } else if let Some(group) = self.userdb.get_group(*d as u32) {
-                    group
+            let id = id.unwrap();
+
+            let translated = if id == 0xffffffff {
+                "unset".to_string()
+            } else {
+                if *is_user {
+                    self.userdb.get_user(id)
                 } else {
-                    format!("unknown({d})")
-                };
-                let key = match &self.settings.enrich_prefix {
-                    Some(s) => Key::Name(NVec::from_iter(s.bytes().chain(name.iter().cloned()))),
-                    None => Key::NameTranslated(name.clone()),
-                };
-                rec.push((key, Value::from(translated)));
-                true
-            }
-            _ => false,
+                    self.userdb.get_group(id)
+                }
+                .unwrap_or(format!("unknown({id})"))
+            };
+
+            let key = match &self.settings.enrich_prefix {
+                Some(s) => Key::Name(NVec::from_iter(s.bytes().chain((*name).iter().cloned()))),
+                None => Key::NameTranslated((*name).into()),
+            };
+            body.push((key, Value::from(translated)));
         }
     }
 
@@ -445,19 +479,29 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     }
 
     /// Apply uid, gid, pid enrichment to generic records
-    fn enrich_generic(&mut self, rv: &mut Body) {
+    fn enrich_generic(&mut self, body: &mut Body) {
         let mut nrv = Body::default();
-        rv.retain(|(k, v)| {
-            if self.add_record_userdb(&mut nrv, k, v) {
-                if self.settings.drop_translated {
-                    return false;
+        let mut ids = UserGroupIDs::default();
+        body.retain(|(k, v)| {
+            match (k, v) {
+                (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
+                    ids.collect_uid(&name, *n as _);
+                    if self.settings.drop_translated {
+                        return false;
+                    }
                 }
-            } else {
-                self.enrich_pid(&mut nrv, k, v);
-            }
+                (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
+                    ids.collect_gid(&name, *n as _);
+                    if self.settings.drop_translated {
+                        return false;
+                    }
+                }
+                _ => self.enrich_pid(&mut nrv, k, v),
+            };
             true
         });
-        rv.extend(nrv);
+        body.extend(nrv);
+        self.add_record_userdb(body, &ids);
     }
 
     /// Transform PROCTITLE record
@@ -509,6 +553,45 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             _ => true,
         });
         rv.extend(nrv);
+    }
+
+    /// Enrich URINGOP record
+    fn enrich_uringop(&mut self, body: &mut Body) {
+        let mut nrv = Body::default();
+
+        let mut ids = UserGroupIDs::default();
+
+        body.retain(|(k, v)| {
+            match (k, v) {
+                (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
+                    ids.collect_uid(&name, *n as _);
+                    if self.settings.drop_translated {
+                        return false;
+                    }
+                }
+                (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
+                    ids.collect_gid(&name, *n as _);
+                    if self.settings.drop_translated {
+                        return false;
+                    }
+                }
+                (Key::Name(name), Value::Number(Number::Dec(op)))
+                    if self.settings.translate_universal && k == "uring_op" =>
+                {
+                    if let Some(Some(op_name)) = URING_OPS.get(*op as usize) {
+                        nrv.push((Key::NameTranslated(name.clone()), Value::from(*op_name)));
+                    }
+                }
+                _ => {}
+            }
+            true
+        });
+
+        body.extend(nrv);
+
+        if self.settings.translate_userdb {
+            self.add_record_userdb(body, &ids);
+        }
     }
 
     /// Enrich SYSCALL record
@@ -771,6 +854,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     rvs.iter_mut().for_each(|rv| self.enrich_sockaddr(rv))
                 }
                 (&MessageType::PROCTITLE, EventValues::Single(rv)) => self.transform_proctitle(rv),
+                (&MessageType::URINGOP, EventValues::Multi(rvs)) => {
+                    rvs.iter_mut().for_each(|rv| self.enrich_uringop(rv))
+                }
                 (_, EventValues::Single(rv)) => self.enrich_generic(rv),
                 (_, EventValues::Multi(rvs)) => {
                     rvs.iter_mut().for_each(|rv| self.enrich_generic(rv))
@@ -818,18 +904,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         let mut argv = Vec::with_capacity(4);
 
-        #[derive(Default)]
-        struct UserGroupIDs {
-            auid: Option<u32>,
-            uid: Option<u32>,
-            gid: Option<u32>,
-            euid: Option<u32>,
-            suid: Option<u32>,
-            fsuid: Option<u32>,
-            egid: Option<u32>,
-            sgid: Option<u32>,
-            fsgid: Option<u32>,
-        }
         let mut ids = UserGroupIDs::default();
 
         // Filter / collect
@@ -858,26 +932,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 (Key::Common(Common::Exe), Value::Str(s, _)) => exe = Some(*s),
                 (Key::Common(Common::Key), Value::Str(s, _)) => key = Some(*s),
                 (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
-                    match name.as_slice() {
-                        b"auid" => ids.auid = Some(*n as _),
-                        b"uid" => ids.uid = Some(*n as _),
-                        b"euid" => ids.euid = Some(*n as _),
-                        b"suid" => ids.suid = Some(*n as _),
-                        b"fsuid" => ids.fsuid = Some(*n as _),
-                        _ => {}
-                    }
+                    ids.collect_uid(&name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
                 }
                 (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    match name.as_slice() {
-                        b"gid" => ids.gid = Some(*n as _),
-                        b"egid" => ids.egid = Some(*n as _),
-                        b"sgid" => ids.sgid = Some(*n as _),
-                        b"fsgid" => ids.fsgid = Some(*n as _),
-                        _ => {}
-                    }
+                    ids.collect_gid(&name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
@@ -1053,39 +1114,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if self.settings.translate_userdb {
-            for (name, id, is_user) in &[
-                (&b"auid"[..], ids.auid, true),
-                (&b"uid"[..], ids.uid, true),
-                (&b"gid"[..], ids.gid, false),
-                (&b"euid"[..], ids.euid, true),
-                (&b"suid"[..], ids.suid, true),
-                (&b"fsuid"[..], ids.fsuid, true),
-                (&b"egid"[..], ids.egid, false),
-                (&b"sgid"[..], ids.sgid, false),
-                (&b"fsgid"[..], ids.fsgid, false),
-            ] {
-                if id.is_none() {
-                    continue;
-                }
-                let id = id.unwrap();
-
-                let translated = if id == 0xffffffff {
-                    "unset".to_string()
-                } else {
-                    if *is_user {
-                        self.userdb.get_user(id)
-                    } else {
-                        self.userdb.get_group(id)
-                    }
-                    .unwrap_or(format!("unknown({id})"))
-                };
-
-                let key = match &self.settings.enrich_prefix {
-                    Some(s) => Key::Name(NVec::from_iter(s.bytes().chain((*name).iter().cloned()))),
-                    None => Key::NameTranslated((*name).into()),
-                };
-                body.push((key, Value::from(translated)));
-            }
+            self.add_record_userdb(body, &ids);
         }
 
         if self.settings.enrich_uid_groups {
@@ -1537,6 +1566,38 @@ mod test {
             event_to_json(ec.borrow().as_ref().unwrap()).contains(r#""UID_GROUPS":["#),
             "enrich.uid_groups is performed regardless of translate.userdb"
         );
+    }
+
+    #[test]
+    fn enrich_uringop() {
+        let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.translate_userdb = true;
+        c.settings.translate_universal = true;
+
+        process_record(&mut c, include_bytes!("testdata/record-uringop.txt")).unwrap();
+
+        let output = event_to_json(ec.borrow().as_ref().unwrap());
+        println!("{output}");
+
+        assert!(
+            output.contains(r#""URING_OP":"openat""#),
+            "uring operations should be translated."
+        );
+        assert!(
+            output.contains(r#""UID":"root""#)
+                && output.contains(r#""GID":"root""#)
+                && output.contains(r#""EUID":"root""#)
+                && output.contains(r#""SUID":"root""#)
+                && output.contains(r#""FSUID":"root""#)
+                && output.contains(r#""EGID":"root""#)
+                && output.contains(r#""SGID":"root""#)
+                && output.contains(r#""FSGID":"root""#),
+            "*uid, *gid should be translated"
+        );
+
+        // todo: pid, ppid
     }
 
     #[test]
