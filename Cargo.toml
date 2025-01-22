@@ -35,7 +35,7 @@ syslog = "6"
 thiserror = "2"
 anyhow = "1"
 faster-hex = "0.9"
-linux-audit-parser = "0.2.1"
+linux-audit-parser = "0.2.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = "0.5"
