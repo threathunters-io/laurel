@@ -7,4 +7,8 @@ lazy_static! {
         /* @SYSCALL_BUILD@ */
         hm
     };
-}            
+}
+
+pub static URING_OPS: [Option<&[u8]>; 64] = [
+    /* @URING_OPS@ */
+];

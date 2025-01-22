@@ -45,6 +45,37 @@ fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
     Ok(buf)
 }
 
+fn gen_uring_ops() -> Result<String, Box<dyn std::error::Error>> {
+    let mut buf = String::new();
+    let mut defs: Vec<Option<String>> = (0..64).map(|_| None).collect();
+    for (k, v) in BufReader::new(fs::File::open("src/tbl/uringop_table.h")?)
+        .lines()
+        .map(|line| line.unwrap())
+        .filter_map(|line| line.strip_prefix("_S(").map(String::from))
+        .filter_map(|line| line.strip_suffix(")").map(String::from))
+        .filter_map(|line| {
+            line.as_str().split_once(",").map(|(k, v)| {
+                (
+                    k.trim().to_string(),
+                    v.trim_matches(|c: char| c.is_whitespace() || c == '"')
+                        .to_string(),
+                )
+            })
+        })
+    {
+        let num: usize = k.parse()?;
+        defs[num] = Some(v);
+    }
+    for def in defs {
+        let frag = match def {
+            Some(s) => format!(r#"Some(b"{s}"), "#),
+            None => "None, ".to_string(),
+        };
+        buf.push_str(&frag);
+    }
+    Ok(buf)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("const.rs");
@@ -55,6 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let buf = template
         .replace("/* @SYSCALL_BUILD@ */", &gen_syscall()?)
+        .replace("/* @URING_OPS@ */", &gen_uring_ops()?)
         .into_bytes();
 
     fs::write(dest_path, buf)?;
