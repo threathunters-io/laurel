@@ -20,6 +20,7 @@ fn get_user(uid: u32) -> Option<UserEntry> {
         let gids = getgrouplist(&name, user.gid)
             .unwrap_or_else(|_| vec![])
             .into_iter()
+            .filter(|gid| *gid != user.gid)
             .map(u32::from)
             .collect();
         UserEntry {
@@ -74,18 +75,12 @@ impl UserDB {
     }
     pub fn get_user_groups(&mut self, uid: u32) -> Option<Vec<String>> {
         let user = self.get_user_entry(uid)?;
-        let mut username = user.name.as_bytes().to_vec();
-        username.push(0);
-        let gids = getgrouplist(
-            &CString::from_vec_with_nul(username).unwrap(),
-            Gid::from(user.primary_gid),
-        )
-        .ok()?;
-        Some(
-            gids.iter()
-                .filter_map(|gid| self.get_group(libc::gid_t::from(*gid)))
-                .collect::<Vec<_>>(),
-        )
+        let names = Some(user.primary_gid)
+            .into_iter()
+            .chain(user.secondary_gids)
+            .map(|gid| self.get_group(gid).unwrap_or(format!("#{gid}")))
+            .collect();
+        Some(names)
     }
     pub fn get_group(&mut self, gid: u32) -> Option<String> {
         match self.groups.get(&gid) {
@@ -96,5 +91,19 @@ impl UserDB {
                 group
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn userdb() {
+        let mut userdb = UserDB::default();
+        // Just output info for current user
+        let uid: u32 = nix::unistd::Uid::current().into();
+        println!("user: {:?}", userdb.get_user(uid).unwrap());
+        println!("group: {:?}", userdb.get_group(uid).unwrap());
+        println!("usergroups: {:?}", userdb.get_user_groups(uid).unwrap());
     }
 }
