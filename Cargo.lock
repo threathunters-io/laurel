@@ -399,14 +399,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
 name = "linux-audit-parser"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ed49dac1a351bb79583c503dd8209518d705a41057769c5ec71acee30abbc2e"
+checksum = "727b59bb1d6b716ab7f4c109d980f2e3120c2b0df8b2cc50ce18e1391a0e07dd"
 dependencies = [
  "indexmap",
  "lazy_static",
