@@ -98,12 +98,18 @@ impl UserDB {
 mod test {
     use super::*;
     #[test]
+    /// This is not a real test case, it is just intended for
+    /// diagnostic purposes.
     fn userdb() {
         let mut userdb = UserDB::default();
         // Just output info for current user
-        let uid: u32 = nix::unistd::Uid::current().into();
-        println!("user: {:?}", userdb.get_user(uid).unwrap());
-        println!("group: {:?}", userdb.get_group(uid).unwrap());
-        println!("usergroups: {:?}", userdb.get_user_groups(uid).unwrap());
+        let uid = nix::unistd::Uid::current();
+        let gid = nix::unistd::Gid::current();
+        println!("user for uid {uid}: {:?}", userdb.get_user(uid.into()));
+        println!("group for gid {gid}: {:?}", userdb.get_group(gid.into()));
+        println!(
+            "groups for uid {uid}: {:?}",
+            userdb.get_user_groups(uid.into())
+        );
     }
 }
