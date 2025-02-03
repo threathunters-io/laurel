@@ -75,6 +75,9 @@ ifdef(`distro_redhat',`
 sssd_read_public_files(laurel_t)
 sssd_stream_connect(laurel_t)
 
+# Use nscd for name lookups
+nscd_use(laurel_t)
+
 # Read config files
 read_files_pattern(laurel_t, laurel_etc_t, laurel_etc_t)
 
