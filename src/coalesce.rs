@@ -485,13 +485,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         body.retain(|(k, v)| {
             match (k, v) {
                 (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_uid(&name, *n as _);
+                    ids.collect_uid(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
                 }
                 (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_gid(&name, *n as _);
+                    ids.collect_gid(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
@@ -564,13 +564,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         body.retain(|(k, v)| {
             match (k, v) {
                 (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_uid(&name, *n as _);
+                    ids.collect_uid(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
                 }
                 (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_gid(&name, *n as _);
+                    ids.collect_gid(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
@@ -932,13 +932,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 (Key::Common(Common::Exe), Value::Str(s, _)) => exe = Some(*s),
                 (Key::Common(Common::Key), Value::Str(s, _)) => key = Some(*s),
                 (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_uid(&name, *n as _);
+                    ids.collect_uid(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
                 }
                 (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_gid(&name, *n as _);
+                    ids.collect_gid(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
