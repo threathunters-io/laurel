@@ -12,6 +12,7 @@ Build binary, install:
 $ cargo build --release
 $ sudo install -m755 target/release/laurel /usr/local/sbin/laurel
 ```
+If the environment variable `LAUREL_BUILD_ID` is set at build time, it is output after the version number.
 
 ## …or use one of the provided binaries
 

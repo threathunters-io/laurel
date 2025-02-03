@@ -34,6 +34,13 @@ use laurel::logger;
 use laurel::rotate::FileRotate;
 use laurel::types::Event;
 
+const fn build_id() -> &'static str {
+    match option_env!("LAUREL_BUILD_ID") {
+        None => "generic",
+        Some(s) => s,
+    }
+}
+
 #[derive(Default, Serialize)]
 struct Stats {
     lines: u64,
@@ -162,7 +169,7 @@ fn run_app() -> Result<(), anyhow::Error> {
     }
 
     if matches.opt_present("v") {
-        println!("{}", laurel::VERSION);
+        println!("{} ({})", laurel::VERSION, build_id());
         return Ok(());
     }
 
@@ -211,7 +218,7 @@ fn run_app() -> Result<(), anyhow::Error> {
     };
 
     if matches.opt_present("d") {
-        println!("Laurel {}: Config ok.", laurel::VERSION);
+        println!("Laurel {} ({}): Config ok.", laurel::VERSION, build_id());
         return Ok(());
     }
 
@@ -284,7 +291,12 @@ fn run_app() -> Result<(), anyhow::Error> {
 
     // Initial setup is done at this point.
 
-    log::info!("Started {} running version {}", &args[0], laurel::VERSION);
+    log::info!(
+        "Started {} running version {} ({})",
+        &args[0],
+        laurel::VERSION,
+        build_id()
+    );
     log::info!(
         "Running with EUID {} using config {}",
         Uid::effective().as_raw(),
@@ -425,7 +437,7 @@ fn run_app() -> Result<(), anyhow::Error> {
             if statusreport_period_t.as_secs() > 0
                 && statusreport_last_t.elapsed()? >= statusreport_period_t
             {
-                log::info!("Laurel version {}", laurel::VERSION);
+                log::info!("Laurel version {} ({})", laurel::VERSION, build_id());
                 log::info!(
                     "Parsing stats (until now): processed {} lines {} events with {} errors in total",
                     &stats.lines, &stats.events, &stats.errors );
