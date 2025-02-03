@@ -21,7 +21,7 @@ jobs:
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: selinux-el8
           path: contrib/selinux/laurel.pp
@@ -38,7 +38,7 @@ jobs:
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: selinux-el9
           path: contrib/selinux/laurel.pp
@@ -55,7 +55,7 @@ jobs:
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: selinux-al2023
           path: contrib/selinux/laurel.pp
@@ -73,7 +73,7 @@ jobs:
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: selinux-bookworm
           path: contrib/selinux/laurel.pp
@@ -91,7 +91,7 @@ jobs:
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: selinux-jammy
           path: contrib/selinux/laurel.pp
