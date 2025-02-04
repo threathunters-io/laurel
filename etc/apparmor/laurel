@@ -1,0 +1,48 @@
+# -*- apparmor -*-
+
+abi <abi/3.0>,
+
+include <tunables/global>
+
+profile laurel /usr/sbin/laurel flags=(attach_disconnected, complain) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+
+  capability chown,
+  capability dac_read_search,
+  capability fowner,
+  capability fsetid,
+  capability setgid,
+  capability setpcap,
+  capability setuid,
+
+  # connect to local services for name lookups etc.
+  network unix stream,
+
+  # Access various information in /proc/$PID/
+  ptrace read,
+  capability sys_ptrace,
+  @{PROC}/ r,
+  @{PROC}/@{pid}/cgroup r,
+  @{PROC}/@{pid}/comm r,
+  @{PROC}/@{pid}/environ r,
+  @{PROC}/@{pid}/stat r,
+
+  # Re-exec
+  /usr/sbin/laurel mrix,
+
+  signal receive set=(term,hup,int,kill),
+
+  # Configuration and log files
+  /etc/laurel/config.toml r,
+  /var/log/laurel/ rw,
+  owner /var/log/laurel/* rw,
+
+  # Workarounds for suspected Ubuntu / Azure AD issues
+  @{run}/samba/winbindd/pipe rw,
+  /etc/aadpasswd r,
+  include if exists <abstractions/openssl>
+
+
+  include if exists <local/laurel>
+}
