@@ -1553,6 +1553,59 @@ mod test {
     }
 
     #[test]
+    #[should_panic]
+    fn translate_userdb_execve() {
+        let ec = Rc::new(RefCell::new(None));
+
+        let gid0name = nix::unistd::Group::from_gid(0.into())
+            .unwrap()
+            .unwrap()
+            .name;
+
+        let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
+        c.settings.translate_userdb = true;
+        c.settings.translate_universal = true;
+
+        process_record(
+            &mut c,
+            strip_enriched(include_bytes!("testdata/record-execve.txt")),
+        )
+        .unwrap();
+
+        let j = event_to_json(ec.borrow().as_ref().unwrap());
+        println!("{j}");
+        assert!(j.contains(r#""OUID":"root""#));
+        assert!(j.contains(&format!(r#""OGID":"{gid0name}""#)));
+    }
+
+    #[test]
+    #[should_panic]
+    fn translate_userdb_ptrace() {
+        let ec = Rc::new(RefCell::new(None));
+
+        let mut c = Coalesce::new(|e: &Event| *ec.borrow_mut() = Some(e.clone()));
+        c.settings.translate_userdb = true;
+        c.settings.translate_universal = true;
+
+        process_record(
+            &mut c,
+            strip_enriched(include_bytes!("testdata/record-ptrace.txt")),
+        )
+        .unwrap();
+
+        let j = event_to_json(ec.borrow().as_ref().unwrap());
+        println!("{j}");
+        for u in &[
+            "AUID", "UID", "UID", "EUID", "SUID", "FSUID", "EUID", "SUID", "FSUID", "OAUID", "OUID",
+        ] {
+            assert!(
+                j.contains(&format!(r#""{u}":"root"#)),
+                "record does not contain {u}"
+            );
+        }
+    }
+
+    #[test]
     fn enrich_uid_groups() {
         let ec: Rc<RefCell<Option<Event>>> = Rc::new(RefCell::new(None));
 
