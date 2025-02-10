@@ -1,0 +1,3 @@
+type=SYSCALL msg=audit(1739218487.007:22145057): arch=c000003e syscall=101 success=yes exit=0 a0=4206 a1=29b07b a2=0 a3=51 items=0 ppid=1922034 pid=2732828 auid=0 uid=0 uid=0 euid=0 suid=0 fsuid=0 euid=0 suid=0 fsuid=0 tty=pts10 ses=2 comm="strace" exe="/usr/bin/strace" subj=unconfined key=(null)
+type=OBJ_PID msg=audit(1739218487.007:22145057): opid=2732155 oauid=0 ouid=0 oses=2 obj=unconfined ocomm="sleep"
+type=EOE msg=audit(1739218487.007:22145057):
