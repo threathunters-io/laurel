@@ -33,6 +33,8 @@ ifdef(`audit2',`
 
 # Set / retain capabilities
 allow laurel_t self:process { getcap setcap };
+# Re-exec on SIGHUP
+allow laurel_t laurel_exec_t:file execute_no_trans;
 # Set permissions at initialization time
 allow laurel_t self:capability { chown fowner fsetid setuid setgid };
 # Inspect process environments, override UNIX read permissions
