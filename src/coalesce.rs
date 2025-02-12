@@ -20,6 +20,8 @@ use crate::sockaddr::SocketAddr;
 use crate::types::*;
 use crate::userdb::UserDB;
 
+use tinyvec::TinyVec;
+
 use thiserror::Error;
 
 #[derive(Clone)]
@@ -199,38 +201,40 @@ fn add_translated_socketaddr(rv: &mut Body, sa: SocketAddr) {
 
 #[derive(Default)]
 struct UserGroupIDs {
-    auid: Option<u32>,
-    uid: Option<u32>,
-    gid: Option<u32>,
-    euid: Option<u32>,
-    suid: Option<u32>,
-    fsuid: Option<u32>,
-    egid: Option<u32>,
-    sgid: Option<u32>,
-    fsgid: Option<u32>,
-    old_auid: Option<u32>,
+    uid: Option<u32>, // should not need this
+    ids: TinyVec<[(TinyVec<[u8; 8]>, u32); 8]>,
 }
 
 impl UserGroupIDs {
-    fn collect_uid(&mut self, name: &[u8], uid: u32) {
-        match name {
-            b"auid" => self.auid = Some(uid),
-            b"uid" => self.uid = Some(uid),
-            b"euid" => self.euid = Some(uid),
-            b"suid" => self.suid = Some(uid),
-            b"fsuid" => self.fsuid = Some(uid),
-            b"old-auid" => self.old_auid = Some(uid),
-            _ => {}
+    fn collect(&mut self, name: &[u8], id: u32) {
+        if name == b"uid" {
+            self.uid = Some(id);
+        } else {
+            self.ids.push((name.into(), id));
         }
     }
-    fn collect_gid(&mut self, name: &[u8], gid: u32) {
-        match name {
-            b"gid" => self.gid = Some(gid),
-            b"egid" => self.egid = Some(gid),
-            b"sgid" => self.sgid = Some(gid),
-            b"fsgid" => self.fsgid = Some(gid),
-            _ => {}
-        }
+    fn get_translated<'a>(
+        &'a self,
+        userdb: &'a mut UserDB,
+    ) -> impl Iterator<Item = (&'a [u8], String)> {
+        let uid = self.uid.iter().map(|id| (b"uid".as_slice(), *id));
+        let ids = self.ids.iter().map(|(name, id)| (name.as_slice(), *id));
+
+        uid.chain(ids).map(move |(name, id)| {
+            let translated = if id == 0xffffffff {
+                "unset".to_string()
+            } else {
+                if name.ends_with(b"uid") {
+                    userdb.get_user(id)
+                } else if name.ends_with(b"gid") {
+                    userdb.get_group(id)
+                } else {
+                    None
+                }
+                .unwrap_or(format!("unknown({id})"))
+            };
+            (name, translated)
+        })
     }
 }
 
@@ -421,39 +425,12 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// IDs that can't be resolved are translated into "unknown(n)".
     /// `(uint32)-1` is translated into "unset".
     fn add_record_userdb(&mut self, body: &mut Body, ids: &UserGroupIDs) {
-        for (name, id, is_user) in &[
-            (&b"auid"[..], ids.auid, true),
-            (&b"uid"[..], ids.uid, true),
-            (&b"gid"[..], ids.gid, false),
-            (&b"euid"[..], ids.euid, true),
-            (&b"suid"[..], ids.suid, true),
-            (&b"fsuid"[..], ids.fsuid, true),
-            (&b"egid"[..], ids.egid, false),
-            (&b"sgid"[..], ids.sgid, false),
-            (&b"fsgid"[..], ids.fsgid, false),
-            (&b"old-auid"[..], ids.old_auid, true),
-        ] {
-            if id.is_none() {
-                continue;
-            }
-            let id = id.unwrap();
-
-            let translated = if id == 0xffffffff {
-                "unset".to_string()
-            } else {
-                if *is_user {
-                    self.userdb.get_user(id)
-                } else {
-                    self.userdb.get_group(id)
-                }
-                .unwrap_or(format!("unknown({id})"))
-            };
-
+        for (name, translated) in ids.get_translated(&mut self.userdb) {
             let key = match &self.settings.enrich_prefix {
                 Some(s) => Key::Name(NVec::from_iter(s.bytes().chain((*name).iter().cloned()))),
                 None => Key::NameTranslated((*name).into()),
             };
-            body.push((key, Value::from(translated)));
+            body.push((key, Value::from(translated.as_bytes())));
         }
     }
 
@@ -484,14 +461,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         let mut ids = UserGroupIDs::default();
         body.retain(|(k, v)| {
             match (k, v) {
-                (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_uid(name, *n as _);
-                    if self.settings.drop_translated {
-                        return false;
-                    }
-                }
-                (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_gid(name, *n as _);
+                (Key::NameUID(name), Value::Number(Number::Dec(n)))
+                | (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
+                    ids.collect(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
@@ -563,14 +535,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         body.retain(|(k, v)| {
             match (k, v) {
-                (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_uid(name, *n as _);
-                    if self.settings.drop_translated {
-                        return false;
-                    }
-                }
-                (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_gid(name, *n as _);
+                (Key::NameUID(name), Value::Number(Number::Dec(n)))
+                | (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
+                    ids.collect(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
@@ -931,14 +898,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 (Key::Common(Common::Comm), Value::Str(s, _)) => comm = Some(*s),
                 (Key::Common(Common::Exe), Value::Str(s, _)) => exe = Some(*s),
                 (Key::Common(Common::Key), Value::Str(s, _)) => key = Some(*s),
-                (Key::NameUID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_uid(name, *n as _);
-                    if self.settings.drop_translated {
-                        return false;
-                    }
-                }
-                (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect_gid(name, *n as _);
+                (Key::NameUID(name), Value::Number(Number::Dec(n)))
+                | (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
+                    ids.collect(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
@@ -1553,7 +1515,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn translate_userdb_execve() {
         let ec = Rc::new(RefCell::new(None));
 
@@ -1579,7 +1540,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn translate_userdb_ptrace() {
         let ec = Rc::new(RefCell::new(None));
 
