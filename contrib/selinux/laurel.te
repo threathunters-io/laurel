@@ -38,7 +38,7 @@ allow laurel_t laurel_exec_t:file execute_no_trans;
 # Set permissions at initialization time
 allow laurel_t self:capability { chown fowner fsetid setuid setgid };
 # Inspect process environments, override UNIX read permissions
-allow laurel_t self:capability { sys_ptrace dac_read_search };
+allow laurel_t self:{ capability cap_userns } { sys_ptrace dac_read_search };
 
 # Write to Syslog
 logging_send_syslog_msg(laurel_t)
