@@ -130,9 +130,12 @@ Options that can be configured here actually add information to events
 - `execve-env`: A list of environment variables to dump for `exec`
   events. Default: `["LD_PRELOAD", "LD_LIBRARY_PATH"]`
 - `container`: Add container information for processes running within
-  container runtimes. Default: true
+  container runtimes as `SYSCALL.PID.container`. Default: true
 - `systemd`: Add systemd cgroup information for processes running
-  within systemd services. Default: true
+  within systemd services as `SYSCALL.PID.systemd_service`. Default:
+  true
+- `container_info`: Add container information as top-level
+  `CONTAINER_INFO` key. Deprecated; default: false
 - `pid`: Add context information for process IDs. Default: true
 - `script`: If an `exec` syscall spawns a script (as opposed to a
   binary), add a `SCRIPT` entry to the `SYSCALL` record. A script is

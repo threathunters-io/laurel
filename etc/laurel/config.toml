@@ -96,8 +96,11 @@ pid = true
 # List of environment variables to log for every EXECVE event
 execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
 
-# Add container context to SYSCALL-based events
+# Add container information to SYSCALL-based events
 container = true
+
+# Add container information as top-level CONTAINER_INFO record (deprecated)
+container_info = false
 
 # Add systemd cgroup information for processes running within systemd
 # services.
