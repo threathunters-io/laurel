@@ -33,6 +33,7 @@ pub struct Settings {
     pub execve_env: HashSet<Vec<u8>>,
     pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
+    pub enrich_container_info: bool,
     pub enrich_systemd: bool,
     pub enrich_pid: bool,
     pub enrich_script: bool,
@@ -70,6 +71,7 @@ impl Default for Settings {
             execve_env: HashSet::new(),
             execve_argv_limit_bytes: None,
             enrich_container: false,
+            enrich_container_info: false,
             enrich_systemd: false,
             enrich_pid: true,
             enrich_script: true,
@@ -396,18 +398,30 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         } else {
             #[cfg(all(feature = "procfs", target_os = "linux"))]
-            if let (true, Some(systemd_service)) =
-                (self.settings.enrich_systemd, &proc.systemd_service)
             {
-                m.push((
-                    "systemd_service".into(),
-                    Value::List(
-                        systemd_service
-                            .iter()
-                            .map(|v| Value::from(v.as_slice()))
-                            .collect(),
-                    ),
-                ));
+                if let (true, Some(container_info)) =
+                    (self.settings.enrich_container, &proc.container_info)
+                {
+                    let id = hex_string(&container_info.id);
+                    m.push((
+                        "container".into(),
+                        Value::Map(vec![("id".into(), id.into())]),
+                    ));
+                }
+
+                if let (true, Some(systemd_service)) =
+                    (self.settings.enrich_systemd, &proc.systemd_service)
+                {
+                    m.push((
+                        "systemd_service".into(),
+                        Value::List(
+                            systemd_service
+                                .iter()
+                                .map(|v| Value::from(v.as_slice()))
+                                .collect(),
+                        ),
+                    ));
+                }
             }
         }
 
@@ -831,7 +845,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
-        ev.container_info = container_info;
+        if self.settings.enrich_container_info {
+            ev.container_info = container_info;
+        }
     }
 
     /// Do bookkeeping on event, transform, emit it via the provided

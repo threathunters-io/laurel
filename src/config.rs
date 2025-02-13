@@ -89,6 +89,8 @@ pub struct Enrich {
     pub execve_env: HashSet<String>,
     #[serde(default = "true_value")]
     pub container: bool,
+    #[serde(default)]
+    pub container_info: bool,
     #[serde(default = "true_value")]
     pub systemd: bool,
     #[serde(default = "true_value")]
@@ -106,6 +108,7 @@ impl Default for Enrich {
         Enrich {
             execve_env: execve_env_default(),
             container: true,
+            container_info: false,
             systemd: true,
             pid: true,
             script: true,
@@ -334,6 +337,7 @@ impl Config {
                 .map(|s| s.as_bytes().to_vec())
                 .collect(),
             enrich_container: self.enrich.container,
+            enrich_container_info: self.enrich.container_info,
             enrich_systemd: self.enrich.systemd,
             enrich_pid: self.enrich.pid,
             enrich_script: self.enrich.script,
