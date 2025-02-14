@@ -105,7 +105,7 @@ where
                             // Complete UTF-8 multi-byte-sequence. Write.
                             if *len == 0 {
                                 match std::str::from_utf8(&stash) {
-                                    Ok(_) => self.0.write_all(&stash)?,
+                                    Ok(s) if s != "\u{feff}" => self.0.write_all(&stash)?,
                                     _ => stash
                                         .iter()
                                         .try_for_each(|c| write_quoted_byte(self.0, *c))?,
@@ -174,6 +174,6 @@ mod test {
         assert_eq!("%f0💖asdf", uri_escaped(b"\xf0\xf0\x9f\x92\x96asdf"));
         assert_eq!("%f0%9f💖", uri_escaped(b"\xf0\x9f\xf0\x9f\x92\x96"));
         assert_eq!("%f0%9f%92💖", uri_escaped(b"\xf0\x9f\x92\xf0\x9f\x92\x96"));
-        // This will probably need some corner cases.
+        assert_eq!("%ef%bb%bf", uri_escaped(b"\xEF\xBB\xBF"));
     }
 }
