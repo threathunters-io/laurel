@@ -32,10 +32,27 @@ fn is_safe_chr(c: u8) -> bool {
 
 fn print_record(typ: &str, r: &Record) {
     use serde_json::Value;
+    let mut kv = r.0.clone();
 
-    for (n, (k, v)) in r.0.iter().enumerate() {
+    if typ == "AVC" {
+        for key in &["denied", "granted"] {
+            if let Some(Value::Array(permissions)) = kv.get(*key) {
+                let mut pstr = String::default();
+                for p in permissions.iter().map(|v| v.as_str().unwrap_or_default()) {
+                    if !pstr.is_empty() {
+                        pstr.push_str(", ");
+                    }
+                    pstr.push_str(p);
+                }
+                print!(" avc:  {key}  {{ {pstr} }} for ");
+                kv.shift_remove(*key);
+            }
+        }
+    }
+
+    for (n, (k, v)) in kv.iter().enumerate() {
         if n == 4 && typ == "SYSCALL" {
-            if let Some(Value::Array(a)) = r.0.get("ARGV") {
+            if let Some(Value::Array(a)) = kv.get("ARGV") {
                 for (n, v) in a.iter().enumerate() {
                     if let Value::String(s) = v {
                         if !s.starts_with("0x") {
@@ -51,6 +68,9 @@ fn print_record(typ: &str, r: &Record) {
         }
         print!(" {k}=");
         match v {
+            Value::String(s) if ["scontext", "tclass", "tcontext"].contains(&k.as_str()) => {
+                print!("{s}");
+            }
             Value::String(s) => {
                 let b: &[u8] = s.as_bytes();
                 if b.iter().cloned().all(is_safe_chr) {
