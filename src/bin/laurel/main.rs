@@ -19,7 +19,7 @@ use std::time::{Duration, SystemTime};
 use anyhow::{anyhow, Context};
 
 use nix::sys::signal::{sigprocmask, SigSet, SigmaskHow::*, Signal::*};
-use nix::unistd::{chown, execve, Uid, User};
+use nix::unistd::{chown, execve, Group, Uid, User};
 #[cfg(target_os = "linux")]
 use nix::unistd::{setresgid, setresuid};
 
@@ -137,6 +137,14 @@ impl Logger {
                 for user in &def.clone().users.unwrap_or_default() {
                     _ = User::from_name(user)?.ok_or_else(|| anyhow!("user {user} not found"))?;
                     rot = rot.with_user(user);
+                }
+                for group in &def.clone().groups.unwrap_or_default() {
+                    _ = Group::from_name(group)?
+                        .ok_or_else(|| anyhow!("group {group} not found"))?;
+                    rot = rot.with_group(group);
+                }
+                if def.other {
+                    rot = rot.with_other(true);
                 }
                 if let Some(generations) = &def.generations {
                     rot = rot.with_generations(*generations);

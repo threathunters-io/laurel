@@ -94,6 +94,10 @@ own log file rotation, just like `auditd(8)`.
   Default: 5
 - `read-users`: List of users that are granted read access
   to the log file using POSIX ACLs. Default: empty
+- `read-group`: List of groups that are granted read access
+  to the log file using POSIX ACLs. Default: empty
+- `read-other`: Whether all users are granted read access to the log
+  file. Default: false
 - `line-prefix`: A string that is prepended to every line. Default:
   unset
 

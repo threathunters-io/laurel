@@ -19,6 +19,8 @@ pub struct FileRotate {
     pub filesize: u64,
     pub generations: u64,
     pub users: Vec<String>,
+    pub groups: Vec<String>,
+    pub other: bool,
     file: Option<File>,
     offset: u64,
 }
@@ -33,6 +35,8 @@ impl FileRotate {
             filesize: 0,
             generations: 0,
             users: vec![],
+            groups: vec![],
+            other: false,
             file: None,
             offset: 0,
         }
@@ -48,6 +52,14 @@ impl FileRotate {
     }
     pub fn with_user(mut self, user: &str) -> Self {
         self.users.push(user.into());
+        self
+    }
+    pub fn with_group(mut self, group: &str) -> Self {
+        self.groups.push(group.into());
+        self
+    }
+    pub fn with_other(mut self, other: bool) -> Self {
+        self.other = other;
         self
     }
 
@@ -80,10 +92,20 @@ impl FileRotate {
             AclEntry::allow_user("", Perm::from_bits_truncate(6), None),
             AclEntry::allow_group("", Perm::from_bits_truncate(4), None),
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-            AclEntry::allow_other(Perm::empty(), None),
+            AclEntry::allow_other(
+                if self.other {
+                    Perm::READ
+                } else {
+                    Perm::empty()
+                },
+                None,
+            ),
         ];
         for user in &self.users {
             acl.push(AclEntry::allow_user(user, Perm::READ, None));
+        }
+        for group in &self.groups {
+            acl.push(AclEntry::allow_group(group, Perm::READ, None));
         }
 
         if let Ok(mut f) = OpenOptions::new().append(true).open(&self.basename) {

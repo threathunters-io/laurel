@@ -16,6 +16,10 @@ pub struct Logfile {
     pub file: PathBuf,
     #[serde(rename = "read-users")]
     pub users: Option<Vec<String>>,
+    #[serde(rename = "read-groups")]
+    pub groups: Option<Vec<String>>,
+    #[serde(default, rename = "read-other")]
+    pub other: bool,
     pub size: Option<u64>,
     pub generations: Option<u64>,
     #[serde(rename = "line-prefix")]
@@ -278,17 +282,15 @@ impl Default for Config {
             marker: None,
             auditlog: Logfile {
                 file: "audit.log".into(),
-                users: None,
                 size: Some(10 * 1024 * 1024),
                 generations: Some(5),
-                line_prefix: None,
+                ..Logfile::default()
             },
             filterlog: Logfile {
                 file: "filtered.log".into(),
-                users: None,
                 size: Some(10 * 1024 * 1024),
                 generations: Some(5),
-                line_prefix: None,
+                ..Logfile::default()
             },
             debug: Debug::default(),
             transform: Transform::default(),
@@ -415,9 +417,7 @@ read-users = ["splunk"]
             Logfile {
                 file: Path::new("somefile").to_path_buf(),
                 users: Some(vec!["splunk".to_string()]),
-                size: None,
-                generations: None,
-                line_prefix: None,
+                ..Logfile::default()
             }
         );
     }
