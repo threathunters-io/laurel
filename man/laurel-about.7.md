@@ -81,6 +81,8 @@ get translated to
 
 by `auditd(8)`. All information that is added to records by `laurel(8)`  follows the same convention, i.e. keys are turned into all-caps. While `laurel` can be configured to perform the same translations as `auditd(8)`, it can perform other enrichments, including interpreted scripts, collecting specific environment variables, or container information for processes that are run within container environments.
 
+If possible, translations of numeric values should be performed by `laurel` rather than by `auditd`. Note: If `laurel` is built with musl libc, it won't be able to resolve users and groups using GNU libc's Name Service Switch. However, since musl libc  supports the glibc's name service caching daemon, installing and enabling `nscd` makes NSS-based user and group available.
+
 ### Adding Context: Process Relationships, Labels
 
 While processing audit records `laurel(8)` tracks processes and remembers `comm`, `exe`, and the event ID associated with the latest `execve` event of a process. Processes that are tracked can be assigned labels through various mechanisms and those labels can optionally be propagated to child processes.
@@ -88,6 +90,7 @@ While processing audit records `laurel(8)` tracks processes and remembers `comm`
 Mechanisms by which labels can be assigned include:
 - using the key from an audit event (the `-k` option of `auditctl(8)`)
 - regular expression applied to the executable path (`SYSCALL.exe` field)
+- regular expression applied to part of the command line (`EXECVE.ARGV` field)
 - regular expression applied to the script path (`SYSCALL.SCRIPT` field, enriched)
 
 The process tracking information can be used to enrich fields containing process ids, including `SYSCALL.{pid, ppid}` and `OBJ_PID.opid` associated with `ptrace` attach or `kill` syscalls.
