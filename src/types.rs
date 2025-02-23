@@ -2,7 +2,6 @@ use std::fmt::Debug;
 
 use indexmap::IndexMap;
 
-use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 
 use linux_audit_parser::*;
@@ -18,7 +17,7 @@ use crate::proc::ProcessKey;
 ///
 /// "Multi" records are serialized as list-of-maps (`[ { "key":
 /// "value", … }, { "key": "value", … } … ]`)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum EventValues<'a> {
     // e.g SYSCALL, EXECVE
     Single(Body<'a>),
@@ -26,20 +25,20 @@ pub enum EventValues<'a> {
     Multi(Vec<Body<'a>>),
 }
 
-impl Serialize for EventValues<'_> {
-    #[inline(always)]
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match self {
-            EventValues::Single(rv) => rv.serialize(s),
-            EventValues::Multi(rvs) => s.collect_seq(rvs),
-        }
-    }
+fn serialize_node<S: Serializer>(value: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error> {
+    Bytes(value.as_ref().unwrap()).serialize(s)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub struct Event<'a> {
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_node"
+    )]
     pub node: Option<Vec<u8>>,
     pub id: EventID,
+    #[serde(flatten)]
     pub body: IndexMap<MessageType, EventValues<'a>>,
     pub container_info: Option<Body<'a>>,
     pub is_filtered: bool,
@@ -58,35 +57,6 @@ impl Event<'_> {
             is_exec: false,
             process_key: None,
         }
-    }
-}
-
-impl Serialize for Event<'_> {
-    #[inline(always)]
-    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let length = 1
-            + self.body.len()
-            + usize::from(self.node.is_some())
-            + usize::from(self.container_info.is_some());
-        let mut map = s.serialize_map(Some(length))?;
-        map.serialize_key("ID")?;
-        map.serialize_value(&self.id)?;
-        if let Some(node) = &self.node {
-            // FIXME
-            map.serialize_key("NODE")?;
-            map.serialize_value(&Bytes(node))?;
-        }
-        for (k, v) in &self.body {
-            map.serialize_entry(&k, &v)?;
-        }
-        if let Some(value) = &self.container_info {
-            map.serialize_key("CONTAINER_INFO")?;
-            map.serialize_value(&value)?;
-        }
-        map.end()
     }
 }
 

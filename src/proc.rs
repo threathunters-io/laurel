@@ -9,6 +9,8 @@ use faster_hex::hex_decode;
 
 use serde::{Serialize, Serializer};
 
+use serde_with::SerializeDisplay;
+
 use thiserror::Error;
 
 use crate::label_matcher::LabelMatcher;
@@ -25,7 +27,7 @@ pub struct ContainerInfo {
 }
 
 /// Host-unique identifier for processes
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, SerializeDisplay)]
 pub enum ProcessKey {
     Event(EventID),
     Observed { time: u64, pid: u32 },
@@ -41,12 +43,6 @@ impl Display for ProcessKey {
                 write!(f, "ob[{t},{p}]")
             }
         }
-    }
-}
-
-impl Serialize for ProcessKey {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.collect_str(&self)
     }
 }
 
