@@ -18,6 +18,7 @@ use crate::proc::ProcessKey;
 /// "Multi" records are serialized as list-of-maps (`[ { "key":
 /// "value", … }, { "key": "value", … } … ]`)
 #[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
 pub enum EventValues<'a> {
     // e.g SYSCALL, EXECVE
     Single(Body<'a>),
