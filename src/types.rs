@@ -40,9 +40,13 @@ pub struct Event<'a> {
     pub id: EventID,
     #[serde(flatten)]
     pub body: IndexMap<MessageType, EventValues<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub container_info: Option<Body<'a>>,
+    #[serde(skip)]
     pub is_filtered: bool,
+    #[serde(skip)]
     pub(crate) is_exec: bool,
+    #[serde(skip)]
     pub(crate) process_key: Option<ProcessKey>,
 }
 
