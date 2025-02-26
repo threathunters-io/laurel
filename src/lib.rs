@@ -13,5 +13,7 @@ pub(crate) mod quote;
 pub mod rotate;
 #[cfg(target_os = "linux")]
 pub mod sockaddr;
+#[cfg(test)]
+mod test;
 pub mod types;
 pub mod userdb;
