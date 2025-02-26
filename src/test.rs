@@ -47,6 +47,7 @@ fn golden() -> Result<(), Box<dyn Error>> {
         "record-login.txt",
         "record-nscd.txt",
         "record-perl-reverse-shell.txt",
+        "record-ptrace.txt",
         "record-syscall-key.txt",
         "record-syscall-nullkey.txt",
         "record-weblogic.txt",
