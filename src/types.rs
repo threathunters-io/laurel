@@ -33,12 +33,12 @@ fn serialize_node<S: Serializer>(value: &Option<Vec<u8>>, s: S) -> Result<S::Ok,
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct Event<'a> {
+    pub id: EventID,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_node"
     )]
     pub node: Option<Vec<u8>>,
-    pub id: EventID,
     #[serde(flatten)]
     pub body: IndexMap<MessageType, EventValues<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
