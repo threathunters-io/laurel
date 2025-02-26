@@ -487,7 +487,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             true
         });
         body.extend(nrv);
-        self.add_record_userdb(body, &ids);
+        if self.settings.translate_userdb {
+            self.add_record_userdb(body, &ids);
+        }
     }
 
     /// Transform PROCTITLE record
