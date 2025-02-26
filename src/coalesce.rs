@@ -1086,9 +1086,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             body.push((key, Value::Literal(syscall_name)));
         }
 
-        self.add_record_procinfo(body, b"pid", proc);
-        if let Some(parent_process) = proc.parent.and_then(|key| self.processes.get_key(&key)) {
-            self.add_record_procinfo(body, b"ppid", parent_process);
+        if self.settings.enrich_pid {
+            self.add_record_procinfo(body, b"pid", proc);
+            if let Some(parent_process) = proc.parent.and_then(|key| self.processes.get_key(&key)) {
+                self.add_record_procinfo(body, b"ppid", parent_process);
+            }
         }
 
         if self.settings.translate_userdb {
