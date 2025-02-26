@@ -1002,7 +1002,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
             if let Some(unlabel_exe) = &self.settings.unlabel_exe {
                 for label in unlabel_exe.matches(exe.unwrap_or_default()) {
-                    labels.insert(label.into());
+                    labels.remove(label);
                 }
             }
 
