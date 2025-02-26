@@ -387,6 +387,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             self.settings.label_exe.clone(),
             &self.settings.proc_propagate_labels,
         )?;
+        self.processes.relabel_all(&self.settings);
 
         Ok(())
     }
