@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
+use std::fmt::{self, Display};
 use std::io::Write;
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
@@ -8,7 +10,8 @@ use faster_hex::hex_string;
 
 use linux_audit_parser::*;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::constants::{ARCH_NAMES, SYSCALL_NAMES, URING_OPS};
 use crate::label_matcher::LabelMatcher;
@@ -23,6 +26,37 @@ use crate::userdb::UserDB;
 use tinyvec::TinyVec;
 
 use thiserror::Error;
+
+#[derive(
+    PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, SerializeDisplay, DeserializeFromStr,
+)]
+pub struct EventKey(Option<Vec<u8>>, EventID);
+
+impl Display for EventKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            EventKey(Some(node), event_id) => {
+                let node = String::from_utf8_lossy(node);
+                write!(f, "{node}::{event_id}")
+            }
+            EventKey(None, event_id) => {
+                write!(f, "{event_id}")
+            }
+        }
+    }
+}
+
+impl FromStr for EventKey {
+    type Err = ParseEventIDError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.split_once("::") {
+            Some((node, event_id)) => {
+                Ok(EventKey(Some(node.as_bytes().to_vec()), event_id.parse()?))
+            }
+            _ => Ok(EventKey(None, s.parse()?)),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Settings {
@@ -109,20 +143,26 @@ pub enum CoalesceError {
     SpuriousEOE(EventID),
 }
 
-/// Coalesce collects Audit Records from individual lines and assembles them to Events
-pub struct Coalesce<'a, 'ev> {
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct State<'ev> {
     /// Events that are being collected/processed
-    inflight: BTreeMap<(Option<Vec<u8>>, EventID), Event<'ev>>,
+    pub inflight: BTreeMap<EventKey, Event<'ev>>,
     /// Event IDs that have been recently processed
-    done: HashSet<(Option<Vec<u8>>, EventID)>,
-    /// Timestamp for next cleanup
-    next_expire: Option<u64>,
+    pub done: HashSet<EventKey>,
     /// Process table built from observing process-related events
     processes: ProcTable,
-    /// Output function
-    emit_fn: Box<dyn 'a + FnMut(&Event<'ev>)>,
     /// Creadential cache
     userdb: UserDB,
+}
+
+/// Coalesce collects Audit Records from individual lines and assembles them to Events
+pub struct Coalesce<'a, 'ev> {
+    /// Serializable state
+    state: State<'ev>,
+    /// Timestamp for next cleanup
+    next_expire: Option<u64>,
+    /// Output function
+    emit_fn: Box<dyn 'a + FnMut(&Event<'ev>)>,
 
     pub settings: Settings,
 }
@@ -323,21 +363,27 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// completed events.
     pub fn new<F: 'a + FnMut(&Event<'ev>)>(emit_fn: F) -> Self {
         Coalesce {
-            inflight: BTreeMap::new(),
-            done: HashSet::new(),
+            state: State::default(),
             next_expire: None,
-            processes: ProcTable::default(),
             emit_fn: Box::new(emit_fn),
-            userdb: UserDB::default(),
             settings: Settings::default(),
         }
     }
 
+    pub fn with_state(mut self, state: State<'ev>) -> Self {
+        self.state = state;
+        self
+    }
+
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
     pub fn initialize(&mut self) -> Result<(), proc::ProcError> {
         if self.settings.translate_userdb {
-            self.userdb.populate();
+            self.state.userdb.populate();
         }
-        self.processes = ProcTable::from_proc(
+        self.state.processes = ProcTable::from_proc(
             self.settings.label_exe.clone(),
             &self.settings.proc_propagate_labels,
         )?;
@@ -349,28 +395,30 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     ///
     /// Called every EXPIRE_PERIOD ms and when Coalesce is destroyed.
     fn expire_inflight(&mut self, now: u64) {
-        let node_ids = self
+        let event_keys = self
+            .state
             .inflight
             .keys()
-            .filter(|(_, id)| id.timestamp + EXPIRE_INFLIGHT_TIMEOUT < now)
+            .filter(|EventKey(_, id)| id.timestamp + EXPIRE_INFLIGHT_TIMEOUT < now)
             .cloned()
             .collect::<Vec<_>>();
-        for node_id in node_ids {
-            if let Some(event) = self.inflight.remove(&node_id) {
+        for event_key in event_keys {
+            if let Some(event) = self.state.inflight.remove(&event_key) {
                 self.emit_event(event);
             }
         }
     }
 
     fn expire_done(&mut self, now: u64) {
-        let node_ids = self
+        let event_keys = self
+            .state
             .done
             .iter()
-            .filter(|(_, id)| id.timestamp + EXPIRE_DONE_TIMEOUT < now)
+            .filter(|EventKey(_, id)| id.timestamp + EXPIRE_DONE_TIMEOUT < now)
             .cloned()
             .collect::<Vec<_>>();
-        for node_id in node_ids {
-            self.done.remove(&node_id);
+        for event_key in event_keys {
+            self.state.done.remove(&event_key);
         }
     }
 
@@ -439,7 +487,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// IDs that can't be resolved are translated into "unknown(n)".
     /// `(uint32)-1` is translated into "unset".
     fn add_record_userdb(&mut self, body: &mut Body, ids: &UserGroupIDs) {
-        for (name, translated) in ids.get_translated(&mut self.userdb) {
+        for (name, translated) in ids.get_translated(&mut self.state.userdb) {
             let key = match &self.settings.enrich_prefix {
                 Some(s) => Key::Name(NVec::from_iter(s.bytes().chain((*name).iter().cloned()))),
                 None => Key::NameTranslated((*name).into()),
@@ -461,9 +509,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             _ => return,
         };
         if let Value::Number(Number::Dec(pid)) = v {
-            if let Some(proc) = self.processes.get_pid(*pid as _) {
+            if let Some(proc) = self.state.processes.get_pid(*pid as _) {
                 self.add_record_procinfo(rv, name, proc);
-            } else if let Some(proc) = self.processes.get_or_retrieve(*pid as _).cloned() {
+            } else if let Some(proc) = self.state.processes.get_or_retrieve(*pid as _).cloned() {
                 self.add_record_procinfo(rv, name, &proc)
             }
         }
@@ -595,7 +643,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             ));
         }
 
-        if let Some(proc) = process_key.and_then(|k| self.processes.get_key(&k)) {
+        if let Some(proc) = process_key.and_then(|k| self.state.processes.get_key(&k)) {
             #[cfg(all(feature = "procfs", target_os = "linux"))]
             if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                 let mut ci = Body::default();
@@ -677,7 +725,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 buf.extend(b);
             }
 
-            if let Some(ref mut proc) = self.processes.get_key_mut(&process_key.unwrap()) {
+            if let Some(ref mut proc) = self.state.processes.get_key_mut(&process_key.unwrap()) {
                 if let Some(ref m) = self.settings.label_argv {
                     for label in m.matches(&buf) {
                         proc.labels.insert(label.into());
@@ -738,7 +786,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         // ENV
         #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let (Some(proc), false) = (
-            process_key.and_then(|k| self.processes.get_key(&k)),
+            process_key.and_then(|k| self.state.processes.get_key(&k)),
             self.settings.execve_env.is_empty(),
         ) {
             if let Ok(vars) =
@@ -773,7 +821,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         let mut proc = ev
             .process_key
             .as_ref()
-            .and_then(|p| self.processes.get_key(p).cloned());
+            .and_then(|p| self.state.processes.get_key(p).cloned());
 
         if let Some(EventValues::Single(rv)) = ev.body.get_mut(&MessageType::EXECVE) {
             self.transform_execve(rv, ev.process_key);
@@ -855,7 +903,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Do bookkeeping on event, transform, emit it via the provided
     /// output function.
     fn emit_event(&mut self, mut ev: Event<'ev>) {
-        self.done.insert((ev.node.clone(), ev.id));
+        self.state.done.insert(EventKey(ev.node.clone(), ev.id));
 
         self.transform_event(&mut ev);
         (self.emit_fn)(&ev)
@@ -971,6 +1019,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             // if it matches the current record. Otherwise assume that
             // this is a new process.
             proc = self
+                .state
                 .processes
                 .get_pid(pid)
                 .filter(|p| p.pid == pid && p.ppid == ppid && p.exe.as_deref() == exe)
@@ -981,7 +1030,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         if proc.is_none() {
             first_per_process = true;
 
-            let parent_process = self.processes.get_or_retrieve(ppid);
+            let parent_process = self.state.processes.get_or_retrieve(ppid);
             let parent_key = parent_process.map(|p| p.key);
 
             // inherit
@@ -1020,6 +1069,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                             proc::try_extract_container_id(path).map(|id| ContainerInfo { id })
                         }
                         _ => self
+                            .state
                             .processes
                             .get_pid(ppid)
                             .and_then(|p| p.container_info.clone()),
@@ -1033,7 +1083,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 }
             }
 
-            self.processes.insert(Process {
+            self.state.processes.insert(Process {
                 key: ProcessKey::Event(id),
                 parent: parent_key,
                 pid,
@@ -1047,7 +1097,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 systemd_service,
             });
 
-            proc = self.processes.get_pid(pid);
+            proc = self.state.processes.get_pid(pid);
         }
 
         let proc = proc.unwrap();
@@ -1090,7 +1140,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         if self.settings.enrich_pid {
             self.add_record_procinfo(body, b"pid", proc);
-            if let Some(parent_process) = proc.parent.and_then(|key| self.processes.get_key(&key)) {
+            if let Some(parent_process) = proc
+                .parent
+                .and_then(|key| self.state.processes.get_key(&key))
+            {
                 self.add_record_procinfo(body, b"ppid", parent_process);
             }
         }
@@ -1100,7 +1153,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if self.settings.enrich_uid_groups {
-            if let Some(names) = ids.uid.and_then(|uid| self.userdb.get_user_groups(uid)) {
+            if let Some(names) = ids
+                .uid
+                .and_then(|uid| self.state.userdb.get_user_groups(uid))
+            {
                 body.push((
                     Key::Literal("UID_GROUPS"),
                     Value::List(names.iter().map(|n| Value::from(n.as_bytes())).collect()),
@@ -1122,14 +1178,14 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         let skip_enriched = self.settings.translate_universal && self.settings.translate_userdb;
         let mut msg = parse(line, skip_enriched).map_err(CoalesceError::Parse)?;
-        let nid = (msg.node.clone(), msg.id);
+        let event_key = EventKey(msg.node.clone(), msg.id);
 
         // clean out state every EXPIRE_PERIOD
         match self.next_expire {
             Some(t) if t < msg.id.timestamp => {
                 self.expire_inflight(msg.id.timestamp);
                 self.expire_done(msg.id.timestamp);
-                self.processes.expire();
+                self.state.processes.expire();
                 self.next_expire = Some(msg.id.timestamp + EXPIRE_PERIOD)
             }
             None => self.next_expire = Some(msg.id.timestamp + EXPIRE_PERIOD),
@@ -1149,21 +1205,23 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if msg.ty == MessageType::EOE {
-            if self.done.contains(&nid) {
+            if self.state.done.contains(&event_key) {
                 return Err(CoalesceError::DuplicateEvent(msg.id));
             }
             let ev = self
+                .state
                 .inflight
-                .remove(&nid)
+                .remove(&event_key)
                 .ok_or(CoalesceError::SpuriousEOE(msg.id))?;
             self.emit_event(ev);
         } else if msg.ty.is_multipart() {
             // kernel-level messages
-            if !self.inflight.contains_key(&nid) {
-                self.inflight
-                    .insert(nid.clone(), Event::new(msg.node, msg.id));
+            if !self.state.inflight.contains_key(&event_key) {
+                self.state
+                    .inflight
+                    .insert(event_key.clone(), Event::new(msg.node, msg.id));
             }
-            let ev = self.inflight.get_mut(&nid).unwrap();
+            let ev = self.state.inflight.get_mut(&event_key).unwrap();
             ev.is_filtered |= do_filter;
             ev.is_exec |= is_exec;
             if process_key.is_some() {
@@ -1187,7 +1245,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             };
         } else {
             // user-space messages
-            if self.done.contains(&nid) {
+            if self.state.done.contains(&event_key) {
                 return Err(CoalesceError::DuplicateEvent(msg.id));
             }
             let mut ev = Event::new(msg.node, msg.id);
@@ -1230,6 +1288,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 message: &Message {
                     typ: "dump_state",
                     inflight: self
+                        .state
                         .inflight
                         .iter()
                         .map(|(k, v)| {
@@ -1241,6 +1300,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         })
                         .collect::<BTreeMap<_, _>>(),
                     done: self
+                        .state
                         .done
                         .iter()
                         .map(|v| {
@@ -1251,7 +1311,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                             }
                         })
                         .collect::<Vec<_>>(),
-                    processes: &self.processes,
+                    processes: &self.state.processes,
                     next_expire: self.next_expire,
                 },
             },

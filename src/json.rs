@@ -32,11 +32,10 @@ where
 #[cfg(test)]
 mod test {
     use super::to_writer;
-    use crate::types::Bytes;
 
     fn serialized(value: &[u8]) -> String {
         let mut buf = vec![];
-        to_writer(&mut buf, &Bytes(value)).unwrap();
+        to_writer(&mut buf, serde_bytes::Bytes::new(value)).unwrap();
         String::from_utf8(buf).unwrap()
     }
 

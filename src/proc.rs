@@ -2,14 +2,15 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::iter::Iterator;
+use std::str::FromStr;
 use std::vec::Vec;
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_decode;
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
-use serde_with::SerializeDisplay;
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use thiserror::Error;
 
@@ -20,14 +21,14 @@ use linux_audit_parser::*;
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ContainerInfo {
     #[serde(with = "faster_hex::nopfx_lowercase")]
     pub id: Vec<u8>,
 }
 
 /// Host-unique identifier for processes
-#[derive(Clone, Copy, Debug, PartialEq, Eq, SerializeDisplay)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, DeserializeFromStr, SerializeDisplay)]
 pub enum ProcessKey {
     Event(EventID),
     Observed { time: u64, pid: u32 },
@@ -42,6 +43,38 @@ impl Display for ProcessKey {
             ProcessKey::Observed { time: t, pid: p } => {
                 write!(f, "ob[{t},{p}]")
             }
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ParseProcessKeyError {
+    #[error("invalid tag")]
+    Tag,
+    #[error("invalid format")]
+    Format,
+    #[error("id")]
+    ID(ParseEventIDError),
+    #[error("int")]
+    Int(std::num::ParseIntError),
+}
+
+impl FromStr for ProcessKey {
+    type Err = ParseProcessKeyError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(s) = s.strip_prefix("id[") {
+            let s = s.strip_suffix("]").ok_or(ParseProcessKeyError::Format)?;
+            Ok(ProcessKey::Event(
+                s.parse().map_err(ParseProcessKeyError::ID)?,
+            ))
+        } else if let Some(s) = s.strip_prefix("ob[") {
+            let s = s.strip_suffix("]").ok_or(ParseProcessKeyError::Format)?;
+            let (msec, pid) = s.split_once(",").ok_or(ParseProcessKeyError::Format)?;
+            let time = msec.parse().map_err(ParseProcessKeyError::Int)?;
+            let pid = pid.parse().map_err(ParseProcessKeyError::Int)?;
+            Ok(ProcessKey::Observed { time, pid })
+        } else {
+            Err(ParseProcessKeyError::Tag)
         }
     }
 }
@@ -78,7 +111,7 @@ impl PartialOrd for ProcessKey {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Process {
     /// "primary key", unique per host
     pub key: ProcessKey,
@@ -89,10 +122,10 @@ pub struct Process {
     /// parent's porocess ID
     pub ppid: u32,
     /// path to binary
-    #[serde(serialize_with = "serialize_name")]
+    #[serde(with = "serde_bytes")]
     pub exe: Option<Vec<u8>>,
     /// process-settable argv[0]
-    #[serde(serialize_with = "serialize_name")]
+    #[serde(with = "serde_bytes")]
     pub comm: Option<Vec<u8>>,
     /// Labels assigned to process
     pub labels: HashSet<Vec<u8>>,
@@ -100,13 +133,6 @@ pub struct Process {
     pub container_info: Option<ContainerInfo>,
     #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub systemd_service: Option<Vec<Vec<u8>>>,
-}
-
-fn serialize_name<S>(t: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    s.serialize_bytes(&t.clone().unwrap_or_default())
 }
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
@@ -197,7 +223,7 @@ pub enum ProcError {
 ///
 /// This process table replica can be fed with EXECVE-based events or
 /// from /proc entries.
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ProcTable {
     processes: BTreeMap<ProcessKey, Process>,
     current: BTreeMap<u32, ProcessKey>,
