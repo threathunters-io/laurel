@@ -107,6 +107,21 @@ This section describes the log file for filtered-out log events (see
 below). The `file`, `size`, `generations`, `read-users`, `line-prefix`
 configuration items work just like for the audit log.
 
+## `[state]` section
+
+This section describes the state file. `laurel` uses this file on
+restart to keep track of running processes. The state file contains
+snapshots of the user database cache, process list, currently used
+events and a list of event ids that have already been processed.
+
+- `file`: Filename for the state file. Set to empty string to disable
+  keeping state on disk. Default: `state`
+- `generations`: Number of generations of the state file to keep for
+  debugging purposes. Default: 0; it should only be increased for
+  debugging purposes.
+- `max-age`: Number of seconds after which the state file is
+  considered stale. Default: 60
+
 ## `[transform]` section
 
 - `execve-argv`: The list of `EXECVE.a*` fields are transformed to an

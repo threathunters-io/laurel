@@ -10,6 +10,48 @@ use serde::{
 use crate::coalesce::Settings;
 use crate::label_matcher::LabelMatcher;
 
+fn default_state_file() -> Option<PathBuf> {
+    Some(Path::new("state").into())
+}
+
+fn deserialize_state_file<'de, D>(d: D) -> Result<Option<PathBuf>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match PathBuf::deserialize(d)? {
+        p if p == PathBuf::default() => Ok(None),
+        p => Ok(Some(p)),
+    }
+}
+
+const fn default_state_max_age() -> u64 {
+    60
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Statefile {
+    #[serde(
+        default = "default_state_file",
+        deserialize_with = "deserialize_state_file"
+    )]
+    pub file: Option<PathBuf>,
+    #[serde(default)]
+    pub generations: u64,
+    #[serde(rename = "max-age")]
+    #[serde(default = "default_state_max_age")]
+    pub max_age: u64,
+}
+
+impl Default for Statefile {
+    fn default() -> Self {
+        Self {
+            file: default_state_file(),
+            generations: 0,
+            max_age: default_state_max_age(),
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Logfile {
     #[serde(default)]
@@ -255,6 +297,8 @@ pub struct Config {
     #[serde(default)]
     pub marker: Option<String>,
     #[serde(default)]
+    pub state: Statefile,
+    #[serde(default)]
     pub auditlog: Logfile,
     #[serde(default)]
     pub filterlog: Logfile,
@@ -280,6 +324,11 @@ impl Default for Config {
             input: Input::Stdin,
             statusreport_period: None,
             marker: None,
+            state: Statefile {
+                file: Some("state".into()),
+                generations: 3,
+                max_age: 60,
+            },
             auditlog: Logfile {
                 file: "audit.log".into(),
                 size: Some(10 * 1024 * 1024),
@@ -402,6 +451,7 @@ statusreport-period = 86400
 [auditlog]
 file = "somefile"
 read-users = ["splunk"]
+[state]
 "#,
         )
         .unwrap();
@@ -420,6 +470,13 @@ read-users = ["splunk"]
                 ..Logfile::default()
             }
         );
+        assert_eq!(
+            c.state,
+            Statefile {
+                file: Some(Path::new("state").into()),
+                ..Statefile::default()
+            }
+        );
     }
 
     #[test]
@@ -433,6 +490,7 @@ read-users = ["splunk"]
             r#"
 [auditlog]
 [filterlog]
+[state]
 [debug]
 [transform]
 [translate]
@@ -446,5 +504,17 @@ read-users = ["splunk"]
 
         // FIXME This does not work because HashSet ordering is not stable.
         // assert!(toml::to_string(&cfg_default) == toml::to_string(&cfg_empty_sections));
+    }
+
+    #[test]
+    fn statefile() {
+        let cfg: Config = toml::de::from_str(
+            r#"
+[state] 
+file = ""
+"#,
+        )
+        .expect("toml parse error");
+        assert_eq!(cfg.state.file, None);
     }
 }
