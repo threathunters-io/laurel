@@ -66,6 +66,10 @@ impl FileRotate {
     /// Closes the main file and performs a backup file rotation
     pub fn rotate(&mut self) -> Result<()> {
         log::info!("Rotating {}", self.basename.to_string_lossy());
+        if self.generations == 0 {
+            fs::remove_file(&self.basename)?;
+            return Ok(());
+        }
         for suffix in (0..self.generations).rev() {
             let mut old = self.basename.clone();
             match suffix {
