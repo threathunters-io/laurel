@@ -387,7 +387,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             self.settings.label_exe.clone(),
             &self.settings.proc_propagate_labels,
         )?;
-        self.processes.relabel_all(&self.settings);
+        self.state.processes.relabel_all(&self.settings);
 
         Ok(())
     }
@@ -1031,38 +1031,27 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         if proc.is_none() {
             first_per_process = true;
 
-            let parent_process = self.state.processes.get_or_retrieve(ppid);
-            let parent_key = parent_process.map(|p| p.key);
+            let key = ProcessKey::Event(id);
+            let parent_process = self.state.processes.get_or_retrieve(ppid).cloned();
+            let parent = parent_process.as_ref().map(|p| p.key);
 
-            // inherit
-            if let Some(parent) = parent_process {
-                labels.extend(
-                    parent
-                        .labels
-                        .intersection(&self.settings.proc_propagate_labels)
-                        .cloned(),
-                );
-            }
+            self.state.processes.insert(Process {
+                key,
+                parent,
+                pid,
+                ppid,
+                labels,
+                exe: exe.map(Vec::from),
+                comm: comm.map(Vec::from),
+                ..Process::default()
+            });
 
-            // exe -> label
-            if let Some(label_exe) = &self.settings.label_exe {
-                for label in label_exe.matches(exe.unwrap_or_default()) {
-                    labels.insert(label.into());
-                }
-            }
-            if let Some(unlabel_exe) = &self.settings.unlabel_exe {
-                for label in unlabel_exe.matches(exe.unwrap_or_default()) {
-                    labels.remove(label);
-                }
-            }
-
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
-            let mut container_info: Option<ContainerInfo> = None;
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
-            let mut systemd_service: Option<Vec<Vec<u8>>> = None;
+            self.state.processes.relabel_process(&key, &self.settings);
 
             #[cfg(all(feature = "procfs", target_os = "linux"))]
             if self.settings.enrich_container || self.settings.enrich_systemd {
+                let mut container_info: Option<ContainerInfo> = None;
+                let mut systemd_service: Option<Vec<Vec<u8>>> = None;
                 let cgroup = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
                 if self.settings.enrich_container {
                     container_info = match cgroup {
@@ -1082,23 +1071,12 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         _ => None,
                     };
                 }
+                let new_proc = self.state.processes.get_key_mut(&key).unwrap();
+                new_proc.container_info = container_info;
+                new_proc.systemd_service = systemd_service;
             }
 
-            self.state.processes.insert(Process {
-                key: ProcessKey::Event(id),
-                parent: parent_key,
-                pid,
-                ppid,
-                exe: exe.map(Vec::from),
-                comm: comm.map(Vec::from),
-                labels,
-                #[cfg(all(feature = "procfs", target_os = "linux"))]
-                container_info,
-                #[cfg(all(feature = "procfs", target_os = "linux"))]
-                systemd_service,
-            });
-
-            proc = self.state.processes.get_pid(pid);
+            proc = self.state.processes.get_key(&key);
         }
 
         let proc = proc.unwrap();
