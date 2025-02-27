@@ -54,6 +54,16 @@ generations = 10
 # generations = 3
 # read-users = [ "splunk" ]
 
+[state]
+# Filename for the state file. Set to empty string to disable keeping
+# state on disk.
+file = "state"
+# Number of generations of the state file to keep for debugging
+# purposes
+generations = 0
+# Number of seconds after which the state file is considered stale.
+max-age = 60
+
 [transform]
 
 # "array" (the default) causes EXECVE a0, a1, a2 … arguments to be
