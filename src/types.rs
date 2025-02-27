@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use indexmap::IndexMap;
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
 use linux_audit_parser::*;
 
@@ -17,7 +17,7 @@ use crate::proc::ProcessKey;
 ///
 /// "Multi" records are serialized as list-of-maps (`[ { "key":
 /// "value", … }, { "key": "value", … } … ]`)
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum EventValues<'a> {
     // e.g SYSCALL, EXECVE
@@ -27,10 +27,10 @@ pub enum EventValues<'a> {
 }
 
 fn serialize_node<S: Serializer>(value: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error> {
-    Bytes(value.as_ref().unwrap()).serialize(s)
+    serde_bytes::Bytes::new(value.as_ref().unwrap()).serialize(s)
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct Event<'a> {
     pub id: EventID,
@@ -66,12 +66,3 @@ impl Event<'_> {
 }
 
 pub(crate) type NVec = tinyvec::TinyVec<[u8; 14]>;
-
-/// Helper type to enforce that serialize_bytes() is used in serialization.
-pub(crate) struct Bytes<'a>(pub &'a [u8]);
-
-impl Serialize for Bytes<'_> {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_bytes(self.0)
-    }
-}

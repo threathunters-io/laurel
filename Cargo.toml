@@ -37,6 +37,7 @@ anyhow = "1"
 faster-hex = ">= 0.9"
 linux-audit-parser = "0.2.6"
 serde_with = { version = "3", default_features = false, features = ["macros"] }
+serde_bytes = "0.11.15"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = "0.5"

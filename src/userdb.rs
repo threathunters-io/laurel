@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 use std::ffi::CString;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use tinyvec::TinyVec;
 
 use nix::unistd::{getgrouplist, Gid, Group, Uid, User};
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct UserEntry {
     name: String,
     primary_gid: u32,
@@ -39,7 +39,7 @@ fn get_group(gid: u32) -> Option<String> {
 
 /// Implementation of a credentials store that caches user and group
 /// lookups by uid and gid, respectively.
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub(crate) struct UserDB {
     users: BTreeMap<u32, (Option<UserEntry>, i64)>,
     groups: BTreeMap<u32, (Option<String>, i64)>,
