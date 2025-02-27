@@ -18,7 +18,10 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Context};
 
-use nix::sys::signal::{sigprocmask, SigSet, SigmaskHow::*, Signal::*};
+use nix::sys::{
+    signal::{sigprocmask, SigSet, SigmaskHow::*, Signal::*},
+    sysinfo::sysinfo,
+};
 use nix::unistd::{chown, execve, Group, Uid, User};
 #[cfg(target_os = "linux")]
 use nix::unistd::{setresgid, setresuid};
@@ -26,10 +29,11 @@ use nix::unistd::{setresgid, setresuid};
 #[cfg(target_os = "linux")]
 use caps::{securebits::set_keepcaps, CapSet, Capability};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use laurel::coalesce::Coalesce;
+use laurel::coalesce::{self, Coalesce};
 use laurel::config::{Config, Input, Logfile};
+use laurel::json;
 use laurel::logger;
 use laurel::rotate::FileRotate;
 use laurel::types::Event;
@@ -161,6 +165,94 @@ impl Logger {
     }
 }
 
+#[derive(Default, Serialize, Deserialize)]
+struct AppState<'a> {
+    ts: u64,
+    state: coalesce::State<'a>,
+}
+
+fn read_state(path: &Path, max_age: Duration) -> Option<coalesce::State> {
+    let r = fs::File::open(path)
+        .map_err(|e| {
+            log::error!("Can't open {}: {e}", path.to_string_lossy());
+            e
+        })
+        .ok()?;
+    match json::from_reader::<_, AppState>(r) {
+        Err(e) => {
+            log::error!(
+                "Can't parse state from file {}: {e}",
+                path.to_string_lossy()
+            );
+            None
+        }
+        Ok(s) => {
+            let ts = SystemTime::UNIX_EPOCH + Duration::from_secs(s.ts);
+            let elapsed = ts
+                .elapsed()
+                .map_err(|e| {
+                    log::error!("Can't determine state age: {e}");
+                    e
+                })
+                .ok()?;
+            // If we can't get the uptime, assume 0, i.e.: don't trust state file
+            let uptime = sysinfo().map(|si| si.uptime()).unwrap_or_default();
+            if elapsed > max_age {
+                log::warn!(
+                    "Discarding stale app state {}: elapsed={}s, max-age={}s",
+                    path.to_string_lossy(),
+                    elapsed.as_secs(),
+                    max_age.as_secs(),
+                );
+                None
+            } else if elapsed > uptime {
+                log::error!(
+                    "Discarding stale app state {}: elapsed={}s, uptime={}s",
+                    path.to_string_lossy(),
+                    elapsed.as_secs(),
+                    uptime.as_secs(),
+                );
+                None
+            } else {
+                log::info!(
+                    "Successfully read state file. #inflight={}, #done={}.",
+                    s.state.inflight.len(),
+                    s.state.done.len()
+                );
+                Some(s.state)
+            }
+        }
+    }
+}
+
+fn write_state(path: &Path, state: &coalesce::State) {
+    log::info!(
+        "Writing state. #inflight={}, #done={}.",
+        state.inflight.len(),
+        state.done.len()
+    );
+    let mut fr = FileRotate::new(path);
+    if let Err(e) = fr
+        .rotate()
+        .and_then(|_| {
+            json::to_writer(
+                &mut fr,
+                &AppState {
+                    ts: SystemTime::UNIX_EPOCH
+                        .elapsed()
+                        .unwrap_or_default()
+                        .as_secs(),
+                    state: state.clone(),
+                },
+            )
+            .map_err(|e| e.into())
+        })
+        .and_then(|_| fr.flush())
+    {
+        log::error!("Error writing state file {}: {e}", path.to_string_lossy());
+    }
+}
+
 fn run_app() -> Result<(), anyhow::Error> {
     let args: Vec<String> = env::args().collect();
 
@@ -260,6 +352,8 @@ fn run_app() -> Result<(), anyhow::Error> {
     fs::set_permissions(&dir, PermissionsExt::from_mode(0o755))
         .with_context(|| format!("chmod: {}", dir.to_string_lossy()))?;
 
+    let statefile_path = config.state.file.as_ref().map(|f| dir.join(f));
+
     let mut debug_logger = if let Some(l) = &config.debug.log {
         Some(Logger::new(l, &dir).context("can't create debug logger")?)
     } else {
@@ -358,7 +452,17 @@ fn run_app() -> Result<(), anyhow::Error> {
     };
 
     coalesce.settings = config.make_coalesce_settings();
-    coalesce.initialize().context("Failed to initialize")?;
+
+    if let Some(state) = statefile_path
+        .as_ref()
+        .and_then(|p| read_state(p, Duration::from_secs(config.state.max_age)))
+    {
+        log::info!("Importing state...");
+        coalesce = coalesce.with_state(state);
+    } else {
+        log::info!("Starting with blank state...");
+        coalesce.initialize().context("Failed to initialize")?;
+    }
 
     let mut line: Vec<u8> = Vec::new();
     let mut stats = Stats::default();
@@ -390,7 +494,12 @@ fn run_app() -> Result<(), anyhow::Error> {
                     log::error!("Error {e} processing msg: {line}");
                 }
             }
+
+            if let Some(p) = statefile_path.as_ref() {
+                write_state(p, coalesce.state());
+            }
             coalesce.flush();
+
             log::info!("Restarting...");
             use std::ffi::CString;
             let argv: Vec<CString> = env::args().map(|a| CString::new(a).unwrap()).collect();
@@ -468,6 +577,10 @@ fn run_app() -> Result<(), anyhow::Error> {
                 dump_state_last_t = SystemTime::now();
             }
         }
+    }
+
+    if let Some(p) = statefile_path.as_ref() {
+        write_state(p, coalesce.state());
     }
 
     // If periodical reports were enabled, stats only contains temporary statistics.
