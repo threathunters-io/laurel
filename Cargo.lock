@@ -452,14 +452,15 @@ dependencies = [
 
 [[package]]
 name = "linux-audit-parser"
-version = "0.2.4"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "727b59bb1d6b716ab7f4c109d980f2e3120c2b0df8b2cc50ce18e1391a0e07dd"
+checksum = "b0f38fe3f6b7e5382bb2204574b29cc996c3a7a525658fcb684099068cb5a1ef"
 dependencies = [
  "indexmap",
  "lazy_static",
  "nom",
  "serde",
+ "serde_with",
  "thiserror 2.0.11",
  "tinyvec",
 ]
