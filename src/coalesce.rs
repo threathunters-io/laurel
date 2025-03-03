@@ -370,8 +370,14 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
     }
 
+    pub fn with_settings(mut self, settings: Settings) -> Self {
+        self.settings = settings;
+        self
+    }
+
     pub fn with_state(mut self, state: State<'ev>) -> Self {
         self.state = state;
+        self.state.processes.relabel_all(&self.settings);
         self
     }
 

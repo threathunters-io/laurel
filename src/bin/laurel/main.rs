@@ -451,7 +451,7 @@ fn run_app() -> Result<(), anyhow::Error> {
         None
     };
 
-    coalesce.settings = config.make_coalesce_settings();
+    coalesce = coalesce.with_settings(config.make_coalesce_settings());
 
     if let Some(state) = statefile_path
         .as_ref()
