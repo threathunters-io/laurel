@@ -2121,4 +2121,86 @@ mod test {
             println!("{}", event_to_json(&event));
         }
     }
+    /// Simulate restart + reading state
+    ///
+    /// After the process table has been primed with a parent process
+    /// entry, half an event is read. The state is saved and
+    /// transferred into a second Coalesce which reads the second half
+    /// of the event. We expect ppid enrichment to work properly.
+    #[test]
+    fn state() {
+        let settings = Settings {
+            enrich_script: false,
+            enrich_uid_groups: false,
+            ..Settings::default()
+        };
+
+        let mut saved_state = vec![];
+
+        {
+            // coalesce 1 gets half an event
+            let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+            let event_id = EventID::from_str("1740869913.604:3976").expect("Can't parse event ID");
+            let mut c = Coalesce::new(mk_emit_vec(&events)).with_state(State {
+                processes: ProcTable {
+                    current: {
+                        let mut m = BTreeMap::new();
+                        m.insert(127727, ProcessKey::Event(event_id));
+                        m
+                    },
+                    processes: {
+                        let mut m = BTreeMap::new();
+                        m.insert(
+                            ProcessKey::Event(event_id),
+                            Process {
+                                key: ProcessKey::Event(event_id),
+                                pid: 127727,
+                                ppid: 3432,
+                                ..Default::default()
+                            },
+                        );
+                        m
+                    },
+                },
+                ..State::default()
+            });
+            c.settings = settings.clone();
+
+            process_record(
+                &mut c,
+                br#"type=SYSCALL msg=audit(1740992884.191:7058722): arch=c000003e syscall=59 success="yes" exit=0 a0=56037c8a09b0 a1=7ffe40c717e0 a2=560380740450 a3=fffffffffffffa68 items=3 ppid=127727 pid=1780659 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty="pts10" ses=3 comm="bash" exe="/usr/bin/bash" subj="unconfined" key=null
+type=EXECVE msg=audit(1740992884.191:7058722): argc=3 a0="/bin/bash" a1="--noediting" a2="-i"
+type=CWD msg=audit(1740992884.191:7058722): cwd="/home/user"
+type=PATH msg=audit(1740992884.191:7058722): item=0 name="/bin/bash" inode=393229 dev="fd:01" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL" cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid="0"
+"#).expect("Error in parsing first half of event");
+
+            crate::json::to_writer(&mut saved_state, c.state()).expect("cant't serialize state");
+        }
+
+        {
+            let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+            let mut c = Coalesce::new(mk_emit_vec(&events)).with_state(
+                crate::json::from_reader(std::io::Cursor::new(&saved_state))
+                    .expect("can't deserialize state"),
+            );
+
+            c.settings = settings;
+
+            process_record(
+                &mut c,
+                br#"type=PATH msg=audit(1740992884.191:7058722): item=1 name="/bin/bash" inode=393229 dev="fd:01" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL" cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid="0"
+type=PATH msg=audit(1740992884.191:7058722): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=401532 dev="fd:01" mode=100755 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL" cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid="0"
+type=EOE msg=audit(1740992884.191:7058722):
+"#).expect("Error in parsing second half of event");
+
+            let events = events.borrow();
+            for event in events.iter() {
+                println!("{}", event_to_json(&event));
+            }
+
+            let id = "1740992884.191:7058722";
+            let event = find_event(&events, id).unwrap_or_else(|| panic!("Did not find {id}"));
+            assert!(event_to_json(&event).contains(r#"PPID":{"EVENT_ID":"1740869913.604:3976""#));
+        }
+    }
 }
