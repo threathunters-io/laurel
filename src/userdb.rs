@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 use std::ffi::CString;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use tinyvec::TinyVec;
 
@@ -37,35 +38,69 @@ fn get_group(gid: u32) -> Option<String> {
         .map(|group| group.name)
 }
 
+/// A wrapper aruond Systemtime that serializes to / deserializes from
+/// Epoch-based second counts
+#[derive(Clone, Debug)]
+struct EpochTime(SystemTime);
+
+impl EpochTime {
+    fn now() -> Self {
+        EpochTime(SystemTime::now())
+    }
+}
+
+impl std::ops::Deref for EpochTime {
+    type Target = SystemTime;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Serialize for EpochTime {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u64(
+            self.duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_secs(),
+        )
+    }
+}
+
+impl<'de> Deserialize<'de> for EpochTime {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(EpochTime(
+            UNIX_EPOCH + Duration::from_secs(u64::deserialize(d)?),
+        ))
+    }
+}
+
 /// Implementation of a credentials store that caches user and group
 /// lookups by uid and gid, respectively.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub(crate) struct UserDB {
-    users: BTreeMap<u32, (Option<UserEntry>, i64)>,
-    groups: BTreeMap<u32, (Option<String>, i64)>,
-}
-
-fn now() -> i64 {
-    unsafe { libc::time(std::ptr::null_mut()) }
+    users: BTreeMap<u32, (Option<UserEntry>, EpochTime)>,
+    groups: BTreeMap<u32, (Option<String>, EpochTime)>,
 }
 
 impl UserDB {
     pub fn populate(&mut self) {
-        for id in 0..1023 {
+        for id in 0..1000 {
             if let Some(user) = get_user(id) {
-                self.users.insert(id, (Some(user), now()));
+                self.users.insert(id, (Some(user), EpochTime::now()));
             }
             if let Some(group) = get_group(id) {
-                self.groups.insert(id, (Some(group), now()));
+                self.groups.insert(id, (Some(group), EpochTime::now()));
             }
         }
     }
     fn get_user_entry(&mut self, uid: u32) -> Option<UserEntry> {
         match self.users.get(&uid) {
-            Some((entry, t)) if *t >= now() - 1800 => entry.clone(),
-            Some(_) | None => {
+            Some((entry, t)) if t.elapsed().unwrap_or(Duration::MAX).as_secs() <= 1800 => {
+                entry.clone()
+            }
+            _ => {
                 let entry = get_user(uid);
-                self.users.insert(uid, (entry.clone(), now()));
+                self.users.insert(uid, (entry.clone(), EpochTime::now()));
                 entry
             }
         }
@@ -84,10 +119,12 @@ impl UserDB {
     }
     pub fn get_group(&mut self, gid: u32) -> Option<String> {
         match self.groups.get(&gid) {
-            Some((x, t)) if *t >= now() - 1800 => x.clone(),
-            Some(_) | None => {
+            Some((entry, t)) if t.elapsed().unwrap_or(Duration::MAX).as_secs() <= 1800 => {
+                entry.clone()
+            }
+            _ => {
                 let group = get_group(gid);
-                self.groups.insert(gid, (group.clone(), now()));
+                self.groups.insert(gid, (group.clone(), EpochTime::now()));
                 group
             }
         }
