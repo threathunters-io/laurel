@@ -147,7 +147,7 @@ pub struct State<'ev> {
     /// Event IDs that have been recently processed
     pub done: HashSet<EventKey>,
     /// Process table built from observing process-related events
-    processes: ProcTable,
+    pub processes: ProcTable,
     /// Creadential cache
     userdb: UserDB,
 }

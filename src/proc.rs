@@ -226,8 +226,8 @@ pub enum ProcError {
 /// from /proc entries.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ProcTable {
-    pub(crate) processes: BTreeMap<ProcessKey, Process>,
-    pub(crate) current: BTreeMap<u32, ProcessKey>,
+    pub processes: BTreeMap<ProcessKey, Process>,
+    pub current: BTreeMap<u32, ProcessKey>,
 }
 
 impl ProcTable {

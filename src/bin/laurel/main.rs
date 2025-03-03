@@ -215,9 +215,11 @@ fn read_state(path: &Path, max_age: Duration) -> Option<coalesce::State> {
                 None
             } else {
                 log::info!(
-                    "Successfully read state file. #inflight={}, #done={}.",
+                    "Successfully read state file (#inflight={}, #done={} #proc={}, #pid={})",
                     s.state.inflight.len(),
-                    s.state.done.len()
+                    s.state.done.len(),
+                    s.state.processes.processes.len(),
+                    s.state.processes.current.len(),
                 );
                 Some(s.state)
             }
@@ -227,9 +229,11 @@ fn read_state(path: &Path, max_age: Duration) -> Option<coalesce::State> {
 
 fn write_state(path: &Path, state: &coalesce::State) {
     log::info!(
-        "Writing state. #inflight={}, #done={}.",
+        "Writing state (#inflight={}, #done={} #proc={}, #pid={})",
         state.inflight.len(),
-        state.done.len()
+        state.done.len(),
+        state.processes.processes.len(),
+        state.processes.current.len(),
     );
     let mut fr = FileRotate::new(path);
     if let Err(e) = fr
