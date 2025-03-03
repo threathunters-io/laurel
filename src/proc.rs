@@ -329,8 +329,6 @@ impl ProcTable {
     /// incurring load.
     #[cfg(all(feature = "procfs", target_os = "linux", not(test)))]
     pub fn expire(&mut self) {
-        use std::collections::BTreeSet;
-
         let mut proc_prune: BTreeSet<ProcessKey> = self.processes.keys().cloned().collect();
         let mut pid_prune: Vec<u32> = vec![];
 
