@@ -34,12 +34,6 @@ generations = 10
 # line-prefix = "@cee: "
 
 # [debug]
-# dump-state-period = 120
-
-# [debug.log]
-# file = "debug.log"
-# size = 1000000
-# generations = 3
 
 # [debug.parse-error-log]
 # file = "parse-error.log"

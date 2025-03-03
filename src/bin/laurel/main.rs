@@ -354,11 +354,6 @@ fn run_app() -> Result<(), anyhow::Error> {
 
     let statefile_path = config.state.file.as_ref().map(|f| dir.join(f));
 
-    let mut debug_logger = if let Some(l) = &config.debug.log {
-        Some(Logger::new(l, &dir).context("can't create debug logger")?)
-    } else {
-        None
-    };
     let mut error_logger = if let Some(def) = &config.debug.parse_error_log {
         let mut filename = dir.clone();
         filename.push(&def.file);
@@ -471,8 +466,8 @@ fn run_app() -> Result<(), anyhow::Error> {
     let statusreport_period = config.statusreport_period.map(Duration::from_secs);
     let mut statusreport_last_t = SystemTime::now();
 
-    let dump_state_period = config.debug.dump_state_period.map(Duration::from_secs);
-    let mut dump_state_last_t = SystemTime::now();
+    let write_state_period = config.state.write_state_period.map(Duration::from_secs);
+    let mut write_state_last_t = SystemTime::now();
 
     sigprocmask(SIG_UNBLOCK, Some(&SigSet::from_iter([SIGHUP])), None)?;
     let hup = Arc::new(AtomicBool::new(false));
@@ -569,12 +564,10 @@ fn run_app() -> Result<(), anyhow::Error> {
             }
         }
 
-        if let (Some(dl), Some(p)) = (&mut debug_logger, &dump_state_period) {
-            if dump_state_last_t.elapsed()? >= *p {
-                coalesce
-                    .dump_state(&mut dl.output)
-                    .map_err(|e| anyhow!("dump state: {e}"))?;
-                dump_state_last_t = SystemTime::now();
+        if let (Some(statefile), Some(p)) = (&config.state.file, &write_state_period) {
+            if write_state_last_t.elapsed()? >= *p {
+                write_state(statefile, coalesce.state());
+                write_state_last_t = SystemTime::now();
             }
         }
     }

@@ -40,6 +40,8 @@ pub struct Statefile {
     #[serde(rename = "max-age")]
     #[serde(default = "default_state_max_age")]
     pub max_age: u64,
+    #[serde(rename = "write-state-period")]
+    pub write_state_period: Option<u64>,
 }
 
 impl Default for Statefile {
@@ -48,6 +50,7 @@ impl Default for Statefile {
             file: default_state_file(),
             generations: 0,
             max_age: default_state_max_age(),
+            write_state_period: None,
         }
     }
 }
@@ -70,12 +73,9 @@ pub struct Logfile {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Debug {
-    pub log: Option<Logfile>,
     pub inputlog: Option<Logfile>,
     #[serde(rename = "parse-error-log")]
     pub parse_error_log: Option<Logfile>,
-    #[serde(rename = "dump-state-period")]
-    pub dump_state_period: Option<u64>,
 }
 
 #[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Hash)]
@@ -328,6 +328,7 @@ impl Default for Config {
                 file: Some("state".into()),
                 generations: 3,
                 max_age: 60,
+                write_state_period: None,
             },
             auditlog: Logfile {
                 file: "audit.log".into(),

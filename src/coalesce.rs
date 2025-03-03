@@ -1,9 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
-use std::error::Error;
 use std::fmt::{self, Display};
-use std::io::Write;
 use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_string;
@@ -1245,66 +1242,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     pub fn flush(&mut self) {
         self.expire_inflight(u64::MAX);
     }
-
-    pub fn dump_state(&self, mut w: &mut dyn Write) -> Result<(), Box<dyn Error>> {
-        #[derive(Serialize)]
-        struct Message<'a> {
-            #[serde(rename = "type")]
-            typ: &'static str,
-            inflight: BTreeMap<String, &'a Event<'a>>,
-            done: Vec<String>,
-            processes: &'a ProcTable,
-            next_expire: Option<u64>,
-        }
-
-        #[derive(Serialize)]
-        struct Out<'a> {
-            ts: u64,
-            message: &'a Message<'a>,
-        }
-
-        crate::json::to_writer(
-            &mut w,
-            &Out {
-                ts: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-                message: &Message {
-                    typ: "dump_state",
-                    inflight: self
-                        .state
-                        .inflight
-                        .iter()
-                        .map(|(k, v)| {
-                            if let Some(node) = &k.0 {
-                                (format!("{}::{}", String::from_utf8_lossy(node), k.1), v)
-                            } else {
-                                (format!("{}", k.1), v)
-                            }
-                        })
-                        .collect::<BTreeMap<_, _>>(),
-                    done: self
-                        .state
-                        .done
-                        .iter()
-                        .map(|v| {
-                            if let Some(node) = &v.0 {
-                                format!("{}::{}", String::from_utf8_lossy(node), v.1)
-                            } else {
-                                format!("{}", v.1)
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                    processes: &self.state.processes,
-                    next_expire: self.next_expire,
-                },
-            },
-        )?;
-        w.write_all(b"\n")?;
-        w.flush()?;
-        Ok(())
-    }
 }
 
 impl Drop for Coalesce<'_, '_> {
@@ -1317,6 +1254,7 @@ impl Drop for Coalesce<'_, '_> {
 mod test {
     use super::*;
     use std::cell::RefCell;
+    use std::error::Error;
     use std::io::{BufRead, BufReader};
     use std::rc::Rc;
 
@@ -1328,18 +1266,6 @@ mod test {
 
     fn find_event<'a>(events: &'a [Event], id: &str) -> Option<Event<'a>> {
         events.iter().find(|e| &e.id == id).cloned()
-    }
-
-    #[test]
-    fn dump_state() -> Result<(), Box<dyn Error>> {
-        let mut c = Coalesce::new(|_| {});
-        c.initialize()?;
-        c.process_line(&br#"type=SYSCALL msg=audit(1615114232.375:15558): arch=c000003e syscall=59 success=yes exit=0 a0=63b29337fd18 a1=63b293387d58 a2=63b293375640 a3=fffffffffffff000 items=2 ppid=10883 pid=10884 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts1 ses=1 comm="whoami" exe="/usr/bin/whoami" key=(null)
-"#[..])?;
-        let mut buf: Vec<u8> = vec![];
-        c.dump_state(&mut buf)?;
-        println!("{}", String::from_utf8_lossy(&buf));
-        Ok(())
     }
 
     fn strip_enriched<T>(text: T) -> Vec<u8>

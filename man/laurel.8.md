@@ -121,6 +121,8 @@ events and a list of event ids that have already been processed.
   debugging purposes.
 - `max-age`: Number of seconds after which the state file is
   considered stale. Default: 60
+- `write-state-period`: How often the state file is written to the
+  filesystem, in seconds. Default: unset
 
 ## `[transform]` section
 
