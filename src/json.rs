@@ -146,7 +146,7 @@ impl<'de, R: Read> de::Deserializer<'de> for &mut Deserializer<R> {
 pub fn from_reader<'de, R, T>(reader: R) -> serde_json::Result<T>
 where
     R: Read,
-    T: ?Sized + de::Deserialize<'de>,
+    T: de::Deserialize<'de>,
 {
     let mut d = crate::json::Deserializer::new(reader);
     de::Deserialize::deserialize(&mut d)

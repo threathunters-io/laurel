@@ -115,7 +115,7 @@ impl SocketAddr {
                 let sa = get_sock::<sockaddr_in>(buf)?;
                 Ok(SocketAddr::Inet(SocketAddrV4::new(
                     Ipv4Addr::from(u32::from_be(sa.sin_addr.s_addr)),
-                    u16::from_be(sa.sin_port as u16),
+                    u16::from_be(sa.sin_port),
                 )))
             }
             AF_AX25 => {
@@ -156,7 +156,7 @@ impl SocketAddr {
                 let addr = unsafe { sa.sin6_addr.in6_u.u6_addr8 };
                 Ok(SocketAddr::Inet6(SocketAddrV6::new(
                     Ipv6Addr::from(addr),
-                    u16::from_be(sa.sin6_port as u16),
+                    u16::from_be(sa.sin6_port),
                     u32::from_be(sa.sin6_flowinfo),
                     sa.sin6_scope_id,
                 )))

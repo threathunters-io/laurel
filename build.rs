@@ -52,9 +52,9 @@ fn gen_uring_ops() -> Result<String, Box<dyn std::error::Error>> {
         .lines()
         .map(|line| line.unwrap())
         .filter_map(|line| line.strip_prefix("_S(").map(String::from))
-        .filter_map(|line| line.strip_suffix(")").map(String::from))
+        .filter_map(|line| line.strip_suffix(')').map(String::from))
         .filter_map(|line| {
-            line.as_str().split_once(",").map(|(k, v)| {
+            line.as_str().split_once(',').map(|(k, v)| {
                 (
                     k.trim().to_string(),
                     v.trim_matches(|c: char| c.is_whitespace() || c == '"')

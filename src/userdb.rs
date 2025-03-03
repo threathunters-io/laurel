@@ -46,7 +46,7 @@ pub(crate) struct UserDB {
 }
 
 fn now() -> i64 {
-    unsafe { libc::time(std::ptr::null_mut()) as i64 }
+    unsafe { libc::time(std::ptr::null_mut()) }
 }
 
 impl UserDB {

@@ -64,13 +64,13 @@ impl FromStr for ProcessKey {
     type Err = ParseProcessKeyError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(s) = s.strip_prefix("id[") {
-            let s = s.strip_suffix("]").ok_or(ParseProcessKeyError::Format)?;
+            let s = s.strip_suffix(']').ok_or(ParseProcessKeyError::Format)?;
             Ok(ProcessKey::Event(
                 s.parse().map_err(ParseProcessKeyError::ID)?,
             ))
         } else if let Some(s) = s.strip_prefix("ob[") {
-            let s = s.strip_suffix("]").ok_or(ParseProcessKeyError::Format)?;
-            let (msec, pid) = s.split_once(",").ok_or(ParseProcessKeyError::Format)?;
+            let s = s.strip_suffix(']').ok_or(ParseProcessKeyError::Format)?;
+            let (msec, pid) = s.split_once(',').ok_or(ParseProcessKeyError::Format)?;
             let time = msec.parse().map_err(ParseProcessKeyError::Int)?;
             let pid = pid.parse().map_err(ParseProcessKeyError::Int)?;
             Ok(ProcessKey::Observed { time, pid })
@@ -435,7 +435,7 @@ impl ProcTable {
                 };
             }
             for pk in chain.iter().rev() {
-                self.relabel_process(pk, &settings);
+                self.relabel_process(pk, settings);
             }
         }
     }
