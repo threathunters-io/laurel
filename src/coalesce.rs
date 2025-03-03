@@ -2217,8 +2217,8 @@ type=EOE msg=audit(1740992884.191:7058722):
                             ProcessKey::Event(event_id),
                             Process {
                                 key: ProcessKey::Event(event_id),
-                                exe: Some(b"/usr/bin/emacs".into()),
-                                comm: Some(b"emacs".into()),
+                                exe: Some(b"/usr/bin/emacs"[..].into()),
+                                comm: Some(b"emacs"[..].into()),
                                 pid: 127727,
                                 ppid: 3432,
                                 ..Default::default()
