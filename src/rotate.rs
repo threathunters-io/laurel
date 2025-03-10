@@ -25,6 +25,14 @@ pub struct FileRotate {
     offset: u64,
 }
 
+fn ignore_missing(e: Error) -> Result<()> {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        Ok(())
+    } else {
+        Err(e)
+    }
+}
+
 impl FileRotate {
     /// Creates a new [`FileRotate`] instance. This does not involve
     /// any I/O operations; the main file is only created when calling
@@ -67,7 +75,7 @@ impl FileRotate {
     pub fn rotate(&mut self) -> Result<()> {
         log::info!("Rotating {}", self.basename.to_string_lossy());
         if self.generations == 0 {
-            fs::remove_file(&self.basename)?;
+            fs::remove_file(&self.basename).or_else(ignore_missing)?;
             return Ok(());
         }
         for suffix in (0..self.generations).rev() {
@@ -79,7 +87,7 @@ impl FileRotate {
             let mut new = self.basename.clone();
             new.push(format!(".{}", suffix + 1));
             if fs::metadata(&old).is_ok() {
-                fs::rename(old, new)?;
+                fs::rename(old, new).or_else(ignore_missing)?;
             }
         }
         self.file = None;
@@ -162,5 +170,44 @@ impl Write for FileRotate {
             Some(mut f) => f.flush(),
             None => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use nix::unistd::mkdtemp;
+    use std::env::temp_dir;
+    #[test]
+    fn fresh_file() {
+        let td = mkdtemp(&temp_dir().join("laurel-test-XXXXXXXX")).expect("can't create temp dir");
+        let mut fr = FileRotate::new(td.join("logfile"));
+        fr.rotate().expect("rotate");
+        fr.write(b"asdf").expect("write");
+        fr.flush().expect("flush");
+        std::fs::remove_dir_all(td).expect("remove_dir_all");
+    }
+
+    #[test]
+    fn existing() {
+        let td = mkdtemp(&temp_dir().join("laurel-test-XXXXXXXX")).expect("can't create temp dir");
+        std::fs::write(&td.join("logfile"), "asdf").expect("setup");
+        let mut fr = FileRotate::new(&td.join("logfile")).with_generations(3);
+        fr.rotate().expect("rotate");
+        assert!(
+            std::fs::exists(&td.join("logfile.1")).expect("stat"),
+            "after rotate, logfile.1 should exist"
+        );
+        assert!(
+            !std::fs::exists(&td.join("logfile")).expect("stat"),
+            "after rotate, logfile should no longer exist"
+        );
+        fr.write(b"asdf").expect("write");
+        fr.flush().expect("flush");
+        assert!(
+            std::fs::exists(&td.join("logfile")).expect("stat"),
+            "after rotate+write, logfile should exist"
+        );
+        std::fs::remove_dir_all(td).expect("remove_dir_all");
     }
 }
