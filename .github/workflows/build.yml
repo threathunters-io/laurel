@@ -301,3 +301,35 @@ jobs:
           files: laurel-*.tar.gz
           fail_on_unmatched_files: true
           draft: true
+
+  build-container:
+    runs-on: ubuntu-latest
+    needs:
+      - build-x86_64-musl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: target
+      - name: Edit configuration
+        run: |
+          sed -e 's#^input = .*#input = "unix:/var/run/audispd_events"#' etc/laurel/config.toml
+      - uses: redhat-actions/buildah-build@v2
+        id: build-image
+        with:
+          image: laurel
+          tags: "latest ${{ github.ref_name }} ${{ github.sha }}"
+          containerfiles: ./Containerfile
+      - uses: redhat-actions/podman-login@v1
+        if:  ${{ github.ref_type == 'tag' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: redhat-actions/push-to-registry@v2
+        if:  ${{ github.ref_type == 'tag' }}
+        with:
+          registry: ghcr.io/${{ github.repository_owner }}
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
