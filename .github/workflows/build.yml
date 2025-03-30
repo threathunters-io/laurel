@@ -319,7 +319,7 @@ jobs:
         id: build-image
         with:
           image: laurel
-          tags: "latest ${{ github.ref_name }} ${{ github.sha }}"
+          tags: "latest ${{ github.sha }}"
           containerfiles: ./Containerfile
       - uses: redhat-actions/podman-login@v1
         if:  ${{ github.ref_type == 'tag' }}
