@@ -1,0 +1,6 @@
+type=SYSCALL msg=audit(1723819442.459:2482681): arch=c000003e syscall=42 success=yes exit=0 a0=8 a1=5556eca10aa0 a2=10 a3=4 items=0 ppid=1074250 pid=1074252 auid=4294967295 uid=48 gid=48 euid=48 suid=48 fsuid=48 egid=48 sgid=48 fsgid=48 tty=(none) ses=4294967295 comm="php" exe="/usr/bin/php" key=(null)
+type=SOCKADDR msg=audit(1723819442.459:2482681): saddr=02002BCB7F0000010000000000000000
+type=EOE msg=audit(1723819442.459:2482681): 
+type=SYSCALL msg=audit(1723819442.459:2482682): arch=c000003e syscall=42 success=no exit=-115 a0=8 a1=5556ec9f92f0 a2=1c a3=ffffffff items=0 ppid=1074250 pid=1074252 auid=4294967295 uid=48 gid=48 euid=48 suid=48 fsuid=48 egid=48 sgid=48 fsgid=48 tty=(none) ses=4294967295 comm="php" exe="/usr/bin/php" key=(null)
+type=SOCKADDR msg=audit(1723819442.459:2482682): saddr=0A002BCB000000000000000000000000000000000000000100000000
+type=EOE msg=audit(1723819442.459:2482682): 

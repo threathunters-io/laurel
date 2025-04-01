@@ -210,6 +210,15 @@ using them for internal processing such as process tracking.
 - `filter-null-keys`: Filter events without specified key. Default: false
 - `filter-labels`: A list of strings that are matched against process
   labels. Default: empty
+- `filter-sockaddr`: Filter events that contain SOCKADDR entries
+  matching CIDR and/or ports. IPv4 and IPv6 addresses with optional
+  bitmask and port numbers or plain port numbers can be specified. Examples:
+   - `127.0.0.1`
+   - `192.168.0.0/24:22`
+   - `::/64`
+   - `[2a00:1450:4001:82f::200e]:443`
+   - `*:111`
+  Default: empty list
 - `filter-raw-lines`: A list of regular expression that are matched
   against individual input lines as written by `auditd(8)`. Events
   that contain such lines are then filtered. Default: empty

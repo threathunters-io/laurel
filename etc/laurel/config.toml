@@ -185,6 +185,17 @@ propagate-labels = [ "software_mgmt", "amazon-ssm-agent" ]
 
 filter-null-keys = false
 
+# Filter events that contain SOCKADDR entries matching CIDR and/or ports
+# Valid expresions:
+# - "ipv4"
+# - "ipv6", "[ipv6]"
+# - "ipv4:port"
+# - "ipv4/bits:port"
+# - "[ipv6]:port"
+# - "[ipv6/bits]:port"
+# - "*:port"
+# filter-sockaddr = [ "127.0.0.1", "192.168.0.0/24:22", "::/64", "[2a00:1450:4001:82f::200e]:443", "*:111" ]
+
 # Filter events that were constructed from input lines matching these
 # regular expressions
 # filter-raw-lines = [
