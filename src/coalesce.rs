@@ -16,7 +16,7 @@ use crate::proc::{self, ContainerInfo, ProcTable, Process, ProcessKey};
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 #[cfg(target_os = "linux")]
-use crate::sockaddr::SocketAddr;
+use crate::sockaddr::{SocketAddr, SocketAddrMatcher};
 use crate::types::*;
 use crate::userdb::UserDB;
 
@@ -90,6 +90,7 @@ pub struct Settings {
     pub filter_keys: HashSet<Vec<u8>>,
     pub filter_labels: HashSet<Vec<u8>>,
     pub filter_null_keys: bool,
+    pub filter_sockaddr: Vec<SocketAddrMatcher>,
     pub filter_raw_lines: regex::bytes::RegexSet,
     pub filter_first_per_process: bool,
 }
@@ -124,6 +125,7 @@ impl Default for Settings {
             filter_keys: HashSet::new(),
             filter_labels: HashSet::new(),
             filter_null_keys: false,
+            filter_sockaddr: vec![],
             filter_raw_lines: regex::bytes::RegexSet::empty(),
             filter_first_per_process: false,
         }
@@ -575,17 +577,35 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     }
 
     /// Enrich SOCKADDR record
-    fn enrich_sockaddr(&mut self, rv: &mut Body) {
+    ///
+    /// This function also determines whether the record should be filtered
+    fn enrich_sockaddr(&mut self, rv: &mut Body, is_filtered: &mut bool) {
         let mut nrv = Body::default();
         rv.retain(|(k, v)| match (k, v) {
-            (k, Value::Str(vr, _q)) if self.settings.translate_universal => {
+            (k, Value::Str(vr, _q)) => {
                 if k == "saddr" {
                     #[cfg(target_os = "linux")]
                     if let Ok(sa) = SocketAddr::parse(vr) {
-                        add_translated_socketaddr(&mut nrv, sa);
-                        return false;
+                        // There's no need to enrich saddr entries
+                        // that will be dropped, but the raw data
+                        // should be kept in case filter.filter-action
+                        // is set to "log".
+                        if *is_filtered {
+                            return true;
+                        } else if self.settings.filter_sockaddr.iter().any(|f| f.matches(&sa)) {
+                            *is_filtered = true;
+                            return true;
+                        }
+                        if self.settings.translate_universal {
+                            add_translated_socketaddr(&mut nrv, sa);
+                            return false;
+                        } else {
+                            return true;
+                        }
                     }
-                } else if k == "SADDR" {
+                } else if k == "SADDR" && self.settings.translate_universal || *is_filtered {
+                    // If we do our own enrichment, drop pre-existing
+                    // enriched SOCKADDR.saddr enrichment.
                     return false;
                 }
                 true
@@ -873,6 +893,12 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
+        if let Some(EventValues::Multi(ref mut rvs)) = ev.body.get_mut(&MessageType::SOCKADDR) {
+            for rv in rvs {
+                self.enrich_sockaddr(rv, &mut ev.is_filtered)
+            }
+        }
+
         if ev.is_filtered {
             return;
         }
@@ -885,9 +911,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     self.enrich_syscall(rv, ev.process_key, &script, &mut container_info)
                 }
                 (&MessageType::EXECVE, EventValues::Single(_)) => {}
-                (&MessageType::SOCKADDR, EventValues::Multi(rvs)) => {
-                    rvs.iter_mut().for_each(|rv| self.enrich_sockaddr(rv))
-                }
                 (&MessageType::PROCTITLE, EventValues::Single(rv)) => self.transform_proctitle(rv),
                 (&MessageType::URINGOP, EventValues::Multi(rvs)) => {
                     rvs.iter_mut().for_each(|rv| self.enrich_uringop(rv))
@@ -1828,6 +1851,29 @@ mod test {
                     .any(|e| &e.id == "1705071450.879:29498378"),
                 "nscd connect event should be filtered using {name}"
             )
+        }
+    }
+
+    #[test]
+    fn filter_sockaddr() {
+        for filter in &[
+            &["127.0.0.1", "::1"][..],
+            &["127.0.0.0/8", "::/64"],
+            &["127.0.0.1:11211", "[::1]:11211"],
+            &["127.0.0.0/8:11211", "[::/64]:11211"],
+            &["*:11211"],
+        ] {
+            {
+                let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+                let mut c = Coalesce::new(mk_emit_vec(&events));
+                c.settings.filter_first_per_process = true;
+                c.settings.filter_sockaddr = filter.iter().map(|s| s.parse().unwrap()).collect();
+                process_record(&mut c, include_bytes!("testdata/record-connect.txt")).unwrap();
+                let events = events.borrow();
+                println!("{events:?}");
+                assert!(!events.iter().any(|e| &e.id == "1723819442.459:2482681"));
+                assert!(!events.iter().any(|e| &e.id == "1723819442.459:2482682"));
+            }
         }
     }
 

@@ -9,6 +9,7 @@ use serde::{
 
 use crate::coalesce::Settings;
 use crate::label_matcher::LabelMatcher;
+use crate::sockaddr::SocketAddrMatcher;
 
 fn default_state_file() -> Option<PathBuf> {
     Some(Path::new("state").into())
@@ -234,6 +235,8 @@ pub struct Filter {
     pub filter_raw_lines: regex::bytes::RegexSet,
     #[serde(default, rename = "filter-null-keys")]
     pub filter_null_keys: bool,
+    #[serde(default, rename = "filter-sockaddr")]
+    pub filter_sockaddr: Vec<SocketAddrMatcher>,
     #[serde(default, rename = "filter-action")]
     pub filter_action: FilterAction,
     #[serde(default = "true_value", rename = "keep-first-per-process")]
@@ -431,6 +434,7 @@ impl Config {
                 .map(|s| s.as_bytes().to_vec())
                 .collect(),
             filter_null_keys: self.filter.filter_null_keys,
+            filter_sockaddr: self.filter.filter_sockaddr.clone(),
             filter_raw_lines: self.filter.filter_raw_lines.clone(),
             filter_first_per_process: !self.filter.keep_first_per_process,
         }

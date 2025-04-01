@@ -5,9 +5,15 @@
 include!(concat!(env!("OUT_DIR"), "/sockaddr.rs"));
 
 use std::convert::TryInto;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+use std::fmt::Display;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+use std::str::FromStr;
 
 use thiserror::Error;
+
+use ipnetwork::{IpNetwork, Ipv6Network};
+
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 /*
 pub struct SocketAddrLL {
@@ -180,6 +186,73 @@ impl SocketAddr {
     }
 }
 
+/// An expression that is used to filter based on Socket Addresses
+///
+/// IPv4 and IPv6 ranges with or without ports are supported.
+#[derive(Clone, Debug, DeserializeFromStr, SerializeDisplay)]
+pub enum SocketAddrMatcher {
+    Net(ipnetwork::IpNetwork),
+    Port(u16),
+    NetPort(ipnetwork::IpNetwork, u16),
+}
+
+impl Display for SocketAddrMatcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            SocketAddrMatcher::Net(n) => write!(f, "{n}"),
+            SocketAddrMatcher::Port(p) => write!(f, "*:{p}"),
+            SocketAddrMatcher::NetPort(IpNetwork::V4(n), p) => write!(f, "{n}:{p}"),
+            SocketAddrMatcher::NetPort(IpNetwork::V6(n), p) => write!(f, "[{n}]:{p}"),
+        }
+    }
+}
+
+impl SocketAddrMatcher {
+    pub fn matches(&self, addr: &SocketAddr) -> bool {
+        let (addr, port) = match addr {
+            SocketAddr::Inet(s) => (IpAddr::V4(*s.ip()), s.port()),
+            SocketAddr::Inet6(s) => (IpAddr::V6(*s.ip()), s.port()),
+            _ => return false,
+        };
+
+        match self {
+            SocketAddrMatcher::Net(n) => n.contains(addr),
+            SocketAddrMatcher::Port(p) => *p == port,
+            SocketAddrMatcher::NetPort(n, p) => n.contains(addr) && *p == port,
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum SocketAddrMatchParseError {
+    #[error(transparent)]
+    IpNetworkError(#[from] ipnetwork::IpNetworkError),
+    #[error(transparent)]
+    ParseIntError(#[from] std::num::ParseIntError),
+}
+
+impl FromStr for SocketAddrMatcher {
+    type Err = SocketAddrMatchParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(s) = s.strip_prefix("*:") {
+            let p: u16 = s.parse()?;
+            Ok(SocketAddrMatcher::Port(p))
+        } else if let Some((sn, sp)) = s.strip_prefix("[").and_then(|s| s.split_once("]:")) {
+            let n: Ipv6Network = sn.parse()?;
+            let p: u16 = sp.parse()?;
+            Ok(SocketAddrMatcher::NetPort(IpNetwork::V6(n), p))
+        } else if let Ok(n) = s.parse::<Ipv6Network>() {
+            Ok(SocketAddrMatcher::Net(IpNetwork::V6(n)))
+        } else if let Some((sn, sp)) = s.split_once(":") {
+            let n: IpNetwork = sn.parse()?;
+            let p: u16 = sp.parse()?;
+            Ok(SocketAddrMatcher::NetPort(n, p))
+        } else {
+            Ok(SocketAddrMatcher::Net(s.parse::<IpNetwork>()?))
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -209,5 +282,40 @@ mod test {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn socketaddr_matcher_parse() {
+        for s in &[
+            "127.0.0.0/8",
+            "192.168.0.0/24:443",
+            "::/64",
+            "[2a00:1450:4001:82f::200e]:443",
+            "*:53",
+        ] {
+            let sam: SocketAddrMatcher = s.parse().expect(&format!("could not parse {s}"));
+            println!("{sam:?}");
+        }
+    }
+
+    #[test]
+    fn socketaddr_matcher() {
+        for s in &[
+            ("127.0.0.0/8", "127.0.0.1:9999"),
+            ("192.168.0.0/24:443", "192.168.0.42:443"),
+            ("::/64", "[::1]:80"),
+            ("[fe80::/10]:53", "[fe80::abad:1dea]:53"),
+            ("*:53", "192.168.1.1:53"),
+            ("*:53", "[::1]:53"),
+        ] {
+            let sam: SocketAddrMatcher = s.0.parse().expect(&format!("could not parse {}", s.0));
+            let sa: SocketAddr = match s.1.parse() {
+                Ok(std::net::SocketAddr::V4(sa)) => SocketAddr::Inet(sa),
+                Ok(std::net::SocketAddr::V6(sa)) => SocketAddr::Inet6(sa),
+                _ => panic!("could not parse {}", s.1),
+            };
+            println!("{sam:?}, {sa:?}");
+            assert!(sam.matches(&sa), "{} does not match {}", s.0, s.1);
+        }
     }
 }
