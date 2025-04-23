@@ -2,7 +2,7 @@
 title: laurel - Advice for writing Audit rulesets for use with `laurel(8)`
 section: 7
 header: System Administration Utilities
-footer: laurel 0.7.1
+footer: laurel 0.7.2
 ---
 # NAME
 laurel-audit-rules - Advice for writing Audit rulesets for use with `laurel(8)`
