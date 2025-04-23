@@ -195,17 +195,17 @@ mod test {
         let mut fr = FileRotate::new(&td.join("logfile")).with_generations(3);
         fr.rotate().expect("rotate");
         assert!(
-            std::fs::exists(&td.join("logfile.1")).expect("stat"),
+            td.join("logfile.1").exists(),
             "after rotate, logfile.1 should exist"
         );
         assert!(
-            !std::fs::exists(&td.join("logfile")).expect("stat"),
+            !td.join("logfile").exists(),
             "after rotate, logfile should no longer exist"
         );
         fr.write(b"asdf").expect("write");
         fr.flush().expect("flush");
         assert!(
-            std::fs::exists(&td.join("logfile")).expect("stat"),
+            td.join("logfile").exists(),
             "after rotate+write, logfile should exist"
         );
         std::fs::remove_dir_all(td).expect("remove_dir_all");
