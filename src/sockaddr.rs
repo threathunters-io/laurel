@@ -307,6 +307,7 @@ mod test {
             ("[fe80::/10]:53", "[fe80::abad:1dea]:53"),
             ("*:53", "192.168.1.1:53"),
             ("*:53", "[::1]:53"),
+            ("::ffff:127.0.0.0/104", "[::ffff:127.0.0.1]:80"),
         ] {
             let sam: SocketAddrMatcher = s.0.parse().expect(&format!("could not parse {}", s.0));
             let sa: SocketAddr = match s.1.parse() {
