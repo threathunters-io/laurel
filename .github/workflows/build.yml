@@ -342,6 +342,9 @@ jobs:
       - name: Edit configuration
         run: |
           sed -e 's#^input = .*#input = "unix:/var/run/audispd_events"#' etc/laurel/config.toml
+      - name: Fix file permissions
+        run: |
+          find target -type f -name laurel -exec chmod +x {} \;
       - uses: redhat-actions/buildah-build@v2
         id: build-image
         with:
