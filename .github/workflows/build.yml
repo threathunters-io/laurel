@@ -7,6 +7,7 @@ on:
       - build.rs
       - Cargo.*
       - .github/workflows/build.yml
+      - Containerfile
   pull_request:
     paths:
       - src/**
@@ -15,6 +16,7 @@ on:
       - build.rs
       - Cargo.*
       - .github/workflows/build.yml
+      - Containerfile
 
 jobs:
   check-fmt:
