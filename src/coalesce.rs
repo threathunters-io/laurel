@@ -2167,7 +2167,7 @@ type=EOE msg=audit(1740992884.191:7058722):
 
             let events = events.borrow();
             for event in events.iter() {
-                println!("{}", event_to_json(&event));
+                println!("{}", event_to_json(event));
             }
 
             let id = "1740992884.191:7058722";

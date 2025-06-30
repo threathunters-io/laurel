@@ -82,7 +82,7 @@ fn print_record(typ: &str, r: &Record) {
                         print!("{v}");
                     }
                 } else {
-                    b.iter().for_each(|c| print!("{:02X}", c));
+                    b.iter().for_each(|c| print!("{c:02X}"));
                 }
             }
             Value::Array(_) => {
