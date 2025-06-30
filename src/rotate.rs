@@ -191,8 +191,8 @@ mod test {
     #[test]
     fn existing() {
         let td = mkdtemp(&temp_dir().join("laurel-test-XXXXXXXX")).expect("can't create temp dir");
-        std::fs::write(&td.join("logfile"), "asdf").expect("setup");
-        let mut fr = FileRotate::new(&td.join("logfile")).with_generations(3);
+        std::fs::write(td.join("logfile"), "asdf").expect("setup");
+        let mut fr = FileRotate::new(td.join("logfile")).with_generations(3);
         fr.rotate().expect("rotate");
         assert!(
             td.join("logfile.1").exists(),

@@ -293,7 +293,8 @@ mod test {
             "[2a00:1450:4001:82f::200e]:443",
             "*:53",
         ] {
-            let sam: SocketAddrMatcher = s.parse().expect(&format!("could not parse {s}"));
+            let sam: SocketAddrMatcher =
+                s.parse().unwrap_or_else(|_| panic!("could not parse {s}"));
             println!("{sam:?}");
         }
     }
@@ -309,7 +310,9 @@ mod test {
             ("*:53", "[::1]:53"),
             ("::ffff:127.0.0.0/104", "[::ffff:127.0.0.1]:80"),
         ] {
-            let sam: SocketAddrMatcher = s.0.parse().expect(&format!("could not parse {}", s.0));
+            let sam: SocketAddrMatcher =
+                s.0.parse()
+                    .unwrap_or_else(|_| panic!("could not parse {}", s.0));
             let sa: SocketAddr = match s.1.parse() {
                 Ok(std::net::SocketAddr::V4(sa)) => SocketAddr::Inet(sa),
                 Ok(std::net::SocketAddr::V6(sa)) => SocketAddr::Inet6(sa),
