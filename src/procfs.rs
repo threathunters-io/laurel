@@ -91,26 +91,14 @@ pub fn pid_path_metadata(pid: u32, path: &[u8]) -> Result<Metadata, std::io::Err
     std::fs::metadata(OsStr::from_bytes(&proc_path))
 }
 
-#[derive(Debug)]
-pub(crate) struct ProcPidInfo {
-    /// /proc/<pid>/stat field 1
-    pub pid: u32,
-    /// /proc/<pid>/stat field 4
-    pub ppid: u32,
-    /// /proc/<pid>/stat field 22, converted to milliseconds since epoch
-    pub starttime: u64,
-    /// /proc/pid/comm
-    pub comm: Option<Vec<u8>>,
-    /// /proc/pid/exe
-    pub exe: Option<Vec<u8>>,
-    /// from /proc/$PID/cgroup
-    pub cgroup: Option<Vec<u8>>,
+pub(crate) struct ProcStat<'a> {
+    pid: u32,
+    ppid: u32,
+    comm: &'a [u8],
+    starttime: u64,
 }
 
-/// Parses information from /proc entry corresponding to process pid
-pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
-    let buf = slurp_pid_obj(pid, "stat")?;
-    // comm may contain whitespace and ")", skip over it.
+pub(crate) fn parse_proc_pid_stat(buf: &[u8]) -> Result<ProcStat, ProcFSError> {
     let pid_end = buf
         .iter()
         .enumerate()
@@ -119,7 +107,8 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         .0;
     let stat_pid = &buf[..pid_end];
 
-    let comm_end = buf
+    // comm may contain whitespace and ")", find closing paren from right.
+    let comm_end = buf[..32]
         .iter()
         .enumerate()
         .rfind(|(_, c)| **c == b')')
@@ -129,23 +118,52 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         .split(|c| *c == b' ')
         .collect::<Vec<_>>();
 
-    let comm = slurp_pid_obj(pid, "comm")
-        .map(|mut s| {
-            s.truncate(s.len() - 1);
-            s
-        })
-        .ok();
-
-    let exe = read_link(format!("/proc/{pid}/exe"))
-        .map(|p| Vec::from(p.as_os_str().as_bytes()))
-        .ok();
-
     let pid = u32::from_str(String::from_utf8_lossy(stat_pid).as_ref())
         .map_err(|_| ProcFSError::Field("pid"))?;
+    let comm = &buf[pid_end + 2..comm_end];
     let ppid = u32::from_str(String::from_utf8_lossy(stat[1]).as_ref())
         .map_err(|_| ProcFSError::Field("ppid"))?;
     let starttime = u64::from_str(String::from_utf8_lossy(stat[19]).as_ref())
         .map_err(|_| ProcFSError::Field("starttime"))?;
+
+    Ok(ProcStat {
+        pid,
+        ppid,
+        comm,
+        starttime,
+    })
+}
+
+#[derive(Debug)]
+pub(crate) struct ProcPidInfo {
+    /// /proc/<pid>/stat field 1
+    pub pid: u32,
+    /// /proc/<pid>/stat field 4
+    pub ppid: u32,
+    /// /proc/<pid>/stat field 22, converted to milliseconds since epoch
+    pub starttime: u64,
+    /// /proc/<pid>/stat field 2
+    pub comm: Vec<u8>,
+    /// /proc/pid/exe
+    pub exe: Option<Vec<u8>>,
+    /// from /proc/$PID/cgroup
+    pub cgroup: Option<Vec<u8>>,
+}
+
+/// Parses information from /proc entry corresponding to process pid
+pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
+    let buf = slurp_pid_obj(pid, "stat")?;
+
+    let ProcStat {
+        pid,
+        ppid,
+        comm,
+        starttime,
+    } = parse_proc_pid_stat(&buf)?;
+
+    let exe = read_link(format!("/proc/{pid}/exe"))
+        .map(|p| Vec::from(p.as_os_str().as_bytes()))
+        .ok();
 
     // Use the boottime-based clock to calculate process start
     // time, convert to Unix-epoch-based-time.
@@ -172,7 +190,7 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         pid,
         ppid,
         starttime,
-        comm,
+        comm: comm.to_vec(),
         exe,
         cgroup,
     })
@@ -201,5 +219,16 @@ mod tests {
         let pid = std::process::id();
         let proc = parse_proc_pid(pid).unwrap_or_else(|_| panic!("parse entry for {pid}"));
         println!("{:?}", proc);
+    }
+
+    #[test]
+    fn parse_stat() {
+        let ProcStat { pid, ppid, comm, starttime } = parse_proc_pid_stat(
+            br#"925028 (emacs) R 3057 925028 925028 0 -1 4194304 1131624 1579849 3 604 183731 6453 20699 2693 20 0 5 0 22398221 3922935808 191059 18446744073709551615 187652449566720 187652452795816 281474372905056 0 0 0 0 67112960 1535209215 0 0 0 17 2 0 0 0 0 0 187652452866344 187652460555720 187652461281280 281474372910201 281474372910228 281474372910228 281474372911081 0
+"#).expect("parse error");
+        assert_eq!(pid, 925028);
+        assert_eq!(ppid, 3057);
+        assert_eq!(comm, "emacs".as_bytes());
+        assert_eq!(starttime, 22398221)
     }
 }
