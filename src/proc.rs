@@ -149,7 +149,7 @@ impl From<procfs::ProcPidInfo> for Process {
             ppid: p.ppid,
             labels: HashSet::new(),
             exe: p.exe,
-            comm: p.comm,
+            comm: Some(p.comm),
             container_info: p
                 .cgroup
                 .as_deref()
