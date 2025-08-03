@@ -14,7 +14,7 @@ use thiserror::Error;
 
 lazy_static! {
     /// kernel clock ticks per second
-    static ref CLK_TCK: u64
+    pub static ref CLK_TCK: u64
         = sysconf(SysconfVar::CLK_TCK).unwrap().unwrap() as u64;
 }
 
@@ -34,7 +34,7 @@ pub enum ProcFSError {
     Errno(&'static str, nix::errno::Errno),
 }
 
-fn slurp_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, std::io::Error> {
+pub fn slurp_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, std::io::Error> {
     let f = File::open(path)?;
     let mut r = BufReader::with_capacity(1 << 16, f);
     r.fill_buf()?;
@@ -91,14 +91,16 @@ pub fn pid_path_metadata(pid: u32, path: &[u8]) -> Result<Metadata, std::io::Err
     std::fs::metadata(OsStr::from_bytes(&proc_path))
 }
 
-pub(crate) struct ProcStat<'a> {
-    pid: u32,
-    ppid: u32,
-    comm: &'a [u8],
-    starttime: u64,
+pub struct ProcStat<'a> {
+    pub pid: u32,
+    pub ppid: u32,
+    pub comm: &'a [u8],
+    pub starttime: u64,
+    pub utime: u64,
+    pub stime: u64,
 }
 
-pub(crate) fn parse_proc_pid_stat(buf: &[u8]) -> Result<ProcStat, ProcFSError> {
+pub fn parse_proc_pid_stat(buf: &[u8]) -> Result<ProcStat, ProcFSError> {
     let pid_end = buf
         .iter()
         .enumerate()
@@ -125,12 +127,18 @@ pub(crate) fn parse_proc_pid_stat(buf: &[u8]) -> Result<ProcStat, ProcFSError> {
         .map_err(|_| ProcFSError::Field("ppid"))?;
     let starttime = u64::from_str(String::from_utf8_lossy(stat[19]).as_ref())
         .map_err(|_| ProcFSError::Field("starttime"))?;
+    let utime = u64::from_str(String::from_utf8_lossy(stat[11]).as_ref())
+        .map_err(|_| ProcFSError::Field("utime"))?;
+    let stime = u64::from_str(String::from_utf8_lossy(stat[12]).as_ref())
+        .map_err(|_| ProcFSError::Field("stime"))?;
 
     Ok(ProcStat {
         pid,
         ppid,
         comm,
         starttime,
+        utime,
+        stime,
     })
 }
 
@@ -159,6 +167,7 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         ppid,
         comm,
         starttime,
+        ..
     } = parse_proc_pid_stat(&buf)?;
 
     let exe = read_link(format!("/proc/{pid}/exe"))
@@ -223,12 +232,14 @@ mod tests {
 
     #[test]
     fn parse_stat() {
-        let ProcStat { pid, ppid, comm, starttime } = parse_proc_pid_stat(
+        let ProcStat { pid, ppid, comm, starttime, utime, stime } = parse_proc_pid_stat(
             br#"925028 (emacs) R 3057 925028 925028 0 -1 4194304 1131624 1579849 3 604 183731 6453 20699 2693 20 0 5 0 22398221 3922935808 191059 18446744073709551615 187652449566720 187652452795816 281474372905056 0 0 0 0 67112960 1535209215 0 0 0 17 2 0 0 0 0 0 187652452866344 187652460555720 187652461281280 281474372910201 281474372910228 281474372910228 281474372911081 0
 "#).expect("parse error");
         assert_eq!(pid, 925028);
         assert_eq!(ppid, 3057);
         assert_eq!(comm, "emacs".as_bytes());
-        assert_eq!(starttime, 22398221)
+        assert_eq!(starttime, 22398221);
+        assert_eq!(utime, 183731);
+        assert_eq!(stime, 6453);
     }
 }
