@@ -45,6 +45,24 @@ const fn build_id() -> &'static str {
     }
 }
 
+#[cfg(feature = "procfs")]
+#[derive(Default)]
+struct CPUStats {
+    utime: Duration,
+    stime: Duration,
+}
+
+#[cfg(feature = "procfs")]
+fn get_cpu_stats() -> Option<CPUStats> {
+    use laurel::procfs::{parse_proc_pid_stat, slurp_file, ProcStat, CLK_TCK};
+    let buf = slurp_file("/proc/self/stat").ok()?;
+    let ProcStat { utime, stime, .. } = parse_proc_pid_stat(&buf).ok()?;
+    Some(CPUStats {
+        utime: Duration::from_nanos(utime * 1_000_000_000 / *CLK_TCK),
+        stime: Duration::from_nanos(stime * 1_000_000_000 / *CLK_TCK),
+    })
+}
+
 #[derive(Default, Serialize)]
 struct Stats {
     lines: u64,
@@ -464,6 +482,8 @@ fn run_app() -> Result<(), anyhow::Error> {
     }
 
     let mut line: Vec<u8> = Vec::new();
+    #[cfg(feature = "procfs")]
+    let mut cpu_stats = CPUStats::default();
     let mut stats = Stats::default();
     let mut overall_stats = Stats::default();
 
@@ -562,6 +582,27 @@ fn run_app() -> Result<(), anyhow::Error> {
                     Uid::effective().as_raw(),
                     &config
                 );
+                #[cfg(feature = "procfs")]
+                if let Some(new_cpu_stats) = get_cpu_stats() {
+                    let elapsed = statusreport_last_t.elapsed()?.as_secs_f64();
+                    let usr_percent = 100.
+                        * new_cpu_stats
+                            .utime
+                            .saturating_sub(cpu_stats.utime)
+                            .as_secs_f64()
+                        / elapsed;
+                    let sys_percent = 100.
+                        * new_cpu_stats
+                            .utime
+                            .saturating_sub(cpu_stats.stime)
+                            .as_secs_f64()
+                        / elapsed;
+                    let percent = usr_percent + sys_percent;
+                    log::info!("CPU usage over span={elapsed:.1}s usr={usr_percent:4.2}%, sys={sys_percent:4.2}%, combined={percent:4.2}%");
+                    cpu_stats = new_cpu_stats;
+                } else {
+                    log::warn!("Could not determine CPU usage stats");
+                }
                 overall_stats += stats;
                 stats = Stats::default();
                 statusreport_last_t = SystemTime::now();
