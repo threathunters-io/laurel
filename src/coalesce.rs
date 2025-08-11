@@ -395,7 +395,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         self
     }
 
-    pub fn state(&self) -> &State {
+    pub fn state(&self) -> &State<'_> {
         &self.state
     }
 
@@ -742,38 +742,39 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         });
 
-        if process_key.is_some()
-            && self.settings.label_argv_count > 0
-            && self.settings.label_argv_bytes > 0
-            && (self.settings.label_argv.is_some() || self.settings.unlabel_argv.is_some())
-        {
-            let mut buf: Vec<u8> = Vec::with_capacity(self.settings.label_argv_bytes);
+        if let Some(process_key) = process_key {
+            if self.settings.label_argv_count > 0
+                && self.settings.label_argv_bytes > 0
+                && (self.settings.label_argv.is_some() || self.settings.unlabel_argv.is_some())
+            {
+                let mut buf: Vec<u8> = Vec::with_capacity(self.settings.label_argv_bytes);
 
-            for arg in argv.iter().take(self.settings.label_argv_count) {
-                if !buf.is_empty() {
-                    buf.push(b' ');
-                }
-                // FIXME TryFrom<&Value> needs to be implemented in linux-audit-parser
-                let b: Vec<u8> = match arg.clone().try_into() {
-                    Ok(b) => b,
-                    Err(_) => continue,
-                };
-                if buf.len() + b.len() >= self.settings.label_argv_bytes {
-                    break;
-                }
-                buf.extend(b);
-            }
-
-            if let Some(ref mut proc) = self.state.processes.get_key_mut(&process_key.unwrap()) {
-                if let Some(ref m) = self.settings.label_argv {
-                    for label in m.matches(&buf) {
-                        proc.labels.insert(label.into());
+                for arg in argv.iter().take(self.settings.label_argv_count) {
+                    if !buf.is_empty() {
+                        buf.push(b' ');
                     }
+                    // FIXME TryFrom<&Value> needs to be implemented in linux-audit-parser
+                    let b: Vec<u8> = match arg.clone().try_into() {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+                    if buf.len() + b.len() >= self.settings.label_argv_bytes {
+                        break;
+                    }
+                    buf.extend(b);
                 }
 
-                if let Some(ref m) = self.settings.unlabel_argv {
-                    for label in m.matches(&buf) {
-                        proc.labels.remove(label);
+                if let Some(ref mut proc) = self.state.processes.get_key_mut(&process_key) {
+                    if let Some(ref m) = self.settings.label_argv {
+                        for label in m.matches(&buf) {
+                            proc.labels.insert(label.into());
+                        }
+                    }
+
+                    if let Some(ref m) = self.settings.unlabel_argv {
+                        for label in m.matches(&buf) {
+                            proc.labels.remove(label);
+                        }
                     }
                 }
             }

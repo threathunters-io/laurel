@@ -100,7 +100,7 @@ pub struct ProcStat<'a> {
     pub stime: u64,
 }
 
-pub fn parse_proc_pid_stat(buf: &[u8]) -> Result<ProcStat, ProcFSError> {
+pub fn parse_proc_pid_stat(buf: &[u8]) -> Result<ProcStat<'_>, ProcFSError> {
     let pid_end = buf
         .iter()
         .enumerate()

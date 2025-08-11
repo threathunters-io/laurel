@@ -189,7 +189,7 @@ struct AppState<'a> {
     state: coalesce::State<'a>,
 }
 
-fn read_state(path: &Path, max_age: Duration) -> Option<coalesce::State> {
+fn read_state(path: &Path, max_age: Duration) -> Option<coalesce::State<'_>> {
     let r = fs::File::open(path)
         .map_err(|e| {
             log::error!("Can't open {}: {e}", path.to_string_lossy());
