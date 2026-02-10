@@ -830,7 +830,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             self.settings.execve_env.is_empty(),
         ) {
             if let Ok(vars) =
-                procfs::get_environ(proc.pid, |k| self.settings.execve_env.contains(k))
+                procfs::get_environ(proc.pid, |k| {
+                    let name = String::from_utf8_lossy(k);
+                    self.settings.execve_env.iter().any(|pattern| {
+                        let pat = String::from_utf8_lossy(pattern);
+                        glob_match::glob_match(&pat, &name)
+                    })
+                })
             {
                 let map = vars
                     .iter()

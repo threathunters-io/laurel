@@ -25,6 +25,7 @@ toml = ">= 0.5"
 nix = { version = ">= 0.26", features = ["user", "fs", "time", "process", "signal"]}
 libc = "0.2"
 exacl = ">= 0.6"
+glob-match = "0.2"
 regex = "1"
 signal-hook = "0.3"
 tinyvec = { version = "1", features = ["alloc", "serde"] }
