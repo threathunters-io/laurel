@@ -831,10 +831,12 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         ) {
             if let Ok(vars) =
                 procfs::get_environ(proc.pid, |k| {
-                    let name = String::from_utf8_lossy(k);
                     self.settings.execve_env.iter().any(|pattern| {
-                        let pat = String::from_utf8_lossy(pattern);
-                        glob_match::glob_match(&pat, &name)
+                        if let Some(prefix) = pattern.strip_suffix(b"*") {
+                            k.starts_with(prefix)
+                        } else {
+                            k == pattern.as_slice()
+                        }
                     })
                 })
             {
