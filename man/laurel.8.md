@@ -149,7 +149,8 @@ does when configured with `log_format=ENRICHED`.
 Options that can be configured here actually add information to events
 
 - `execve-env`: A list of environment variables to dump for `exec`
-  events. Default: `["LD_PRELOAD", "LD_LIBRARY_PATH"]`
+  events. Prefix matches are used for strings ending with an asterisk
+  (`*`). Default: `["LD_PRELOAD", "LD_LIBRARY_PATH"]`
 - `container`: Add container information for processes running within
   container runtimes as `SYSCALL.PID.container`. Default: true
 - `systemd`: Add systemd cgroup information for processes running

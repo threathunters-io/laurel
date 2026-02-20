@@ -117,7 +117,7 @@ pub struct Translate {
     pub drop_raw: bool,
 }
 
-fn execve_env_default() -> HashSet<String> {
+fn execve_env_default() -> Vec<String> {
     ["LD_PRELOAD", "LD_LIBRARY_PATH"]
         .into_iter()
         .map(String::from)
@@ -131,7 +131,7 @@ fn true_value() -> bool {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Enrich {
     #[serde(default = "execve_env_default", rename = "execve-env")]
-    pub execve_env: HashSet<String>,
+    pub execve_env: Vec<String>,
     #[serde(default = "true_value")]
     pub container: bool,
     #[serde(default)]
@@ -379,16 +379,21 @@ impl std::fmt::Display for Config {
 
 impl Config {
     pub fn make_coalesce_settings(&self) -> Settings {
+        let (mut execve_prefix, execve_exact) = self
+            .enrich
+            .execve_env
+            .iter()
+            .map(|s| s.as_bytes().to_vec())
+            .partition::<Vec<_>, _>(|s| s.ends_with(&b"*"[..]));
+        for s in &mut execve_prefix {
+            s.pop(); // strip "*"
+        }
         Settings {
             execve_argv_list: self.transform.execve_argv.contains(&ArrayOrString::Array),
             execve_argv_string: self.transform.execve_argv.contains(&ArrayOrString::String),
             execve_argv_limit_bytes: self.transform.execve_argv_limit_bytes,
-            execve_env: self
-                .enrich
-                .execve_env
-                .iter()
-                .map(|s| s.as_bytes().to_vec())
-                .collect(),
+            execve_env_exact: execve_exact.into_iter().collect(),
+            execve_env_prefix: execve_prefix,
             enrich_container: self.enrich.container,
             enrich_container_info: self.enrich.container_info,
             enrich_systemd: self.enrich.systemd,
@@ -519,5 +524,25 @@ file = ""
         )
         .expect("toml parse error");
         assert_eq!(cfg.state.file, None);
+    }
+
+    #[test]
+    fn env_prefix() {
+        let cfg: Config = toml::de::from_str(
+            r#"
+[enrich]
+execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH", "XDG_*" ]
+"#,
+        )
+        .expect("toml parse error");
+        let s = cfg.make_coalesce_settings();
+        assert_eq!(s.execve_env_prefix, [b"XDG_"]);
+        assert_eq!(
+            s.execve_env_exact,
+            ["LD_PRELOAD", "LD_LIBRARY_PATH"]
+                .iter()
+                .map(|s| s.as_bytes().to_vec())
+                .collect()
+        );
     }
 }
