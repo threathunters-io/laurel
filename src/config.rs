@@ -87,9 +87,7 @@ pub enum ArrayOrString {
 }
 
 fn execve_argv_default() -> HashSet<ArrayOrString> {
-    let mut execve_argv = HashSet::new();
-    execve_argv.insert(ArrayOrString::Array);
-    execve_argv
+    [ArrayOrString::Array].into()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -120,10 +118,10 @@ pub struct Translate {
 }
 
 fn execve_env_default() -> HashSet<String> {
-    let mut execve_env = HashSet::new();
-    execve_env.insert("LD_PRELOAD".into());
-    execve_env.insert("LD_LIBRARY_PATH".into());
-    execve_env
+    ["LD_PRELOAD", "LD_LIBRARY_PATH"]
+        .into_iter()
+        .map(String::from)
+        .collect()
 }
 
 fn true_value() -> bool {

@@ -2116,14 +2116,9 @@ mod test {
             let event_id = EventID::from_str("1740869913.604:3976").expect("Can't parse event ID");
             let mut c = Coalesce::new(mk_emit_vec(&events)).with_state(State {
                 processes: ProcTable {
-                    current: {
-                        let mut m = BTreeMap::new();
-                        m.insert(127727, ProcessKey::Event(event_id));
-                        m
-                    },
+                    current: { [(127727, ProcessKey::Event(event_id))].into() },
                     processes: {
-                        let mut m = BTreeMap::new();
-                        m.insert(
+                        [(
                             ProcessKey::Event(event_id),
                             Process {
                                 key: ProcessKey::Event(event_id),
@@ -2131,8 +2126,8 @@ mod test {
                                 ppid: 3432,
                                 ..Default::default()
                             },
-                        );
-                        m
+                        )]
+                        .into()
                     },
                 },
                 ..State::default()
@@ -2194,14 +2189,9 @@ type=EOE msg=audit(1740992884.191:7058722):
             .with_settings(settings)
             .with_state(State {
                 processes: ProcTable {
-                    current: {
-                        let mut m = BTreeMap::new();
-                        m.insert(127727, ProcessKey::Event(event_id));
-                        m
-                    },
+                    current: { [(127727, ProcessKey::Event(event_id))].into() },
                     processes: {
-                        let mut m = BTreeMap::new();
-                        m.insert(
+                        [(
                             ProcessKey::Event(event_id),
                             Process {
                                 key: ProcessKey::Event(event_id),
@@ -2211,8 +2201,8 @@ type=EOE msg=audit(1740992884.191:7058722):
                                 ppid: 3432,
                                 ..Default::default()
                             },
-                        );
-                        m
+                        )]
+                        .into()
                     },
                 },
                 ..State::default()
