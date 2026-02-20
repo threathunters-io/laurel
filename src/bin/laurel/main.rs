@@ -98,9 +98,7 @@ fn drop_privileges(runas_user: &User) -> anyhow::Result<()> {
 
     #[cfg(feature = "procfs")]
     {
-        let mut capabilities = std::collections::HashSet::new();
-        capabilities.insert(Capability::CAP_SYS_PTRACE);
-        capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
+        let capabilities = [Capability::CAP_SYS_PTRACE, Capability::CAP_DAC_READ_SEARCH].into();
         caps::set(None, CapSet::Permitted, &capabilities).context("set permitted capabilities")?;
         caps::set(None, CapSet::Effective, &capabilities).context("set effective capabilities")?;
         caps::set(None, CapSet::Inheritable, &capabilities)
@@ -528,9 +526,8 @@ fn run_app() -> Result<(), anyhow::Error> {
 
             #[cfg(target_os = "linux")]
             {
-                let mut capabilities = std::collections::HashSet::new();
-                capabilities.insert(Capability::CAP_SYS_PTRACE);
-                capabilities.insert(Capability::CAP_DAC_READ_SEARCH);
+                let capabilities =
+                    [Capability::CAP_SYS_PTRACE, Capability::CAP_DAC_READ_SEARCH].into();
                 if let Err(e) = caps::set(None, CapSet::Ambient, &capabilities) {
                     log::warn!("could not set ambient capabilities: {e}");
                 }
