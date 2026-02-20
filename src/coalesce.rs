@@ -61,7 +61,9 @@ pub struct Settings {
     pub execve_argv_list: bool,
     pub execve_argv_string: bool,
 
-    pub execve_env: HashSet<Vec<u8>>,
+    pub execve_env_exact: HashSet<Vec<u8>>,
+    pub execve_env_prefix: Vec<Vec<u8>>,
+
     pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
     pub enrich_container_info: bool,
@@ -100,7 +102,8 @@ impl Default for Settings {
         Settings {
             execve_argv_list: true,
             execve_argv_string: false,
-            execve_env: HashSet::new(),
+            execve_env_exact: HashSet::new(),
+            execve_env_prefix: vec![],
             execve_argv_limit_bytes: None,
             enrich_container: false,
             enrich_container_info: false,
@@ -827,11 +830,16 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let (Some(proc), false) = (
             process_key.and_then(|k| self.state.processes.get_key(&k)),
-            self.settings.execve_env.is_empty(),
+            self.settings.execve_env_exact.is_empty() && self.settings.execve_env_prefix.is_empty(),
         ) {
-            if let Ok(vars) =
-                procfs::get_environ(proc.pid, |k| self.settings.execve_env.contains(k))
-            {
+            if let Ok(vars) = procfs::get_environ(proc.pid, |k| {
+                self.settings.execve_env_exact.contains(k)
+                    || self
+                        .settings
+                        .execve_env_prefix
+                        .iter()
+                        .any(|p| k.starts_with(p))
+            }) {
                 let map = vars
                     .iter()
                     .map(|(k, v)| {

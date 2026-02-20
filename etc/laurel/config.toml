@@ -97,7 +97,8 @@ drop-raw = false
 # Add context (event-id, comm, exe, ppid) for *pid entries
 pid = true
 
-# List of environment variables to log for every EXECVE event
+# List of environment variables to log for every EXECVE event.
+# Prefix matches are used for strings ending with an asterisk ("*")
 execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH" ]
 
 # Add container information to SYSCALL-based events
