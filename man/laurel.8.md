@@ -87,7 +87,17 @@ This section contains basic operation parameters.
 This section describes the main audit log file. `laurel` performs its
 own log file rotation, just like `auditd(8)`.
 
-- `file`: Filename for the audit log file. Default: `audit.log`
+- `file`: Filename for the audit log file. Default: `audit.log`.
+
+  `-` causes `laurel` to write its log to standard output.
+
+  A string beginning with a pipe (e.g. `| /path/to/program`) causes
+  `laurel` to spawn an external program and write its log to that
+  program's standard input.
+
+  A string beginning with `unix:` (e.g. `unix:/path/to/socket`)
+  causes `laurel` to connect and write its log to a UNIX domain
+  socket. On I/O errors, reconnection attempts will be made.
 - `size`: Size in bytes after which the log file is rotated. Default:
   10MiB
 - `generations`: Number of generations to keep after rotation.
