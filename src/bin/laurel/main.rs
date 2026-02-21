@@ -9,7 +9,7 @@ use std::ops::AddAssign;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -109,6 +109,68 @@ fn drop_privileges(runas_user: &User) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Wrapper around UnixStream that attempts to reconnect up to
+/// `retries` times on error, using an exponential backoff algorithm,
+/// starting with 100ms.
+struct ReconnectableStream {
+    pub path: PathBuf,
+    pub retries: u64,
+    stream: Option<UnixStream>,
+}
+
+impl ReconnectableStream {
+    fn new<P: AsRef<Path>>(path: P, max_retry: u64) -> Self {
+        let path = path.as_ref().into();
+        Self {
+            path,
+            retries: max_retry,
+            stream: None,
+        }
+    }
+    fn reconnect(&mut self, delay_ms: u64) {
+        match UnixStream::connect(&self.path) {
+            Ok(s) => self.stream = Some(s),
+            Err(_) => {
+                self.stream = None;
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            }
+        }
+    }
+}
+
+impl Write for ReconnectableStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        for i in 0..=self.retries {
+            match self.stream.as_mut().and_then(|s| s.write(buf).ok()) {
+                Some(n) => return Ok(n),
+                None => self.stream = None,
+            }
+            if self.stream.is_none() {
+                self.reconnect(100 * (1 << i));
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "reconnect failed",
+        ))
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        for i in 0..=self.retries {
+            match self.stream.as_mut().and_then(|s| s.flush().ok()) {
+                Some(n) => return Ok(n),
+                None => self.stream = None,
+            }
+            if self.stream.is_none() {
+                self.reconnect(100 * (1 << i));
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "reconnect failed",
+        ))
+    }
+}
+
 struct Logger {
     prefix: Option<String>,
     output: BufWriter<Box<dyn Write>>,
@@ -126,8 +188,8 @@ impl Logger {
 
     fn new(def: &Logfile, dir: &Path) -> anyhow::Result<Self> {
         match &def.file {
-            p if p.as_os_str().to_str().unwrap().starts_with('|') => {
-                let command = &p.as_os_str().to_str().unwrap()[1..].trim_start();
+            p if p.to_str().unwrap().starts_with('|') => {
+                let command = &p.to_str().unwrap()[1..].trim_start();
                 let mut child = std::process::Command::new(command)
                     .stdin(std::process::Stdio::piped())
                     .spawn()
@@ -139,6 +201,18 @@ impl Logger {
                 Ok(Logger {
                     prefix: def.line_prefix.clone(),
                     output: BufWriter::new(Box::new(stdin)),
+                })
+            }
+            p if p.to_str().unwrap().starts_with("unix:") => {
+                let mut path = PathBuf::from(p.to_str().unwrap().strip_prefix("unix:").unwrap());
+                if path.is_relative() {
+                    let mut filename = dir.to_path_buf();
+                    filename.push(&path);
+                    path = filename;
+                }
+                Ok(Logger {
+                    prefix: def.line_prefix.clone(),
+                    output: BufWriter::new(Box::new(ReconnectableStream::new(path, 7))),
                 })
             }
             p if p.as_os_str() == "-" => Ok(Logger {
