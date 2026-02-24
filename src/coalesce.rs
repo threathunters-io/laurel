@@ -1879,6 +1879,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(target_endian = "little")]
     fn filter_sockaddr() {
         for filter in &[
             &["127.0.0.1", "::1"][..],
