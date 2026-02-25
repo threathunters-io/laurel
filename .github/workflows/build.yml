@@ -70,7 +70,7 @@ jobs:
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev libgoogle-perftools-dev
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: "1.70"
+          toolchain: "1.85" # available as "rust-ewb" on Debian/bookworm
           profile: minimal
       - uses: actions/cache@v3
         with:
