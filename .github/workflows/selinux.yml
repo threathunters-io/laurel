@@ -12,6 +12,8 @@ jobs:
   build-el8:
     runs-on: ubuntu-latest
     container: rockylinux:8
+    permissions:
+      contents: read
     steps:
       - name: Prepare
         run: |
@@ -29,6 +31,8 @@ jobs:
   build-el9:
     runs-on: ubuntu-latest
     container: rockylinux:9
+    permissions:
+      contents: read
     steps:
       - name: Prepare
         run: |
@@ -46,6 +50,8 @@ jobs:
   build-al2023:
     runs-on: ubuntu-latest
     container: amazonlinux:2023
+    permissions:
+      contents: read
     steps:
       - name: Prepare
         run: |
@@ -63,6 +69,8 @@ jobs:
   build-bookworm:
     runs-on: ubuntu-latest
     container: debian:bookworm-slim
+    permissions:
+      contents: read
     steps:
       - name: Prepare
         run: |
@@ -81,6 +89,8 @@ jobs:
   build-jammy:
     runs-on: ubuntu-latest
     container: ubuntu:jammy
+    permissions:
+      contents: read
     steps:
       - name: Prepare
         run: |
