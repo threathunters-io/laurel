@@ -106,6 +106,7 @@ impl SocketAddr {
         match fam {
             AF_LOCAL => {
                 let sa = get_sock::<sockaddr_un>(buf)?;
+                #[allow(clippy::unnecessary_cast)]
                 let path: Vec<u8> = if sa.sun_path[0] == 0 {
                     &sa.sun_path[1..]
                 } else {
@@ -127,6 +128,7 @@ impl SocketAddr {
             AF_AX25 => {
                 let sa = get_sock::<sockaddr_ax25>(buf)?;
                 let mut call = [0u8; 7];
+                #[allow(clippy::unnecessary_cast)]
                 for (i, v) in sa.sax25_call.ax25_call.iter().enumerate() {
                     call[i] = *v as u8;
                 }
@@ -152,6 +154,7 @@ impl SocketAddr {
             AF_X25 => {
                 let sa = get_sock::<sockaddr_x25>(buf)?;
                 let mut address = [0u8; 16];
+                #[allow(clippy::unnecessary_cast)]
                 for (i, v) in sa.sx25_addr.x25_addr.iter().enumerate() {
                     address[i] = *v as u8;
                 }
