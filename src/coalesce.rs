@@ -12,9 +12,7 @@ use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::constants::{ARCH_NAMES, SYSCALL_NAMES, URING_OPS};
 use crate::label_matcher::LabelMatcher;
-#[cfg(all(feature = "procfs", target_os = "linux"))]
-use crate::proc::ContainerInfo;
-use crate::proc::{self, ProcTable, Process, ProcessKey};
+use crate::proc::{self, ContainerInfo, ProcTable, Process, ProcessKey};
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 #[cfg(target_os = "linux")]
@@ -74,6 +72,8 @@ pub struct Settings {
     pub enrich_script: bool,
     pub enrich_uid_groups: bool,
     pub enrich_exe_hash: bool,
+    pub enrich_exe_hash_size_limit: Option<u64>,
+    pub enrich_exe_hash_cache_entries: usize,
     pub enrich_prefix: Option<String>,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
@@ -115,6 +115,8 @@ impl Default for Settings {
             enrich_script: true,
             enrich_uid_groups: true,
             enrich_exe_hash: false,
+            enrich_exe_hash_size_limit: None,
+            enrich_exe_hash_cache_entries: 1024,
             enrich_prefix: None,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
@@ -161,6 +163,37 @@ pub struct State<'ev> {
     userdb: UserDB,
 }
 
+/// LRU cache for exe hashes, keyed by (dev, inode, mtime_nsec)
+struct ExeHashCache {
+    entries: indexmap::IndexMap<(u64, u64, i64), String>,
+}
+
+impl ExeHashCache {
+    fn new() -> Self {
+        ExeHashCache {
+            entries: indexmap::IndexMap::new(),
+        }
+    }
+
+    fn get(&mut self, key: &(u64, u64, i64)) -> Option<String> {
+        let idx = self.entries.get_index_of(key)?;
+        let (k, v) = self.entries.shift_remove_index(idx).unwrap();
+        let hash = v.clone();
+        self.entries.insert(k, v);
+        Some(hash)
+    }
+
+    fn insert(&mut self, key: (u64, u64, i64), hash: String, max_entries: usize) {
+        if max_entries == 0 {
+            return;
+        }
+        if self.entries.len() >= max_entries {
+            self.entries.shift_remove_index(0);
+        }
+        self.entries.insert(key, hash);
+    }
+}
+
 /// Coalesce collects Audit Records from individual lines and assembles them to Events
 pub struct Coalesce<'a, 'ev> {
     /// Serializable state
@@ -169,6 +202,8 @@ pub struct Coalesce<'a, 'ev> {
     next_expire: Option<u64>,
     /// Output function
     emit_fn: Box<dyn 'a + FnMut(&Event<'ev>)>,
+    /// Cache for exe hashes
+    exe_hash_cache: ExeHashCache,
 
     pub settings: Settings,
 }
@@ -387,6 +422,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             state: State::default(),
             next_expire: None,
             emit_fn: Box::new(emit_fn),
+            exe_hash_cache: ExeHashCache::new(),
             settings: Settings::default(),
         }
     }
@@ -601,7 +637,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Enrich SOCKADDR record
     ///
     /// This function also determines whether the record should be filtered
-    #[cfg_attr(not(target_os = "linux"), allow(unused_mut, unused_variables))]
     fn enrich_sockaddr(&mut self, rv: &mut Body, is_filtered: &mut bool) {
         let mut nrv = Body::default();
         rv.retain(|(k, v)| match (k, v) {
@@ -675,10 +710,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Enrich SYSCALL record
     ///
     /// Add ARCH, SYSCALL, PID, PPID, SCRIPT, LABELS if appropriate
-    #[cfg_attr(
-        not(all(feature = "procfs", target_os = "linux")),
-        allow(unused_variables)
-    )]
     fn enrich_syscall(
         &mut self,
         rv: &mut Body,
@@ -1204,9 +1235,27 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         if self.settings.enrich_exe_hash {
             if let Some(exe_path) = exe.and_then(|e| std::str::from_utf8(e).ok()) {
-                if let Ok(data) = std::fs::read(exe_path) {
-                    let hash = hex_string(Sha256::digest(&data).as_ref());
-                    body.push((Key::Literal("EXE_HASH"), hash.into()));
+                use std::os::unix::fs::MetadataExt;
+                if let Ok(meta) = std::fs::metadata(exe_path) {
+                    let within_limit = self
+                        .settings
+                        .enrich_exe_hash_size_limit
+                        .map_or(true, |limit| meta.len() <= limit);
+                    if within_limit {
+                        let cache_key = (meta.dev(), meta.ino(), meta.mtime_nsec());
+                        let max = self.settings.enrich_exe_hash_cache_entries;
+                        let hash = match self.exe_hash_cache.get(&cache_key) {
+                            Some(h) => Some(h),
+                            None => std::fs::read(exe_path).ok().map(|data| {
+                                let h = hex_string(Sha256::digest(&data).as_ref());
+                                self.exe_hash_cache.insert(cache_key, h.clone(), max);
+                                h
+                            }),
+                        };
+                        if let Some(hash) = hash {
+                            body.push((Key::Literal("EXE_HASH"), hash.into()));
+                        }
+                    }
                 }
             }
         }

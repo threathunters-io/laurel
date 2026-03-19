@@ -148,6 +148,14 @@ pub struct Enrich {
     pub prefix: Option<String>,
     #[serde(default, rename = "exe-hash")]
     pub exe_hash: bool,
+    #[serde(default, rename = "exe-hash-size-limit")]
+    pub exe_hash_size_limit: Option<u64>,
+    #[serde(default = "default_exe_hash_cache_entries", rename = "exe-hash-cache-entries")]
+    pub exe_hash_cache_entries: usize,
+}
+
+fn default_exe_hash_cache_entries() -> usize {
+    1024
 }
 
 impl Default for Enrich {
@@ -162,6 +170,8 @@ impl Default for Enrich {
             uid_groups: true,
             prefix: None,
             exe_hash: false,
+            exe_hash_size_limit: None,
+            exe_hash_cache_entries: default_exe_hash_cache_entries(),
         }
     }
 }
@@ -404,6 +414,8 @@ impl Config {
             enrich_script: self.enrich.script,
             enrich_uid_groups: self.enrich.uid_groups,
             enrich_exe_hash: self.enrich.exe_hash,
+            enrich_exe_hash_size_limit: self.enrich.exe_hash_size_limit,
+            enrich_exe_hash_cache_entries: self.enrich.exe_hash_cache_entries,
             enrich_prefix: self.enrich.prefix.clone(),
             proc_label_keys: self
                 .label_process
