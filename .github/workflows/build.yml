@@ -40,7 +40,7 @@ jobs:
           apt-get -qqy dist-upgrade
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev libgoogle-perftools-dev
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v6
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -66,7 +66,7 @@ jobs:
           apt-get -qqy dist-upgrade
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev libgoogle-perftools-dev
       - uses: dtolnay/rust-toolchain@1.70 # minimum supported Rust version (see Cargo.toml)
-      - uses: actions/cache@v6
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -91,7 +91,7 @@ jobs:
           apt-get -qqy dist-upgrade
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v6
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -103,7 +103,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-x86_64-gnu-
       - name: Build
         run: cargo build --target=x86_64-unknown-linux-gnu --release
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-x86_64-gnu
           path: |
@@ -121,7 +121,7 @@ jobs:
         run: |
           apk add git ca-certificates tar rust cargo clang-dev acl-dev acl-static musl-dev linux-headers
           apk add binutils file
-      - uses: actions/cache@v6
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -146,7 +146,7 @@ jobs:
               echo "laurel is linked against shared libraries" >&2
               exit 1
           fi
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-x86_64-musl
           path: |
@@ -169,7 +169,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-gnu
-      - uses: actions/cache@v6
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -181,7 +181,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-aarch64-gnu-
       - name: Build
         run: cargo build --target=aarch64-unknown-linux-gnu --release
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-aarch64-gnu
           path: |
@@ -204,7 +204,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: armv7-unknown-linux-gnueabihf
-      - uses: actions/cache@v6
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -216,7 +216,7 @@ jobs:
           restore-keys: ${{ runner.os }}-armv7-gnueabihf-cargo-
       - name: Build
         run: cargo build --target=armv7-unknown-linux-gnueabihf --release
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-armv7-gnueabihf
           path: |
@@ -235,7 +235,7 @@ jobs:
           apt-get -qqy dist-upgrade
           apt-get -qqy install make pandoc
       - run: make -C man
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: manpages
           path: |
@@ -253,7 +253,7 @@ jobs:
       - build-man
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: artifacts
@@ -286,7 +286,7 @@ jobs:
           cd pack
           find -mindepth 1 -maxdepth 1 -type d | xargs -ti tar -czf {}.tar.gz {}
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: tarballs
           path: pack/*.tar.gz
@@ -311,7 +311,7 @@ jobs:
               exit 1
           fi
           echo "git_version=$version_git" >> $GITHUB_OUTPUT
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: tarballs
       - uses: softprops/action-gh-release@v2
@@ -328,7 +328,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: target
