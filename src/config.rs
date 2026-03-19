@@ -146,6 +146,8 @@ pub struct Enrich {
     pub uid_groups: bool,
     #[serde(default)]
     pub prefix: Option<String>,
+    #[serde(default, rename = "exe-hash")]
+    pub exe_hash: bool,
 }
 
 impl Default for Enrich {
@@ -159,6 +161,7 @@ impl Default for Enrich {
             script: true,
             uid_groups: true,
             prefix: None,
+            exe_hash: false,
         }
     }
 }
@@ -400,6 +403,7 @@ impl Config {
             enrich_pid: self.enrich.pid,
             enrich_script: self.enrich.script,
             enrich_uid_groups: self.enrich.uid_groups,
+            enrich_exe_hash: self.enrich.exe_hash,
             enrich_prefix: self.enrich.prefix.clone(),
             proc_label_keys: self
                 .label_process

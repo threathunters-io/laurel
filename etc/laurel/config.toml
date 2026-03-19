@@ -124,6 +124,10 @@ script = true
 # Add groups that the user (uid) is a member of. Default: true
 user-groups = true
 
+# Compute SHA256 hash of the executable (SYSCALL.exe) and add it as
+# EXE_HASH to the SYSCALL record. Default: false
+# exe-hash = false
+
 # Add a prefix to enriched fields; this may be useful if logs are
 # consumed by analysis software that doesn't properly understand
 # uppercase and lowercase JSON object fields as identical. This

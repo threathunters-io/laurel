@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_string;
+use sha2::{Digest, Sha256};
 
 use linux_audit_parser::*;
 
@@ -12,7 +12,9 @@ use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::constants::{ARCH_NAMES, SYSCALL_NAMES, URING_OPS};
 use crate::label_matcher::LabelMatcher;
-use crate::proc::{self, ContainerInfo, ProcTable, Process, ProcessKey};
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+use crate::proc::ContainerInfo;
+use crate::proc::{self, ProcTable, Process, ProcessKey};
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 #[cfg(target_os = "linux")]
@@ -71,6 +73,7 @@ pub struct Settings {
     pub enrich_pid: bool,
     pub enrich_script: bool,
     pub enrich_uid_groups: bool,
+    pub enrich_exe_hash: bool,
     pub enrich_prefix: Option<String>,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
@@ -111,6 +114,7 @@ impl Default for Settings {
             enrich_pid: true,
             enrich_script: true,
             enrich_uid_groups: true,
+            enrich_exe_hash: false,
             enrich_prefix: None,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
@@ -597,6 +601,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Enrich SOCKADDR record
     ///
     /// This function also determines whether the record should be filtered
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut, unused_variables))]
     fn enrich_sockaddr(&mut self, rv: &mut Body, is_filtered: &mut bool) {
         let mut nrv = Body::default();
         rv.retain(|(k, v)| match (k, v) {
@@ -670,6 +675,10 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// Enrich SYSCALL record
     ///
     /// Add ARCH, SYSCALL, PID, PPID, SCRIPT, LABELS if appropriate
+    #[cfg_attr(
+        not(all(feature = "procfs", target_os = "linux")),
+        allow(unused_variables)
+    )]
     fn enrich_syscall(
         &mut self,
         rv: &mut Body,
@@ -1190,6 +1199,15 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     Key::Literal("UID_GROUPS"),
                     Value::List(names.iter().map(|n| Value::from(n.as_bytes())).collect()),
                 ));
+            }
+        }
+
+        if self.settings.enrich_exe_hash {
+            if let Some(exe_path) = exe.and_then(|e| std::str::from_utf8(e).ok()) {
+                if let Ok(data) = std::fs::read(exe_path) {
+                    let hash = hex_string(Sha256::digest(&data).as_ref());
+                    body.push((Key::Literal("EXE_HASH"), hash.into()));
+                }
             }
         }
     }
@@ -2234,5 +2252,41 @@ type=EOE msg=audit(1740992884.191:7058722):
         let event = find_event(&events, id).unwrap_or_else(|| panic!("Did not find {id}"));
         println!("{}", event_to_json(&event));
         assert!(event_to_json(&event).contains(r#"LABELS":["emacs"]"#));
+    }
+
+    #[test]
+    fn exe_hash() -> Result<(), Box<dyn Error>> {
+        use sha2::{Digest, Sha256};
+
+        let ec = Rc::new(RefCell::new(None));
+
+        let tmp_path = std::env::temp_dir().join("laurel_exe_hash_test");
+        let content = b"fake executable content for hashing";
+        std::fs::write(&tmp_path, content)?;
+
+        let expected_hash = hex_string(Sha256::digest(content).as_ref());
+        let exe_path = tmp_path.to_str().unwrap();
+
+        let record = format!(
+            "type=SYSCALL msg=audit(1615114232.375:99999): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=2 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
+             type=EXECVE msg=audit(1615114232.375:99999): argc=1 a0=\"test\"\n\
+             type=EOE msg=audit(1615114232.375:99999):\n"
+        );
+
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.enrich_exe_hash = true;
+        c.settings.enrich_uid_groups = false;
+        c.settings.enrich_pid = false;
+        process_record(&mut c, record.as_bytes())?;
+
+        let _ = std::fs::remove_file(&tmp_path);
+
+        let output = event_to_json(ec.borrow().as_ref().expect("no event emitted"));
+        println!("{output}");
+        assert!(
+            output.contains(&format!(r#""EXE_HASH":"{expected_hash}""#)),
+            "output should contain EXE_HASH with correct SHA256"
+        );
+        Ok(())
     }
 }
