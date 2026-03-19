@@ -114,7 +114,7 @@ jobs:
   build-x86_64-musl:
     needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: alpine:3.22
+    container: alpine:3.23
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
