@@ -68,7 +68,7 @@ jobs:
 
   build-bookworm:
     runs-on: ubuntu-latest
-    container: debian:trixie-slim
+    container: debian:bookworm-slim
     permissions:
       contents: read
     steps:
@@ -84,6 +84,46 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: selinux-bookworm
+          path: contrib/selinux/laurel.pp
+
+  build-trixie:
+    runs-on: ubuntu-latest
+    container: debian:trixie-slim
+    permissions:
+      contents: read
+    steps:
+      - name: Prepare
+        run: |
+          apt-get -qqy update
+          apt-get -qqy install selinux-policy-dev
+      - uses: actions/checkout@v6
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v6
+        with:
+          name: selinux-trixie
+          path: contrib/selinux/laurel.pp
+
+  build-jammy:
+    runs-on: ubuntu-latest
+    container: ubuntu:jammy
+    permissions:
+      contents: read
+    steps:
+      - name: Prepare
+        run: |
+          apt-get -qqy update
+          apt-get -qqy install selinux-policy-dev
+      - uses: actions/checkout@v6
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v6
+        with:
+          name: selinux-jammy
           path: contrib/selinux/laurel.pp
 
   build-noble:

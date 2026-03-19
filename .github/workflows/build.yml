@@ -65,7 +65,7 @@ jobs:
           apt-get -qq update
           apt-get -qqy dist-upgrade
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev libgoogle-perftools-dev
-      - uses: dtolnay/rust-toolchain@1.85 # available as "rust-ewb" on Debian/bookworm
+      - uses: dtolnay/rust-toolchain@1.70 # minimum supported Rust version (see Cargo.toml)
       - uses: actions/cache@v6
         with:
           path: |
@@ -82,7 +82,7 @@ jobs:
   build-x86_64-gnu:
     needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: debian:trixie
+    container: debian:bullseye
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
@@ -157,7 +157,7 @@ jobs:
   build-aarch64-gnu:
     needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: debian:trixie
+    container: debian:bullseye
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
@@ -192,7 +192,7 @@ jobs:
   build-armv7-gnueabihf:
     needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: debian:trixie
+    container: debian:bullseye
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
@@ -226,7 +226,7 @@ jobs:
 
   build-man:
     runs-on: ubuntu-latest
-    container: debian:trixie
+    container: debian:bullseye
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
