@@ -18,12 +18,12 @@ jobs:
       - name: Prepare
         run: |
           dnf install -y selinux-policy-devel findutils
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: selinux-el8
           path: contrib/selinux/laurel.pp
@@ -37,12 +37,12 @@ jobs:
       - name: Prepare
         run: |
           dnf install -y selinux-policy-devel findutils
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: selinux-el9
           path: contrib/selinux/laurel.pp
@@ -56,19 +56,19 @@ jobs:
       - name: Prepare
         run: |
           yum install -y selinux-policy-devel findutils tar
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: selinux-al2023
           path: contrib/selinux/laurel.pp
 
   build-bookworm:
     runs-on: ubuntu-latest
-    container: debian:bookworm-slim
+    container: debian:trixie-slim
     permissions:
       contents: read
     steps:
@@ -76,19 +76,19 @@ jobs:
         run: |
           apt-get -qqy update
           apt-get -qqy install selinux-policy-dev
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: selinux-bookworm
           path: contrib/selinux/laurel.pp
 
-  build-jammy:
+  build-noble:
     runs-on: ubuntu-latest
-    container: ubuntu:jammy
+    container: ubuntu:noble
     permissions:
       contents: read
     steps:
@@ -96,12 +96,12 @@ jobs:
         run: |
           apt-get -qqy update
           apt-get -qqy install selinux-policy-dev
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           make -C contrib/selinux AUDITD_VERSIONS=3
       - name: Archive policy
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: selinux-jammy
+          name: selinux-noble
           path: contrib/selinux/laurel.pp
