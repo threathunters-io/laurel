@@ -180,6 +180,14 @@ Options that can be configured here actually add information to events
   understand uppercase and lowercase JSON object fields as identical.
   This setting does not affect enriched fields passed in from
   `auditd(8)`. Default: unset
+- `exe-hash`: Compute SHA256 hash of the executable (`SYSCALL.exe`)
+  and add it as `EXE_HASH` to the SYSCALL record. Default: false
+- `exe-hash-size-limit`: Skip hashing executables larger than this size
+  (in bytes). Recommended to avoid excessive I/O on large binaries.
+  Default: 10_000_000
+- `exe-hash-cache-entries`: Maximum number of entries in the exe hash
+  LRU cache (keyed by inode + mtime). Set to 0 to disable caching.
+  Default: 1024
 
 ## `[label-process]` section
 

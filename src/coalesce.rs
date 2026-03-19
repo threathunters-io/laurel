@@ -1,9 +1,15 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
+use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+use std::os::unix::fs::MetadataExt;
 use std::str::FromStr;
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_string;
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+use sha2::{Digest, Sha256};
 
 use linux_audit_parser::*;
 
@@ -71,6 +77,9 @@ pub struct Settings {
     pub enrich_pid: bool,
     pub enrich_script: bool,
     pub enrich_uid_groups: bool,
+    pub enrich_exe_hash: bool,
+    pub enrich_exe_hash_size_limit: u64,
+    pub enrich_exe_hash_cache_entries: usize,
     pub enrich_prefix: Option<String>,
 
     pub proc_label_keys: HashSet<Vec<u8>>,
@@ -111,6 +120,9 @@ impl Default for Settings {
             enrich_pid: true,
             enrich_script: true,
             enrich_uid_groups: true,
+            enrich_exe_hash: false,
+            enrich_exe_hash_size_limit: 10_000_000,
+            enrich_exe_hash_cache_entries: 1024,
             enrich_prefix: None,
             proc_label_keys: HashSet::new(),
             proc_propagate_labels: HashSet::new(),
@@ -157,6 +169,39 @@ pub struct State<'ev> {
     userdb: UserDB,
 }
 
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+/// LRU cache for exe hashes, keyed by (dev, inode, mtime_nsec)
+struct ExeHashCache {
+    entries: indexmap::IndexMap<(u64, u64, i64), String>,
+}
+
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+impl ExeHashCache {
+    fn new() -> Self {
+        ExeHashCache {
+            entries: indexmap::IndexMap::new(),
+        }
+    }
+
+    fn get(&mut self, key: &(u64, u64, i64)) -> Option<String> {
+        let idx = self.entries.get_index_of(key)?;
+        let (k, v) = self.entries.shift_remove_index(idx).unwrap();
+        let hash = v.clone();
+        self.entries.insert(k, v);
+        Some(hash)
+    }
+
+    fn insert(&mut self, key: (u64, u64, i64), hash: String, max_entries: usize) {
+        if max_entries == 0 {
+            return;
+        }
+        if self.entries.len() >= max_entries {
+            self.entries.shift_remove_index(0);
+        }
+        self.entries.insert(key, hash);
+    }
+}
+
 /// Coalesce collects Audit Records from individual lines and assembles them to Events
 pub struct Coalesce<'a, 'ev> {
     /// Serializable state
@@ -165,6 +210,9 @@ pub struct Coalesce<'a, 'ev> {
     next_expire: Option<u64>,
     /// Output function
     emit_fn: Box<dyn 'a + FnMut(&Event<'ev>)>,
+    /// Cache for exe hashes
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    exe_hash_cache: ExeHashCache,
 
     pub settings: Settings,
 }
@@ -384,6 +432,8 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             state: State::default(),
             next_expire: None,
             emit_fn: Box::new(emit_fn),
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
+            exe_hash_cache: ExeHashCache::new(),
             settings: Settings::default(),
         }
     }
@@ -1254,6 +1304,46 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 ));
             }
         }
+
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
+        if let (Some(exe), true) = (exe, self.settings.enrich_exe_hash) {
+            self.enrich_exe_hash(body, pid, exe);
+        }
+    }
+
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    fn enrich_exe_hash(&mut self, rv: &mut Body, pid: u32, exe: &[u8]) {
+        let Ok(mut fd) = procfs::open_pid_exe_meta(pid) else {
+            return;
+        };
+        let Ok(path) = procfs::get_pid_exe_link(pid) else {
+            return;
+        };
+        let Ok(meta) = fd.metadata() else {
+            return;
+        };
+        if path.as_os_str().as_bytes() != exe {
+            return;
+        };
+        if meta.len() > self.settings.enrich_exe_hash_size_limit {
+            return;
+        }
+
+        let cache_key = (meta.dev(), meta.ino(), meta.mtime_nsec());
+        let max = self.settings.enrich_exe_hash_cache_entries;
+        let hash = match self.exe_hash_cache.get(&cache_key) {
+            Some(h) => h,
+            None => {
+                let mut buf = vec![0; meta.len() as usize];
+                if fd.read_exact(&mut buf).is_err() {
+                    return;
+                };
+                let h = hex_string(Sha256::digest(&buf).as_ref());
+                self.exe_hash_cache.insert(cache_key, h.clone(), max);
+                h
+            }
+        };
+        rv.push((Key::Literal("EXE_HASH"), hash.into()));
     }
 
     /// Ingest a log line and add it to the coalesce object.
@@ -2335,5 +2425,61 @@ type=EOE msg=audit(1740992884.191:7058722):
         let event = find_event(&events, id).unwrap_or_else(|| panic!("Did not find {id}"));
         println!("{}", event_to_json(&event));
         assert!(event_to_json(&event).contains(r#"LABELS":["emacs"]"#));
+    }
+
+    #[test]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    fn exe_hash() -> Result<(), Box<dyn Error>> {
+        use std::path::PathBuf;
+
+        use sha2::{Digest, Sha256};
+
+        let binary = PathBuf::from("/bin/sleep")
+            .canonicalize()
+            .expect("can'canonicalize");
+        let binary_str = binary.to_string_lossy();
+        println!("Using program {binary_str}");
+
+        // This must be running until after it Coalesce has processed
+        // the fake audit record below.
+        let Ok(pid) = std::process::Command::new(&binary)
+            .args(["5"])
+            .spawn()
+            .map(|c| c.id())
+        else {
+            panic!("spawn sleep command");
+        };
+        println!("spawned sleep command with {pid}");
+
+        let expected_hash = hex_string(Sha256::digest(std::fs::read(&binary)?).as_ref());
+        println!("expected hash of {binary_str}: {expected_hash}");
+        println!(
+            "expected hash of /proc/{pid}/exe: {}",
+            hex_string(Sha256::digest(std::fs::read(format!("/proc/{pid}/exe"))?).as_ref())
+        );
+
+        let record = format!(
+            r#"type=SYSCALL msg=audit(1615114232.375:99999): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid={pid} auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="test" exe="{binary_str}" key=(null)
+type=EXECVE msg=audit(1615114232.375:99999): argc=2 a0="sleep" a1="5"
+type=EOE msg=audit(1615114232.375:99999):
+"#
+        );
+
+        let ec = Rc::new(RefCell::new(None));
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.enrich_exe_hash = true;
+        // Great. Ubuntu's uutils comes out as a fat binary of > 10 MB.
+        c.settings.enrich_exe_hash_size_limit = 20_000_000;
+        c.settings.enrich_uid_groups = false;
+        c.settings.enrich_pid = false;
+        process_record(&mut c, record.as_bytes())?;
+
+        let output = event_to_json(ec.borrow().as_ref().expect("no event emitted"));
+        println!("{output}");
+        assert!(
+            output.contains(&format!(r#""EXE_HASH":"{expected_hash}""#)),
+            "output should contain EXE_HASH with correct SHA256"
+        );
+        Ok(())
     }
 }

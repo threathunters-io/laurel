@@ -124,6 +124,16 @@ script = true
 # Add groups that the user (uid) is a member of. Default: true
 user-groups = true
 
+# Compute SHA256 hash of the executable (SYSCALL.exe) and add it as
+# EXE_HASH to the SYSCALL record. Default: false
+# exe-hash = false
+# Skip hashing executables larger than this size (in bytes). Recommended
+# to avoid excessive I/O on large binaries. Default: 10_000_000
+# exe-hash-size-limit = 10_000_000
+# Maximum number of entries in the exe hash LRU cache (keyed by inode +
+# mtime). Set to 0 to disable caching. Default: 1024
+# exe-hash-cache-entries = 1024
+
 # Add a prefix to enriched fields; this may be useful if logs are
 # consumed by analysis software that doesn't properly understand
 # uppercase and lowercase JSON object fields as identical. This
