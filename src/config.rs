@@ -150,7 +150,10 @@ pub struct Enrich {
     pub exe_hash: bool,
     #[serde(default, rename = "exe-hash-size-limit")]
     pub exe_hash_size_limit: Option<u64>,
-    #[serde(default = "default_exe_hash_cache_entries", rename = "exe-hash-cache-entries")]
+    #[serde(
+        default = "default_exe_hash_cache_entries",
+        rename = "exe-hash-cache-entries"
+    )]
     pub exe_hash_cache_entries: usize,
 }
 
