@@ -351,11 +351,14 @@ jobs:
       - name: Edit configuration
         run: |
           sed -e 's#^input = .*#input = "unix:/var/run/audispd_events"#' etc/laurel/config.toml
+      - name: Sanitize image tag
+        id: meta
+        run: echo "tag=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> $GITHUB_OUTPUT
       - uses: redhat-actions/buildah-build@v2
         id: build-image
         with:
           image: laurel
-          tags: "latest ${{ github.sha }} ${{ github.ref_name }}"
+          tags: "latest ${{ github.sha }} ${{ steps.meta.outputs.tag }}"
           containerfiles: ./Containerfile
       - uses: redhat-actions/podman-login@v1
         if:  ${{ github.ref_type == 'tag' }}
