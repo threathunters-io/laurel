@@ -2338,4 +2338,147 @@ type=EOE msg=audit(1740992884.191:7058722):
         );
         Ok(())
     }
+
+    #[test]
+    fn exe_hash_cache_invalidation() -> Result<(), Box<dyn Error>> {
+        use sha2::{Digest, Sha256};
+
+        let tmp_path = std::env::temp_dir().join("laurel_exe_hash_cache_invalidation_test");
+        let exe_path = tmp_path.to_str().unwrap().to_string();
+
+        let make_record = |seq: u64| {
+            format!(
+                "type=SYSCALL msg=audit(1615114232.375:{seq}): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=2 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
+                 type=EXECVE msg=audit(1615114232.375:{seq}): argc=1 a0=\"test\"\n\
+                 type=EOE msg=audit(1615114232.375:{seq}):\n"
+            )
+        };
+
+        let ec = Rc::new(RefCell::new(None));
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.enrich_exe_hash = true;
+        c.settings.enrich_uid_groups = false;
+        c.settings.enrich_pid = false;
+
+        // First event: write content_1 and hash it
+        let content_1 = b"version one of binary";
+        std::fs::write(&tmp_path, content_1)?;
+        let hash_1 = hex_string(Sha256::digest(content_1).as_ref());
+        process_record(&mut c, make_record(1).as_bytes())?;
+        assert!(
+            event_to_json(ec.borrow().as_ref().expect("no event"))
+                .contains(&format!(r#""EXE_HASH":"{hash_1}""#)),
+            "first event should contain hash of content_1"
+        );
+
+        // Overwrite the file with different content (mtime changes → cache miss)
+        let content_2 = b"version two of binary - replaced";
+        std::fs::write(&tmp_path, content_2)?;
+        let hash_2 = hex_string(Sha256::digest(content_2).as_ref());
+        assert_ne!(hash_1, hash_2);
+
+        *ec.borrow_mut() = None;
+        process_record(&mut c, make_record(2).as_bytes())?;
+        let _ = std::fs::remove_file(&tmp_path);
+        assert!(
+            event_to_json(ec.borrow().as_ref().expect("no event"))
+                .contains(&format!(r#""EXE_HASH":"{hash_2}""#)),
+            "second event should contain hash of content_2 — cache must have been invalidated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn exe_hash_size_limit() -> Result<(), Box<dyn Error>> {
+        let tmp_path = std::env::temp_dir().join("laurel_exe_hash_size_limit_test");
+        let content = b"this executable is too large to hash";
+        std::fs::write(&tmp_path, content)?;
+        let exe_path = tmp_path.to_str().unwrap();
+
+        let record = format!(
+            "type=SYSCALL msg=audit(1615114232.375:99997): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=2 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
+             type=EXECVE msg=audit(1615114232.375:99997): argc=1 a0=\"test\"\n\
+             type=EOE msg=audit(1615114232.375:99997):\n"
+        );
+
+        let ec = Rc::new(RefCell::new(None));
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.enrich_exe_hash = true;
+        c.settings.enrich_exe_hash_size_limit = Some(4); // smaller than content
+        c.settings.enrich_uid_groups = false;
+        c.settings.enrich_pid = false;
+
+        process_record(&mut c, record.as_bytes())?;
+        let _ = std::fs::remove_file(&tmp_path);
+
+        let output = event_to_json(ec.borrow().as_ref().expect("no event emitted"));
+        assert!(
+            !output.contains("EXE_HASH"),
+            "EXE_HASH should be absent when file exceeds size limit"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn exe_hash_cache_eviction() -> Result<(), Box<dyn Error>> {
+        use sha2::{Digest, Sha256};
+
+        let tmp_a = std::env::temp_dir().join("laurel_exe_hash_evict_a");
+        let tmp_b = std::env::temp_dir().join("laurel_exe_hash_evict_b");
+        let content_a = b"binary a";
+        let content_b = b"binary b";
+        std::fs::write(&tmp_a, content_a)?;
+        std::fs::write(&tmp_b, content_b)?;
+        let hash_a = hex_string(Sha256::digest(content_a).as_ref());
+        let hash_b = hex_string(Sha256::digest(content_b).as_ref());
+
+        let make_record = |seq: u64, exe: &str| {
+            format!(
+                "type=SYSCALL msg=audit(1615114232.375:{seq}): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=2 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe}\" key=(null)\n\
+                 type=EXECVE msg=audit(1615114232.375:{seq}): argc=1 a0=\"test\"\n\
+                 type=EOE msg=audit(1615114232.375:{seq}):\n"
+            )
+        };
+
+        let ec = Rc::new(RefCell::new(None));
+        let mut c = Coalesce::new(mk_emit(&ec));
+        c.settings.enrich_exe_hash = true;
+        c.settings.enrich_exe_hash_cache_entries = 1; // only room for one entry
+        c.settings.enrich_uid_groups = false;
+        c.settings.enrich_pid = false;
+
+        // Hash binary a — it enters the cache
+        process_record(&mut c, make_record(1, tmp_a.to_str().unwrap()).as_bytes())?;
+        assert!(
+            event_to_json(ec.borrow().as_ref().expect("no event"))
+                .contains(&format!(r#""EXE_HASH":"{hash_a}""#)),
+            "first event should contain hash_a"
+        );
+
+        // Hash binary b — evicts a from the cache
+        *ec.borrow_mut() = None;
+        process_record(&mut c, make_record(2, tmp_b.to_str().unwrap()).as_bytes())?;
+        assert!(
+            event_to_json(ec.borrow().as_ref().expect("no event"))
+                .contains(&format!(r#""EXE_HASH":"{hash_b}""#)),
+            "second event should contain hash_b"
+        );
+
+        // Overwrite a with new content — since a was evicted, the new hash must be computed
+        let content_a2 = b"binary a - updated after eviction";
+        std::fs::write(&tmp_a, content_a2)?;
+        let hash_a2 = hex_string(Sha256::digest(content_a2).as_ref());
+        assert_ne!(hash_a, hash_a2);
+
+        *ec.borrow_mut() = None;
+        process_record(&mut c, make_record(3, tmp_a.to_str().unwrap()).as_bytes())?;
+        std::fs::remove_file(&tmp_a)?;
+        std::fs::remove_file(&tmp_b)?;
+        assert!(
+            event_to_json(ec.borrow().as_ref().expect("no event"))
+                .contains(&format!(r#""EXE_HASH":"{hash_a2}""#)),
+            "third event should contain updated hash — a was evicted so new content was re-read"
+        );
+        Ok(())
+    }
 }
