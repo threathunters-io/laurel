@@ -91,6 +91,20 @@ pub fn pid_path_metadata(pid: u32, path: &[u8]) -> Result<Metadata, std::io::Err
     std::fs::metadata(OsStr::from_bytes(&proc_path))
 }
 
+/// Reads file contents for a path from a process' perspective
+///
+/// Uses /proc/{pid}/root/ to access the file through the process's
+/// filesystem namespace, which is necessary for containerized processes.
+pub fn pid_path_read(pid: u32, path: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+    if path.is_empty() || path[0] != b'/' {
+        return Err(std::io::ErrorKind::NotFound.into());
+    }
+    let mut proc_path = Vec::with_capacity(20 + path.len());
+    write!(proc_path, "/proc/{pid}/root").unwrap();
+    proc_path.extend(path);
+    std::fs::read(OsStr::from_bytes(&proc_path))
+}
+
 pub struct ProcStat<'a> {
     pub pid: u32,
     pub ppid: u32,

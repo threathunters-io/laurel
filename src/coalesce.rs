@@ -1234,9 +1234,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if self.settings.enrich_exe_hash {
-            if let Some(exe_path) = exe.and_then(|e| std::str::from_utf8(e).ok()) {
+            if let Some(exe_bytes) = exe {
                 use std::os::unix::fs::MetadataExt;
-                if let Ok(meta) = std::fs::metadata(exe_path) {
+                if let Ok(meta) = procfs::pid_path_metadata(pid, exe_bytes) {
                     let within_limit = self
                         .settings
                         .enrich_exe_hash_size_limit
@@ -1246,7 +1246,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                         let max = self.settings.enrich_exe_hash_cache_entries;
                         let hash = match self.exe_hash_cache.get(&cache_key) {
                             Some(h) => Some(h),
-                            None => std::fs::read(exe_path).ok().map(|data| {
+                            None => procfs::pid_path_read(pid, exe_bytes).ok().map(|data| {
                                 let h = hex_string(Sha256::digest(&data).as_ref());
                                 self.exe_hash_cache.insert(cache_key, h.clone(), max);
                                 h
@@ -2315,9 +2315,10 @@ type=EOE msg=audit(1740992884.191:7058722):
 
         let expected_hash = hex_string(Sha256::digest(content).as_ref());
         let exe_path = tmp_path.to_str().unwrap();
+        let pid = std::process::id();
 
         let record = format!(
-            "type=SYSCALL msg=audit(1615114232.375:99999): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=2 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
+            "type=SYSCALL msg=audit(1615114232.375:99999): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid={pid} auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
              type=EXECVE msg=audit(1615114232.375:99999): argc=1 a0=\"test\"\n\
              type=EOE msg=audit(1615114232.375:99999):\n"
         );
@@ -2345,10 +2346,11 @@ type=EOE msg=audit(1740992884.191:7058722):
 
         let tmp_path = std::env::temp_dir().join("laurel_exe_hash_cache_invalidation_test");
         let exe_path = tmp_path.to_str().unwrap().to_string();
+        let pid = std::process::id();
 
         let make_record = |seq: u64| {
             format!(
-                "type=SYSCALL msg=audit(1615114232.375:{seq}): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=2 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
+                "type=SYSCALL msg=audit(1615114232.375:{seq}): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid={pid} auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
                  type=EXECVE msg=audit(1615114232.375:{seq}): argc=1 a0=\"test\"\n\
                  type=EOE msg=audit(1615114232.375:{seq}):\n"
             )
@@ -2394,9 +2396,10 @@ type=EOE msg=audit(1740992884.191:7058722):
         let content = b"this executable is too large to hash";
         std::fs::write(&tmp_path, content)?;
         let exe_path = tmp_path.to_str().unwrap();
+        let pid = std::process::id();
 
         let record = format!(
-            "type=SYSCALL msg=audit(1615114232.375:99997): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=2 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
+            "type=SYSCALL msg=audit(1615114232.375:99997): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid={pid} auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe_path}\" key=(null)\n\
              type=EXECVE msg=audit(1615114232.375:99997): argc=1 a0=\"test\"\n\
              type=EOE msg=audit(1615114232.375:99997):\n"
         );
@@ -2431,10 +2434,11 @@ type=EOE msg=audit(1740992884.191:7058722):
         std::fs::write(&tmp_b, content_b)?;
         let hash_a = hex_string(Sha256::digest(content_a).as_ref());
         let hash_b = hex_string(Sha256::digest(content_b).as_ref());
+        let pid = std::process::id();
 
         let make_record = |seq: u64, exe: &str| {
             format!(
-                "type=SYSCALL msg=audit(1615114232.375:{seq}): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=2 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe}\" key=(null)\n\
+                "type=SYSCALL msg=audit(1615114232.375:{seq}): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid={pid} auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm=\"test\" exe=\"{exe}\" key=(null)\n\
                  type=EXECVE msg=audit(1615114232.375:{seq}): argc=1 a0=\"test\"\n\
                  type=EOE msg=audit(1615114232.375:{seq}):\n"
             )
