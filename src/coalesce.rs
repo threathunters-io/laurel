@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_string;
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 use sha2::{Digest, Sha256};
 
 use linux_audit_parser::*;
@@ -163,11 +165,13 @@ pub struct State<'ev> {
     userdb: UserDB,
 }
 
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 /// LRU cache for exe hashes, keyed by (dev, inode, mtime_nsec)
 struct ExeHashCache {
     entries: indexmap::IndexMap<(u64, u64, i64), String>,
 }
 
+#[cfg(all(feature = "procfs", target_os = "linux"))]
 impl ExeHashCache {
     fn new() -> Self {
         ExeHashCache {
@@ -203,6 +207,7 @@ pub struct Coalesce<'a, 'ev> {
     /// Output function
     emit_fn: Box<dyn 'a + FnMut(&Event<'ev>)>,
     /// Cache for exe hashes
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     exe_hash_cache: ExeHashCache,
 
     pub settings: Settings,
@@ -422,6 +427,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             state: State::default(),
             next_expire: None,
             emit_fn: Box::new(emit_fn),
+            #[cfg(all(feature = "procfs", target_os = "linux"))]
             exe_hash_cache: ExeHashCache::new(),
             settings: Settings::default(),
         }
@@ -1233,6 +1239,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
         if self.settings.enrich_exe_hash {
             if let Some(exe_bytes) = exe {
                 use std::os::unix::fs::MetadataExt;
@@ -2304,6 +2311,7 @@ type=EOE msg=audit(1740992884.191:7058722):
     }
 
     #[test]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn exe_hash() -> Result<(), Box<dyn Error>> {
         use sha2::{Digest, Sha256};
 
@@ -2341,6 +2349,7 @@ type=EOE msg=audit(1740992884.191:7058722):
     }
 
     #[test]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn exe_hash_cache_invalidation() -> Result<(), Box<dyn Error>> {
         use sha2::{Digest, Sha256};
 
@@ -2373,8 +2382,11 @@ type=EOE msg=audit(1740992884.191:7058722):
             "first event should contain hash of content_1"
         );
 
-        // Overwrite the file with different content (mtime changes → cache miss)
+        // Replace the file (new inode + mtime → guaranteed cache miss).
+        // An in-place overwrite could produce the same mtime under high parallel-test
+        // load if the clock granularity is coarser than the time between the two writes.
         let content_2 = b"version two of binary - replaced";
+        std::fs::remove_file(&tmp_path)?;
         std::fs::write(&tmp_path, content_2)?;
         let hash_2 = hex_string(Sha256::digest(content_2).as_ref());
         assert_ne!(hash_1, hash_2);
@@ -2391,6 +2403,7 @@ type=EOE msg=audit(1740992884.191:7058722):
     }
 
     #[test]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn exe_hash_size_limit() -> Result<(), Box<dyn Error>> {
         let tmp_path = std::env::temp_dir().join("laurel_exe_hash_size_limit_test");
         let content = b"this executable is too large to hash";
@@ -2423,6 +2436,7 @@ type=EOE msg=audit(1740992884.191:7058722):
     }
 
     #[test]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn exe_hash_cache_eviction() -> Result<(), Box<dyn Error>> {
         use sha2::{Digest, Sha256};
 
