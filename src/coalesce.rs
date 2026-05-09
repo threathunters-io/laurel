@@ -1144,6 +1144,16 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             (false, Some(proc)) => (false, proc.clone()),
             (_, proc) => {
                 let is_first = *is_exec || proc.is_none();
+
+                if let Some(pre_exec_proc) = self
+                    .state
+                    .processes
+                    .get_pid(pid)
+                    .and_then(|p| (ppid == p.ppid).then_some(p))
+                {
+                    self.propagate_labels(pre_exec_proc, &mut labels);
+                }
+
                 let parent_proc = self.state.processes.get_or_retrieve(ppid).cloned();
                 let parent = parent_proc.as_ref().map(|p| p.key);
 
@@ -2129,7 +2139,6 @@ mod test {
     /// dpkg-query. dpkg-query and the pager should inherit the
     /// pkg_mgmt label.
     #[test]
-    #[should_panic]
     fn proc_trace_exec_without_fork() {
         let s = Settings {
             label_exe: LabelMatcher::new(&[("^/usr/bin/dpkg$", "pkg_mgmt")]).ok(),
