@@ -2062,6 +2062,46 @@ mod test {
         }
     }
 
+    /// Running a simple "dpkg -l" causes dpkg to exec (without fork)
+    /// dpkg-query. dpkg-query and the pager should inherit the
+    /// pkg_mgmt label.
+    #[test]
+    #[should_panic]
+    fn proc_trace_exec_without_fork() {
+        let s = Settings {
+            label_exe: LabelMatcher::new(&[("^/usr/bin/dpkg$", "pkg_mgmt")]).ok(),
+            proc_propagate_labels: [b"pkg_mgmt".to_vec()].into(),
+            ..Settings::default()
+        };
+
+        let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+        let mut c = Coalesce::new(mk_emit_vec(&events));
+        c.settings = s;
+
+        process_record(&mut c, include_bytes!("testdata/proc-trace-dpkg-l.txt")).unwrap();
+
+        drop(c);
+
+        // process_record(&mut c, include_bytes!("testdata/proc-trace-dpkg-l.txt")).unwrap();
+
+        let events = events.borrow();
+
+        for id in [
+            "1778355636.725:2322552",
+            "1778355636.728:2322553",
+            "1778355636.752:2322555",
+            "1778355636.754:2322557",
+        ] {
+            let event = find_event(&events, id).unwrap_or_else(|| panic!("did not find {id}"));
+            let j = event_to_json(&event);
+            println!("{j}");
+            assert!(
+                j.contains(r#","LABELS":["pkg_mgmt"]},"#),
+                "{id} should inherit label"
+            )
+        }
+    }
+
     #[test]
     fn shell_proc_trace_confusion() {
         let s1 = Settings {

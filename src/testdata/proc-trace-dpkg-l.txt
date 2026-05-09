@@ -1,0 +1,83 @@
+# login something
+type=SYSCALL msg=audit(1778355633.147:2322535): arch=c000003e syscall=56 success=yes exit=1140453 a0=1200011 a1=0 a2=0 a3=70cd41bb3690 items=0 ppid=1140356 pid=1140452 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=(none) ses=14636 comm="sshd" exe="/usr/sbin/sshd" subj=unconfined key="fork"
+
+type=SYSCALL msg=audit(1778355633.149:2322536): arch=c000003e syscall=59 success=yes exit=0 a0=612b2b685f10 a1=7ffe25d62770 a2=612b2b687480 a3=8 items=2 ppid=1140452 pid=1140453 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="bash" exe="/usr/bin/bash" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355633.149:2322536): argc=1 a0="-bash"
+type=CWD msg=audit(1778355633.149:2322536): cwd="/home/user"
+type=PATH msg=audit(1778355633.149:2322536): item=0 name="/bin/bash" inode=13348 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355633.149:2322536): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=SYSCALL msg=audit(1778355633.155:2322537): arch=c000003e syscall=56 success=yes exit=1140454 a0=1200011 a1=0 a2=0 a3=775bbd34aa10 items=0 ppid=1140452 pid=1140453 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="bash" exe="/usr/bin/bash" subj=unconfined key="fork"
+type=SYSCALL msg=audit(1778355633.156:2322538): arch=c000003e syscall=59 success=yes exit=0 a0=5adc9eab0710 a1=5adc9eaac9b0 a2=5adc9eab0af0 a3=8 items=2 ppid=1140453 pid=1140454 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="locale-check" exe="/usr/bin/locale-check" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355633.156:2322538): argc=2 a0="/usr/bin/locale-check" a1="C.UTF-8"
+type=CWD msg=audit(1778355633.156:2322538): cwd="/home/user"
+type=PATH msg=audit(1778355633.156:2322538): item=0 name="/usr/bin/locale-check" inode=5177 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355633.156:2322538): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=SYSCALL msg=audit(1778355633.159:2322539): arch=c000003e syscall=56 success=yes exit=1140455 a0=1200011 a1=0 a2=0 a3=775bbd34aa10 items=0 ppid=1140452 pid=1140453 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="bash" exe="/usr/bin/bash" subj=unconfined key="fork"
+type=SYSCALL msg=audit(1778355633.159:2322540): arch=c000003e syscall=56 success=yes exit=1140456 a0=1200011 a1=0 a2=0 a3=775bbd34aa10 items=0 ppid=1140452 pid=1140453 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="bash" exe="/usr/bin/bash" subj=unconfined key="fork"
+type=SYSCALL msg=audit(1778355633.160:2322541): arch=c000003e syscall=59 success=yes exit=0 a0=5adc9eab7ff0 a1=5adc9eaad360 a2=5adc9eaac330 a3=8 items=2 ppid=1140453 pid=1140455 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="locale" exe="/usr/bin/locale" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355633.160:2322541): argc=1 a0="locale"
+type=CWD msg=audit(1778355633.160:2322541): cwd="/home/user"
+type=PATH msg=audit(1778355633.160:2322541): item=0 name="/usr/bin/locale" inode=3717 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355633.160:2322541): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=SYSCALL msg=audit(1778355633.184:2322542): arch=c000003e syscall=56 success=yes exit=1140457 a0=1200011 a1=0 a2=0 a3=775bbd34aa10 items=0 ppid=1140452 pid=1140453 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="bash" exe="/usr/bin/bash" subj=unconfined key="fork"
+type=SYSCALL msg=audit(1778355633.185:2322543): arch=c000003e syscall=59 success=yes exit=0 a0=5adc9eaac8b0 a1=5adc9eb89ba0 a2=5adc9ebad150 a3=1 items=3 ppid=1140453 pid=1140457 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="lesspipe" exe="/usr/bin/dash" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355633.185:2322543): argc=2 a0="/bin/sh" a1="/usr/bin/lesspipe"
+type=CWD msg=audit(1778355633.185:2322543): cwd="/home/user"
+type=PATH msg=audit(1778355633.185:2322543): item=0 name="/usr/bin/lesspipe" inode=18934 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355633.185:2322543): item=1 name="/bin/sh" inode=2751 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355633.185:2322543): item=2 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=SYSCALL msg=audit(1778355633.187:2322544): arch=c000003e syscall=56 success=yes exit=1140458 a0=1200011 a1=0 a2=0 a3=731c5e2d6a10 items=0 ppid=1140453 pid=1140457 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="lesspipe" exe="/usr/bin/dash" subj=unconfined key="fork"
+type=SYSCALL msg=audit(1778355633.188:2322545): arch=c000003e syscall=59 success=yes exit=0 a0=59c098cb2958 a1=59c065a65600 a2=59c098cb28b8 a3=1 items=2 ppid=1140457 pid=1140458 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="basename" exe="/usr/bin/basename" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355633.188:2322545): argc=2 a0="basename" a1="/usr/bin/lesspipe"
+type=CWD msg=audit(1778355633.188:2322545): cwd="/home/user"
+type=PATH msg=audit(1778355633.188:2322545): item=0 name="/usr/bin/basename" inode=6456 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355633.188:2322545): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=SYSCALL msg=audit(1778355633.190:2322546): arch=c000003e syscall=56 success=yes exit=1140459 a0=1200011 a1=0 a2=0 a3=731c5e2d6a10 items=0 ppid=1140453 pid=1140457 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="lesspipe" exe="/usr/bin/dash" subj=unconfined key="fork"
+type=SYSCALL msg=audit(1778355633.191:2322547): arch=c000003e syscall=56 success=yes exit=1140460 a0=1200011 a1=0 a2=0 a3=731c5e2d6a10 items=0 ppid=1140457 pid=1140459 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="lesspipe" exe="/usr/bin/dash" subj=unconfined key="fork"
+type=SYSCALL msg=audit(1778355633.191:2322548): arch=c000003e syscall=59 success=yes exit=0 a0=59c098cbe8d8 a1=59c098cbe820 a2=59c098cbe838 a3=1 items=2 ppid=1140459 pid=1140460 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="dirname" exe="/usr/bin/dirname" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355633.191:2322548): argc=2 a0="dirname" a1="/usr/bin/lesspipe"
+type=CWD msg=audit(1778355633.191:2322548): cwd="/home/user"
+type=PATH msg=audit(1778355633.191:2322548): item=0 name="/usr/bin/dirname" inode=9917 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355633.191:2322548): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=SYSCALL msg=audit(1778355633.194:2322549): arch=c000003e syscall=56 success=yes exit=1140461 a0=1200011 a1=0 a2=0 a3=775bbd34aa10 items=0 ppid=1140452 pid=1140453 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="bash" exe="/usr/bin/bash" subj=unconfined key="fork"
+
+
+type=SYSCALL msg=audit(1778355633.195:2322550): arch=c000003e syscall=59 success=yes exit=0 a0=5adc9eb9ba30 a1=5adc9ebb9790 a2=5adc9ebb2ce0 a3=1 items=2 ppid=1140453 pid=1140461 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="dircolors" exe="/usr/bin/dircolors" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355633.195:2322550): argc=2 a0="dircolors" a1="-b"
+type=CWD msg=audit(1778355633.195:2322550): cwd="/home/user"
+type=PATH msg=audit(1778355633.195:2322550): item=0 name="/usr/bin/dircolors" inode=9484 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355633.195:2322550): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+
+type=SYSCALL msg=audit(1778355636.724:2322551): arch=c000003e syscall=56 success=yes exit=1140462 a0=1200011 a1=0 a2=0 a3=775bbd34aa10 items=0 ppid=1140452 pid=1140453 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="bash" exe="/usr/bin/bash" subj=unconfined key="fork"
+
+# Initial process that will get the label "pkg_mgmt"
+type=SYSCALL msg=audit(1778355636.725:2322552): arch=c000003e syscall=59 success=yes exit=0 a0=5adc9eb8a4d0 a1=5adc9ebb67e0 a2=5adc9ebb2ce0 a3=5adc9ebb67e0 items=2 ppid=1140453 pid=1140462 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="dpkg" exe="/usr/bin/dpkg" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355636.725:2322552): argc=2 a0="dpkg" a1="-l"
+type=CWD msg=audit(1778355636.725:2322552): cwd="/home/user"
+type=PATH msg=audit(1778355636.725:2322552): item=0 name="/usr/bin/dpkg" inode=4926 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355636.725:2322552): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+
+# This process should get it, too. But it currently does not … yet.
+type=SYSCALL msg=audit(1778355636.728:2322553): arch=c000003e syscall=59 success=yes exit=0 a0=7ffc8ae89ab0 a1=60aeea35a560 a2=60aeea3526c0 a3=ffffffff items=2 ppid=1140453 pid=1140462 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="dpkg-query" exe="/usr/bin/dpkg-query" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355636.728:2322553): argc=3 a0="dpkg-query" a1="--list" a2="--"
+type=CWD msg=audit(1778355636.728:2322553): cwd="/home/user"
+type=PATH msg=audit(1778355636.728:2322553): item=0 name="/usr/bin/dpkg-query" inode=5616 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355636.728:2322553): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+
+type=SYSCALL msg=audit(1778355636.751:2322554): arch=c000003e syscall=56 success=yes exit=1140463 a0=1200011 a1=0 a2=0 a3=7eb656f33a10 items=0 ppid=1140453 pid=1140462 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="dpkg-query" exe="/usr/bin/dpkg-query" subj=unconfined key="fork"
+
+# Neither does shell/pager … yet.
+type=SYSCALL msg=audit(1778355636.752:2322555): arch=c000003e syscall=59 success=yes exit=0 a0=7ffc97766db0 a1=7ffc97766ec0 a2=5f2cc0ea16c0 a3=5f2ca95ab27c items=2 ppid=1140462 pid=1140463 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="sh" exe="/usr/bin/dash" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355636.752:2322555): argc=4 a0="sh" a1="-c" a2="--" a3="pager"
+type=CWD msg=audit(1778355636.752:2322555): cwd="/home/user"
+type=PATH msg=audit(1778355636.752:2322555): item=0 name="/usr/bin/sh" inode=2751 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355636.752:2322555): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+
+type=SYSCALL msg=audit(1778355636.754:2322556): arch=c000003e syscall=58 success=yes exit=1140464 a0=5da7304a49c1 a1=7ffd373ef930 a2=0 a3=8 items=0 ppid=1140462 pid=1140463 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="sh" exe="/usr/bin/dash" subj=unconfined key="fork"
+
+# Neither does pager … yet.
+type=SYSCALL msg=audit(1778355636.754:2322557): arch=c000003e syscall=59 success=yes exit=0 a0=5da7304ba600 a1=5da7304ba518 a2=5da7304ba528 a3=8 items=2 ppid=1140463 pid=1140464 auid=1019 uid=1019 gid=1019 euid=1019 suid=1019 fsuid=1019 egid=1019 sgid=1019 fsgid=1019 tty=pts1 ses=14636 comm="pager" exe="/usr/bin/less" subj=unconfined key=(null)
+type=EXECVE msg=audit(1778355636.754:2322557): argc=1 a0="pager"
+type=CWD msg=audit(1778355636.754:2322557): cwd="/home/user"
+type=PATH msg=audit(1778355636.754:2322557): item=0 name="/usr/bin/pager" inode=18931 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1778355636.754:2322557): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=35529 dev=103:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
