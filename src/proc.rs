@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+#[cfg(all(feature = "procfs", target_os = "linux", not(test)))]
+use std::collections::BTreeSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::iter::Iterator;
 use std::str::FromStr;
@@ -18,7 +20,6 @@ use crate::label_matcher::LabelMatcher;
 
 use linux_audit_parser::*;
 
-use crate::coalesce;
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 
@@ -309,6 +310,10 @@ impl ProcTable {
         self.get_pid(pid)
     }
 
+    pub fn keys(&self) -> std::collections::btree_map::Keys<'_, ProcessKey, Process> {
+        self.processes.keys()
+    }
+
     /// Fetch process information from procfs, insert into shadow
     /// process table.
     #[cfg(all(feature = "procfs", target_os = "linux"))]
@@ -379,66 +384,6 @@ impl ProcTable {
     /// there's no procfs support.
     #[cfg(not(all(feature = "procfs", target_os = "linux", not(test))))]
     pub fn expire(&self) {}
-
-    pub fn set_labels(&mut self, key: &ProcessKey, labels: &HashSet<Vec<u8>>) {
-        if let Some(p) = self.processes.get_mut(key) {
-            p.labels.clone_from(labels);
-        }
-    }
-
-    /// Apply exe-specific labels to a single process
-    pub fn relabel_process(&mut self, pk: &ProcessKey, settings: &coalesce::Settings) {
-        let proc = match self.processes.get(pk) {
-            Some(p) => p,
-            _ => return,
-        };
-        // inherit
-        let mut labels = proc.labels.clone();
-        if let Some(parent) = proc.parent.and_then(|pk| self.processes.get(&pk)) {
-            labels.extend(
-                parent
-                    .labels
-                    .intersection(&settings.proc_propagate_labels)
-                    .cloned(),
-            );
-        }
-        // label, unlabel
-        if let (Some(exe), Some(label_exe)) = (&proc.exe, &settings.label_exe) {
-            for label in label_exe.matches(exe) {
-                labels.insert(label.into());
-            }
-        }
-        if let (Some(exe), Some(unlabel_exe)) = (&proc.exe, &settings.unlabel_exe) {
-            for label in unlabel_exe.matches(exe) {
-                labels.remove(label);
-            }
-        }
-        self.processes.get_mut(pk).unwrap().labels = labels;
-    }
-
-    /// Apply exe-specific labels to all processes in the process table
-    ///
-    /// This means applying propagate-labels, label-exe, unlabel-exe.
-    pub fn relabel_all(&mut self, settings: &coalesce::Settings) {
-        // Create an ordering of processes such that every process
-        // precedes all its childen
-        let mut unseen: BTreeSet<ProcessKey> = self.processes.keys().cloned().collect();
-        for pk in &unseen.clone() {
-            let mut chain = vec![];
-            let mut key = *pk;
-            loop {
-                chain.push(key);
-                unseen.remove(&key);
-                key = match self.processes.get(&key).and_then(|proc| proc.parent) {
-                    Some(pk) if unseen.contains(&pk) => pk,
-                    _ => break,
-                };
-            }
-            for pk in chain.iter().rev() {
-                self.relabel_process(pk, settings);
-            }
-        }
-    }
 }
 
 #[cfg(test)]

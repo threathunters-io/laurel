@@ -392,9 +392,79 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         self
     }
 
+    /// Apply
+    fn label_exe(&self, exe: &[u8], labels: &mut HashSet<Vec<u8>>) {
+        if let Some(label_exe) = &self.settings.label_exe {
+            for label in label_exe.matches(exe) {
+                labels.insert(label.into());
+            }
+        }
+        if let Some(unlabel_exe) = &self.settings.unlabel_exe {
+            for label in unlabel_exe.matches(exe) {
+                labels.remove(label);
+            }
+        }
+    }
+
+    /// Add labels from `proc` to `labels`, according to
+    /// `self.settings.proc_propagate_labels`.
+    fn propagate_labels(&self, proc: &Process, labels: &mut HashSet<Vec<u8>>) {
+        labels.extend(
+            proc.labels
+                .intersection(&self.settings.proc_propagate_labels)
+                .cloned(),
+        );
+    }
+
+    /// Apply exe-specific labels to all processes in the process table
+    ///
+    /// This means applying `self.settings.proc_propagate_labels`,
+    /// `self.settings.label_exe`, `self.settings.unlabel_exe`.
+    fn label_processes(&mut self) {
+        use std::collections::BTreeSet;
+        // Create an ordering of processes such that every process
+        // precedes all its childen
+        let mut unseen: BTreeSet<ProcessKey> = self.state.processes.keys().cloned().collect();
+        for pk in &unseen.clone() {
+            let mut chain = vec![];
+            let mut key = *pk;
+            // walk up the tree
+            loop {
+                chain.push(key);
+                unseen.remove(&key);
+                match self
+                    .state
+                    .processes
+                    .get_key(&key)
+                    .and_then(|proc| proc.parent)
+                    .and_then(|pk| unseen.contains(&pk).then_some(pk))
+                {
+                    Some(k) => key = k,
+                    None => break,
+                }
+            }
+            for pk in chain.iter().rev() {
+                let Some(proc) = self.state.processes.get_key(pk) else {
+                    return;
+                };
+                // inherit
+                let mut labels = proc.labels.clone();
+
+                if let Some(parent) = proc.parent.and_then(|pk| self.state.processes.get_key(&pk)) {
+                    self.propagate_labels(parent, &mut labels);
+                }
+
+                if let Some(exe) = &proc.exe {
+                    self.label_exe(exe, &mut labels);
+                }
+                self.state.processes.get_key_mut(pk).unwrap().labels = labels;
+            }
+        }
+    }
+
     pub fn with_state(mut self, state: State<'ev>) -> Self {
         self.state = state;
-        self.state.processes.relabel_all(&self.settings);
+        self.label_processes();
         self
     }
 
@@ -410,7 +480,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             self.settings.label_exe.clone(),
             &self.settings.proc_propagate_labels,
         )?;
-        self.state.processes.relabel_all(&self.settings);
+        self.label_processes();
 
         Ok(())
     }
@@ -1064,77 +1134,70 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             *filter_event = true;
         }
 
-        let mut proc = None;
-        if !*is_exec {
-            // Look up process from our process table, but only use it
-            // if it matches the current record. Otherwise assume that
-            // this is a new process.
-            proc = self
-                .state
+        let (first_per_process, proc) = match (
+            *is_exec,
+            self.state
                 .processes
                 .get_pid(pid)
-                .filter(|p| p.pid == pid && p.ppid == ppid && p.exe.as_deref() == exe)
-        }
+                .filter(|p| p.pid == pid && p.ppid == ppid && p.exe.as_deref() == exe),
+        ) {
+            (false, Some(proc)) => (false, proc.clone()),
+            (_, proc) => {
+                let is_first = *is_exec || proc.is_none();
+                let parent_proc = self.state.processes.get_or_retrieve(ppid).cloned();
+                let parent = parent_proc.as_ref().map(|p| p.key);
 
-        let mut first_per_process = false;
-
-        if proc.is_none() {
-            first_per_process = true;
-
-            let key = ProcessKey::Event(id);
-            let parent_process = self.state.processes.get_or_retrieve(ppid).cloned();
-            let parent = parent_process.as_ref().map(|p| p.key);
-
-            self.state.processes.insert(Process {
-                key,
-                parent,
-                pid,
-                ppid,
-                labels,
-                exe: exe.map(Vec::from),
-                comm: comm.map(Vec::from),
-                ..Process::default()
-            });
-
-            self.state.processes.relabel_process(&key, &self.settings);
-
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
-            if self.settings.enrich_container || self.settings.enrich_systemd {
-                let mut container_info: Option<ContainerInfo> = None;
-                let mut systemd_service: Option<Vec<Vec<u8>>> = None;
-                let cgroup = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
-                if self.settings.enrich_container {
-                    container_info = match cgroup {
-                        Some(ref path) => {
-                            proc::try_extract_container_id(path).map(|id| ContainerInfo { id })
-                        }
-                        _ => self
-                            .state
-                            .processes
-                            .get_pid(ppid)
-                            .and_then(|p| p.container_info.clone()),
-                    };
+                if let Some(ref p) = parent_proc {
+                    self.propagate_labels(p, &mut labels)
                 }
-                if self.settings.enrich_systemd {
-                    systemd_service = match cgroup {
-                        Some(ref path) => proc::try_extract_systemd_service(path),
-                        _ => None,
-                    };
+                if let Some(exe) = exe {
+                    self.label_exe(exe, &mut labels)
                 }
-                let new_proc = self.state.processes.get_key_mut(&key).unwrap();
-                new_proc.container_info = container_info;
-                new_proc.systemd_service = systemd_service;
+
+                let mut new_proc = Process {
+                    key: ProcessKey::Event(id),
+                    parent,
+                    pid,
+                    ppid,
+                    labels,
+                    exe: exe.map(Vec::from),
+                    comm: comm.map(Vec::from),
+                    ..Process::default()
+                };
+
+                #[cfg(all(feature = "procfs", target_os = "linux"))]
+                if self.settings.enrich_container || self.settings.enrich_systemd {
+                    let mut container_info: Option<ContainerInfo> = None;
+                    let mut systemd_service: Option<Vec<Vec<u8>>> = None;
+                    let cgroup = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
+                    if self.settings.enrich_container {
+                        container_info = match cgroup {
+                            Some(ref path) => {
+                                proc::try_extract_container_id(path).map(|id| ContainerInfo { id })
+                            }
+                            _ => parent_proc.as_ref().and_then(|p| p.container_info.clone()),
+                        };
+                    }
+                    if self.settings.enrich_systemd {
+                        systemd_service = match cgroup {
+                            Some(ref path) => proc::try_extract_systemd_service(path),
+                            _ => parent_proc.as_ref().and_then(|p| p.systemd_service.clone()),
+                        };
+                    }
+                    new_proc.container_info = container_info;
+                    new_proc.systemd_service = systemd_service;
+                }
+
+                self.state.processes.insert(new_proc.clone());
+                (is_first, new_proc)
             }
-
-            proc = self.state.processes.get_key(&key);
-        }
-
-        let proc = proc.unwrap();
+        };
 
         if proc
             .labels
             .intersection(&self.settings.filter_labels)
-            .any(|_| true)
+            .next()
+            .is_some()
         {
             *filter_event = true;
         }
@@ -1168,7 +1231,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if self.settings.enrich_pid {
-            self.add_record_procinfo(body, b"pid", proc);
+            self.add_record_procinfo(body, b"pid", &proc);
             if let Some(parent_process) = proc
                 .parent
                 .and_then(|key| self.state.processes.get_key(&key))
