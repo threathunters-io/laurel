@@ -251,8 +251,7 @@ impl ProcTable {
                 // /proc/<pid> access is racy. Ignore errors here.
                 if let Ok(mut proc) = Process::parse_proc(pid) {
                     if let (Some(label_exe), Some(exe)) = (&label_exe, &proc.exe) {
-                        proc.labels
-                            .extend(label_exe.matches(exe).iter().map(|v| Vec::from(*v)));
+                        proc.labels.extend(label_exe.matches(exe).map(Vec::from));
                     }
                     pt.insert(proc);
                 }
@@ -268,8 +267,7 @@ impl ProcTable {
         if let Some(label_exe) = &label_exe {
             for proc in pt.processes.values_mut() {
                 if let Some(exe) = &proc.exe {
-                    proc.labels
-                        .extend(label_exe.matches(exe).into_iter().map(|c| c.into()))
+                    proc.labels.extend(label_exe.matches(exe).map(Vec::from))
                 }
             }
             if !propagate_labels.is_empty() { /* TODO */ }

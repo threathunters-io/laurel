@@ -24,12 +24,11 @@ impl LabelMatcher {
         Ok(Self { set, tags })
     }
     // Return the list of tags that are supposed to describe text
-    pub fn matches(&self, text: &[u8]) -> Vec<&[u8]> {
+    pub fn matches<'a>(&'a self, text: &'a [u8]) -> impl Iterator<Item = &'a [u8]> {
         self.set
             .matches(text)
-            .iter()
+            .into_iter()
             .map(|i| self.tags[i].as_ref())
-            .collect()
     }
 }
 
