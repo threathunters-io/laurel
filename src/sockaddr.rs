@@ -106,16 +106,13 @@ impl SocketAddr {
         match fam {
             AF_LOCAL => {
                 let sa = get_sock::<sockaddr_un>(buf)?;
+                let start = (sa.sun_path[0] == 0) as usize;
                 #[allow(clippy::unnecessary_cast)]
-                let path: Vec<u8> = if sa.sun_path[0] == 0 {
-                    &sa.sun_path[1..]
-                } else {
-                    &sa.sun_path[..]
-                }
-                .iter()
-                .take_while(|c| **c != 0)
-                .map(|c| *c as u8)
-                .collect();
+                let path = sa.sun_path[start..]
+                    .iter()
+                    .take_while(|c| **c != 0)
+                    .map(|c| *c as u8)
+                    .collect();
                 Ok(SocketAddr::Local(SocketAddrLocal { path }))
             }
             AF_INET => {
