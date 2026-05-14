@@ -505,16 +505,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     }
 
     fn expire_done(&mut self, now: u64) {
-        let event_keys = self
-            .state
+        self.state
             .done
-            .iter()
-            .filter(|EventKey(_, id)| id.timestamp + EXPIRE_DONE_TIMEOUT < now)
-            .cloned()
-            .collect::<Vec<_>>();
-        for event_key in event_keys {
-            self.state.done.remove(&event_key);
-        }
+            .retain(|EventKey(_, id)| id.timestamp + EXPIRE_DONE_TIMEOUT >= now);
     }
 
     /// Create an enriched pid entry in rv.
