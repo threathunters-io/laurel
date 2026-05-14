@@ -490,18 +490,13 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     ///
     /// Called every EXPIRE_PERIOD ms and when Coalesce is destroyed.
     fn expire_inflight(&mut self, now: u64) {
-        let event_keys = self
-            .state
-            .inflight
-            .keys()
-            .filter(|EventKey(_, id)| id.timestamp + EXPIRE_INFLIGHT_TIMEOUT < now)
-            .cloned()
-            .collect::<Vec<_>>();
-        for event_key in event_keys {
-            if let Some(event) = self.state.inflight.remove(&event_key) {
-                self.emit_event(event);
-            }
-        }
+        let mut events = vec![];
+        self.state.inflight.retain(|EventKey(_, id), event| {
+            let emit = id.timestamp + EXPIRE_INFLIGHT_TIMEOUT < now;
+            emit.then(|| events.push(event.clone()));
+            !emit
+        });
+        events.into_iter().for_each(|event| self.emit_event(event));
     }
 
     fn expire_done(&mut self, now: u64) {
