@@ -250,7 +250,7 @@ struct UserGroupIDs {
 }
 
 impl UserGroupIDs {
-    fn collect(&mut self, name: &[u8], id: u32) {
+    fn push(&mut self, name: &[u8], id: u32) {
         if name == b"uid" {
             self.uid = Some(id);
         } else {
@@ -608,7 +608,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             match (k, v) {
                 (Key::NameUID(name), Value::Number(Number::Dec(n)))
                 | (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect(name, *n as _);
+                    ids.push(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
@@ -702,7 +702,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             match (k, v) {
                 (Key::NameUID(name), Value::Number(Number::Dec(n)))
                 | (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect(name, *n as _);
+                    ids.push(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
@@ -1076,7 +1076,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 (Key::Common(Common::Key), Value::Str(s, _)) => key = Some(*s),
                 (Key::NameUID(name), Value::Number(Number::Dec(n)))
                 | (Key::NameGID(name), Value::Number(Number::Dec(n))) => {
-                    ids.collect(name, *n as _);
+                    ids.push(name, *n as _);
                     if self.settings.drop_translated {
                         return false;
                     }
