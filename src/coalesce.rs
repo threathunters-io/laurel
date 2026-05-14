@@ -357,12 +357,13 @@ fn path_script_name(path: &Body, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) ->
         } else if k == "dev" {
             if let Value::Str(r, _) = v {
                 p_dev = String::from_utf8_lossy(r)
-                    .split(':')
-                    .filter_map(|part| u64::from_str_radix(part, 16).ok())
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .ok()
-                    .map(|a: [u64; 2]| makedev(a[0], a[1]));
+                    .split_once(':')
+                    .and_then(|(maj, min)| {
+                        Some(makedev(
+                            u64::from_str_radix(maj, 16).ok()?,
+                            u64::from_str_radix(min, 16).ok()?,
+                        ))
+                    });
             }
             break;
         }
