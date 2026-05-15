@@ -172,13 +172,15 @@ pub struct State<'ev> {
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 /// LRU cache for exe hashes, keyed by (dev, inode, mtime_nsec)
 struct ExeHashCache {
+    max_entries: usize,
     entries: indexmap::IndexMap<(u64, u64, i64), [u8; 32]>,
 }
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 impl ExeHashCache {
-    fn new() -> Self {
+    fn new(max_entries: usize) -> Self {
         ExeHashCache {
+            max_entries,
             entries: indexmap::IndexMap::new(),
         }
     }
@@ -191,11 +193,11 @@ impl ExeHashCache {
         Some(hash)
     }
 
-    fn insert(&mut self, key: (u64, u64, i64), hash: [u8; 32], max_entries: usize) {
-        if max_entries == 0 {
+    fn insert(&mut self, key: (u64, u64, i64), hash: [u8; 32]) {
+        if self.max_entries == 0 {
             return;
         }
-        if self.entries.len() >= max_entries {
+        if self.entries.len() >= self.max_entries {
             self.entries.shift_remove_index(0);
         }
         self.entries.insert(key, hash);
@@ -212,7 +214,7 @@ pub struct Coalesce<'a, 'ev> {
     emit_fn: Box<dyn 'a + FnMut(&Event<'ev>)>,
     /// Cache for exe hashes
     #[cfg(all(feature = "procfs", target_os = "linux"))]
-    exe_hash_cache: ExeHashCache,
+    exe_hash_cache: Option<ExeHashCache>,
 
     pub settings: Settings,
 }
@@ -433,13 +435,20 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             next_expire: None,
             emit_fn: Box::new(emit_fn),
             #[cfg(all(feature = "procfs", target_os = "linux"))]
-            exe_hash_cache: ExeHashCache::new(),
+            exe_hash_cache: None,
+            // let max = self.settings.enrich_exe_hash_cache_entries;
             settings: Settings::default(),
         }
     }
 
     pub fn with_settings(mut self, settings: Settings) -> Self {
         self.settings = settings;
+        #[cfg(all(feature = "procfs", target_os = "linux"))]
+        if self.settings.enrich_exe_hash_cache_entries > 0 {
+            self.exe_hash_cache = Some(ExeHashCache::new(
+                self.settings.enrich_exe_hash_cache_entries,
+            ));
+        }
         self
     }
 
@@ -1306,13 +1315,16 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         #[cfg(all(feature = "procfs", target_os = "linux"))]
-        if let (Some(exe), true) = (exe, self.settings.enrich_exe_hash) {
+        if let Some(exe) = exe {
             self.enrich_exe_hash(body, pid, exe);
         }
     }
 
     #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn enrich_exe_hash(&mut self, rv: &mut Body, pid: u32, exe: &[u8]) {
+        let Some(ref mut cache) = self.exe_hash_cache else {
+            return;
+        };
         let Ok(fd) = procfs::open_pid_exe_meta(pid) else {
             return;
         };
@@ -1330,8 +1342,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         let cache_key = (meta.dev(), meta.ino(), meta.mtime_nsec());
-        let max = self.settings.enrich_exe_hash_cache_entries;
-        let hash = match self.exe_hash_cache.get(&cache_key) {
+        let hash = match cache.get(&cache_key) {
             Some(h) => h,
             None => {
                 let mut hasher = Sha256Writer::default();
@@ -1342,7 +1353,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     return;
                 };
                 let h = hasher.finalize();
-                self.exe_hash_cache.insert(cache_key, h, max);
+                cache.insert(cache_key, h);
                 h
             }
         };
@@ -2469,12 +2480,14 @@ type=EOE msg=audit(1615114232.375:99999):
         );
 
         let ec = Rc::new(RefCell::new(None));
-        let mut c = Coalesce::new(mk_emit(&ec));
-        c.settings.enrich_exe_hash = true;
+        let mut c = Coalesce::new(mk_emit(&ec)).with_settings(Settings {
+            enrich_exe_hash: true,
+            enrich_exe_hash_size_limit: 20_000_000,
+            enrich_uid_groups: false,
+            enrich_pid: false,
+            ..Settings::default()
+        });
         // Great. Ubuntu's uutils comes out as a fat binary of > 10 MB.
-        c.settings.enrich_exe_hash_size_limit = 20_000_000;
-        c.settings.enrich_uid_groups = false;
-        c.settings.enrich_pid = false;
         process_record(&mut c, record.as_bytes())?;
 
         let output = event_to_json(ec.borrow().as_ref().expect("no event emitted"));
@@ -2484,5 +2497,41 @@ type=EOE msg=audit(1615114232.375:99999):
             "output should contain EXE_HASH with correct SHA256"
         );
         Ok(())
+    }
+
+    #[test]
+    #[cfg(all(feature = "procfs", target_os = "linux"))]
+    fn exe_hash_cache() {
+        let mut cache = ExeHashCache::new(3);
+        assert_eq!(cache.entries.len(), 0);
+        cache.insert((0, 0, 0), [0; 32]);
+        assert_eq!(cache.entries.len(), 1);
+        cache.insert((1, 1, 1), [1; 32]);
+        assert_eq!(cache.entries.len(), 2);
+        cache.insert((2, 2, 2), [2; 32]);
+        assert_eq!(cache.entries.len(), 3);
+        // Overflow the table,
+        cache.insert((3, 3, 3), [3; 32]);
+        assert_eq!(cache.entries.len(), 3);
+        assert_eq!(
+            cache.get(&(0, 0, 0)),
+            None,
+            "(0,0,0) should have been evicted"
+        );
+        assert_ne!(
+            cache.get(&(1, 1, 1)),
+            None,
+            "(1,1,1) should NOT have been evicted"
+        );
+        // insert another, evict another, testing LRU mechanism.
+        cache.insert((4, 4, 4), [4; 32]);
+        assert_ne!(
+            cache.get(&(1, 1, 1)),
+            None,
+            "(1,1,1) should still NOT have been evicted"
+        );
+        assert_ne!(cache.get(&(4, 4, 4)), None);
+        assert_ne!(cache.get(&(3, 3, 3)), None);
+        assert_eq!(cache.get(&(2, 2, 2)), None);
     }
 }
