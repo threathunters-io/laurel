@@ -3,6 +3,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod coalesce;
 pub mod config;
 pub mod constants;
+pub mod hash;
 pub mod json;
 pub mod label_matcher;
 pub mod logger;

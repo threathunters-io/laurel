@@ -8,8 +8,6 @@ use std::str::FromStr;
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_string;
-#[cfg(all(feature = "procfs", target_os = "linux"))]
-use sha2::{Digest, Sha256};
 
 use linux_audit_parser::*;
 
@@ -17,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::constants::{ARCH_NAMES, SYSCALL_NAMES, URING_OPS};
+#[cfg(all(feature = "procfs", target_os = "linux"))]
+use crate::hash::Sha256Writer;
 use crate::label_matcher::LabelMatcher;
 use crate::proc::{self, ContainerInfo, ProcTable, Process, ProcessKey};
 #[cfg(all(feature = "procfs", target_os = "linux"))]
@@ -1313,7 +1313,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
     #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn enrich_exe_hash(&mut self, rv: &mut Body, pid: u32, exe: &[u8]) {
-        let Ok(mut fd) = procfs::open_pid_exe_meta(pid) else {
+        let Ok(fd) = procfs::open_pid_exe_meta(pid) else {
             return;
         };
         let Ok(path) = procfs::get_pid_exe_link(pid) else {
@@ -1334,11 +1334,14 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         let hash = match self.exe_hash_cache.get(&cache_key) {
             Some(h) => h,
             None => {
-                let mut buf = vec![0; meta.len() as usize];
-                if fd.read_exact(&mut buf).is_err() {
+                let mut hasher = Sha256Writer::default();
+                // Ensure that we don't "accidentally" read more than
+                // the configured limit allows.
+                let mut limited_fd = fd.take(meta.len());
+                let Ok(_) = std::io::copy(&mut limited_fd, &mut hasher) else {
                     return;
                 };
-                let h = hex_string(Sha256::digest(&buf).as_ref());
+                let h = hex_string(&hasher.finalize());
                 self.exe_hash_cache.insert(cache_key, h.clone(), max);
                 h
             }
