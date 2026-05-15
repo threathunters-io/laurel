@@ -36,6 +36,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install dependency
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           apt-get -qq update
           apt-get -qqy dist-upgrade
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev libgoogle-perftools-dev
@@ -62,6 +63,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install dependency
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           apt-get -qq update
           apt-get -qqy dist-upgrade
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev libgoogle-perftools-dev
@@ -87,6 +89,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install dependency
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           apt-get -qq update
           apt-get -qqy dist-upgrade
           apt-get -qqy install curl build-essential libclang-dev libacl1-dev
@@ -162,6 +165,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install dependency
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           dpkg --add-architecture arm64
           apt-get -qq update
           apt-get -qqy dist-upgrade
@@ -197,6 +201,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install dependency
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           dpkg --add-architecture armhf
           apt-get -qq update
           apt-get -qqy dist-upgrade
@@ -231,6 +236,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install dependency
         run: |
+          export DEBIAN_FRONTEND=noninteractive
           apt-get -qq update
           apt-get -qqy dist-upgrade
           apt-get -qqy install make pandoc
