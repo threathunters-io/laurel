@@ -172,7 +172,7 @@ pub struct State<'ev> {
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 /// LRU cache for exe hashes, keyed by (dev, inode, mtime_nsec)
 struct ExeHashCache {
-    entries: indexmap::IndexMap<(u64, u64, i64), String>,
+    entries: indexmap::IndexMap<(u64, u64, i64), [u8; 32]>,
 }
 
 #[cfg(all(feature = "procfs", target_os = "linux"))]
@@ -183,15 +183,15 @@ impl ExeHashCache {
         }
     }
 
-    fn get(&mut self, key: &(u64, u64, i64)) -> Option<String> {
+    fn get(&mut self, key: &(u64, u64, i64)) -> Option<[u8; 32]> {
         let idx = self.entries.get_index_of(key)?;
         let (k, v) = self.entries.shift_remove_index(idx).unwrap();
-        let hash = v.clone();
+        let hash = v;
         self.entries.insert(k, v);
         Some(hash)
     }
 
-    fn insert(&mut self, key: (u64, u64, i64), hash: String, max_entries: usize) {
+    fn insert(&mut self, key: (u64, u64, i64), hash: [u8; 32], max_entries: usize) {
         if max_entries == 0 {
             return;
         }
@@ -1341,12 +1341,12 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 let Ok(_) = std::io::copy(&mut limited_fd, &mut hasher) else {
                     return;
                 };
-                let h = hex_string(&hasher.finalize());
-                self.exe_hash_cache.insert(cache_key, h.clone(), max);
+                let h = hasher.finalize();
+                self.exe_hash_cache.insert(cache_key, h, max);
                 h
             }
         };
-        rv.push((Key::Literal("EXE_HASH"), hash.into()));
+        rv.push((Key::Literal("EXE_HASH"), hex_string(&hash).into()));
     }
 
     /// Ingest a log line and add it to the coalesce object.
