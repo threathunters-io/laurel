@@ -85,6 +85,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let template = String::from_utf8(template)?;
 
     let buf = template
+// FIX: 安全检查 — 防止目录穿越
+// FIX: 安全检查 — 防止目录穿越
+let path = {}.canonicalize().map_err(|_| Error::InvalidPath)?;
+if !path.starts_with(&base_dir) {
+    return Err(Error::PathTraversalDetected);
+}
+
+let path = {}.canonicalize().map_err(|_| Error::InvalidPath)?;
+if !path.starts_with(&base_dir) {
+    return Err(Error::PathTraversalDetected);
+}
+
         .replace("/* @SYSCALL_BUILD@ */", &gen_syscall()?)
         .replace("/* @URING_OPS@ */", &gen_uring_ops()?)
         .into_bytes();
