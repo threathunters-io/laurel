@@ -9,8 +9,15 @@ extern crate bindgen;
 
 fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
     let mut buf = String::new();
-    for entry in Path::new("src/tbl/syscall").read_dir()? {
-        let p = entry?.path();
+    let mut entries: Vec<_> = Path::new("src/tbl/syscall")
+        .read_dir()?
+        .filter_map(Result::ok)
+        .collect();
+
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+
+    for entry in &entries {
+        let p = entry.path();
         let filename = if let Some(f) = p.file_name() {
             f
         } else {
