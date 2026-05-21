@@ -9,35 +9,25 @@ extern crate bindgen;
 
 fn gen_syscall() -> Result<String, Box<dyn std::error::Error>> {
     let mut buf = String::new();
-    let mut entries: Vec<_> = Path::new("src/tbl/syscall")
-        .read_dir()?
-        .filter_map(Result::ok)
-        .collect();
 
-    entries.sort_by_key(std::fs::DirEntry::file_name);
+    // Create stable ordering for reproducibility
+    let archs = std::fs::read_dir("src/tbl/syscall")?
+        .filter_map(|r| r.ok().map(|de| de.file_name()))
+        .filter_map(|p| {
+            p.to_string_lossy()
+                .into_owned()
+                .strip_suffix("_table.h")
+                .map(String::from)
+        })
+        .collect::<std::collections::BTreeSet<_>>();
 
-    for entry in &entries {
-        let p = entry.path();
-        let filename = if let Some(f) = p.file_name() {
-            f
-        } else {
-            continue;
-        };
-        let arch = if let Some(a) = filename
-            .to_string_lossy()
-            .into_owned()
-            .strip_suffix("_table.h")
-        {
-            a.to_string()
-        } else {
-            continue;
-        };
+    for arch in &archs {
         buf.push_str("{ let mut t = HashMap::new(); for (num, name) in &[");
 
         // Entries look like
         //     _S(0, "io_setup")
         // Just get rid of the _S.
-        let defs = BufReader::new(fs::File::open(p)?)
+        let defs = BufReader::new(fs::File::open(format!("src/tbl/syscall/{arch}_table.h"))?)
             .lines()
             .filter(|line| line.as_ref().unwrap().starts_with("_S("))
             .map(|line| line.unwrap())
