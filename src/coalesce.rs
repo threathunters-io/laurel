@@ -946,9 +946,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         // ENV
         #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let Some(proc) = process_key.and_then(|k| self.state.processes.get_key(&k)) {
-            if let Ok(vars) = procfs::get_environ(proc.pid, |k| {
-                self.settings.env_matcher.matches(k)
-            }) {
+            if let Ok(vars) =
+                procfs::get_environ(proc.pid, |k| self.settings.env_matcher.matches(k))
+            {
                 let map = vars
                     .iter()
                     .map(|(k, v)| {

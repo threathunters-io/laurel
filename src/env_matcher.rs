@@ -1,27 +1,62 @@
-use std::collections::HashSet;
+use aho_corasick::{AhoCorasick, Anchored, Input, StartKind};
+use tinyvec::TinyVec;
 
-#[derive(Clone, Default)]
-pub struct EnvMatcher {
-    exact: HashSet<Vec<u8>>,
-    prefix: Vec<Vec<u8>>,
+#[derive(Clone)]
+pub struct EnvMatcher(AhoCorasick);
+
+impl Default for EnvMatcher {
+    fn default() -> Self {
+        let empty: &[&[u8]] = &[];
+        Self(
+            AhoCorasick::builder()
+                .start_kind(StartKind::Anchored)
+                .build(empty)
+                .unwrap(),
+        )
+    }
 }
 
-/// EnvMatcher is a naïve multi-string matcher that supports both
-/// exact and prefix matching.
+/// EnvMatcher is an Aho-Corasick-based multi-string matcher for
+/// environment variables that supports both exact and prefix
+/// matching.
 impl EnvMatcher {
-    pub fn new<I, V>(exact: I, prefix: I) -> Self
+    /// Constructs an `EnvMatcher`. `exact` and `prefix` contain byte
+    /// strings for exact and prefix matches, respectively.
+    pub fn new<I1, I2, V1, V2>(exact: I1, prefix: I2) -> Self
     where
-        I: std::iter::IntoIterator<Item = V>,
-        V: Into<Vec<u8>>,
+        I1: std::iter::IntoIterator<Item = V1>,
+        I2: std::iter::IntoIterator<Item = V2>,
+        V1: AsRef<[u8]>,
+        V2: AsRef<[u8]>,
     {
-        let exact: HashSet<Vec<u8>> = exact.into_iter().map(|i| i.into()).collect();
-        let prefix: Vec<Vec<u8>> = prefix.into_iter().map(|i| i.into()).collect();
+        let match_strings = Vec::from_iter(
+            exact
+                .into_iter()
+                .map(|s| {
+                    let mut v = Vec::from(s.as_ref());
+                    v.push(b'=');
+                    v
+                })
+                .chain(prefix.into_iter().map(|s| Vec::from(s.as_ref()))),
+        );
 
-        Self { exact, prefix }
+        Self(
+            AhoCorasick::builder()
+                .start_kind(StartKind::Anchored)
+                .build(match_strings)
+                .unwrap(),
+        )
     }
 
+    /// Retrurns true if matcher recocnizes `key`.
+    ///
+    /// Note: The equals sisgn `=` cannot be part of keys.
     pub fn matches(&self, key: &[u8]) -> bool {
-        self.exact.contains(key) || self.prefix.iter().any(|p| key.starts_with(p))
+        let mut key = TinyVec::<[u8; 32]>::from(key);
+        key.push(b'=');
+        self.0
+            .find(Input::new(&key).anchored(Anchored::Yes))
+            .is_some()
     }
 }
 
@@ -30,7 +65,7 @@ mod test {
     use super::*;
     #[test]
     fn simple_matches() {
-        let matcher = EnvMatcher::new(vec!["LD_PRELOAD", "LD_LIBRARY_PATH"], vec!["XDG_"]);
+        let matcher = EnvMatcher::new(["LD_PRELOAD", "LD_LIBRARY_PATH"], ["XDG_"]);
         assert!(matcher.matches(b"XDG_"));
         assert!(matcher.matches(b"XDG_foo"));
         assert!(matcher.matches(b"XDG_bar"));
