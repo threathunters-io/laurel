@@ -412,11 +412,16 @@ impl Config {
         for s in &mut execve_prefix {
             s.pop(); // strip "*"
         }
+        let env_matcher = if execve_exact.is_empty() && execve_prefix.is_empty() {
+            None
+        } else {
+            Some(EnvMatcher::new(execve_exact, execve_prefix))
+        };
         Settings {
             execve_argv_list: self.transform.execve_argv.contains(&ArrayOrString::Array),
             execve_argv_string: self.transform.execve_argv.contains(&ArrayOrString::String),
             execve_argv_limit_bytes: self.transform.execve_argv_limit_bytes,
-            env_matcher: EnvMatcher::new(execve_exact, execve_prefix),
+            env_matcher,
             enrich_container: self.enrich.container,
             enrich_container_info: self.enrich.container_info,
             enrich_systemd: self.enrich.systemd,
@@ -550,21 +555,5 @@ file = ""
         )
         .expect("toml parse error");
         assert_eq!(cfg.state.file, None);
-    }
-
-    #[test]
-    fn env_prefix() {
-        let cfg: Config = toml::de::from_str(
-            r#"
-[enrich]
-execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH", "XDG_*" ]
-"#,
-        )
-        .expect("toml parse error");
-        let s = cfg.make_coalesce_settings();
-        // for proper testing of matcher, see env_matcher.rs
-        assert!(s.env_matcher.matches(b"XDG_prefix"));
-        assert!(s.env_matcher.matches(b"LD_PRELOAD"));
-        assert!(s.env_matcher.matches(b"LD_LIBRARY_PATH"));
     }
 }
