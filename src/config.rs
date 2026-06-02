@@ -8,6 +8,7 @@ use serde::{
 };
 
 use crate::coalesce::Settings;
+use crate::env_matcher::EnvMatcher;
 use crate::label_matcher::LabelMatcher;
 use crate::sockaddr::SocketAddrMatcher;
 
@@ -415,8 +416,7 @@ impl Config {
             execve_argv_list: self.transform.execve_argv.contains(&ArrayOrString::Array),
             execve_argv_string: self.transform.execve_argv.contains(&ArrayOrString::String),
             execve_argv_limit_bytes: self.transform.execve_argv_limit_bytes,
-            execve_env_exact: execve_exact.into_iter().collect(),
-            execve_env_prefix: execve_prefix,
+            env_matcher: EnvMatcher::new(execve_exact, execve_prefix),
             enrich_container: self.enrich.container,
             enrich_container_info: self.enrich.container_info,
             enrich_systemd: self.enrich.systemd,
@@ -562,13 +562,9 @@ execve-env = [ "LD_PRELOAD", "LD_LIBRARY_PATH", "XDG_*" ]
         )
         .expect("toml parse error");
         let s = cfg.make_coalesce_settings();
-        assert_eq!(s.execve_env_prefix, [b"XDG_"]);
-        assert_eq!(
-            s.execve_env_exact,
-            ["LD_PRELOAD", "LD_LIBRARY_PATH"]
-                .iter()
-                .map(|s| s.as_bytes().to_vec())
-                .collect()
-        );
+        // for proper testing of matcher, see env_matcher.rs
+        assert!(s.env_matcher.matches(b"XDG_prefix"));
+        assert!(s.env_matcher.matches(b"LD_PRELOAD"));
+        assert!(s.env_matcher.matches(b"LD_LIBRARY_PATH"));
     }
 }
