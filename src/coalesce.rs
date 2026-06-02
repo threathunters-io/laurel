@@ -68,7 +68,7 @@ pub struct Settings {
     pub execve_argv_list: bool,
     pub execve_argv_string: bool,
 
-    pub env_matcher: EnvMatcher,
+    pub env_matcher: Option<EnvMatcher>,
 
     pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
@@ -111,7 +111,7 @@ impl Default for Settings {
         Settings {
             execve_argv_list: true,
             execve_argv_string: false,
-            env_matcher: EnvMatcher::default(),
+            env_matcher: None,
             execve_argv_limit_bytes: None,
             enrich_container: false,
             enrich_container_info: false,
@@ -943,23 +943,24 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             ));
         }
 
-        // ENV
         #[cfg(all(feature = "procfs", target_os = "linux"))]
-        if let Some(proc) = process_key.and_then(|k| self.state.processes.get_key(&k)) {
-            if let Ok(vars) = procfs::get_environ(proc.pid, |k| {
-                self.settings.env_matcher.matches(k)
-            }) {
-                let map = vars
-                    .iter()
-                    .map(|(k, v)| {
-                        (
-                            Key::Name(NVec::from(k.as_slice())),
-                            Value::Str(v, Quote::None),
-                        )
-                    })
-                    .collect();
-                rv.push((Key::Literal("ENV"), Value::Map(map)));
-            }
+        'ENV: {
+            let Some(env_matcher) = &self.settings.env_matcher else {
+                break 'ENV;
+            };
+            let Some(proc) = process_key.and_then(|k| self.state.processes.get_key(&k)) else {
+                break 'ENV;
+            };
+            let Ok(block) = procfs::read_environ_block(proc.pid) else {
+                break 'ENV;
+            };
+            let vars = env_matcher.find_in_env_block(&block);
+            let env = Value::Map(
+                vars.iter()
+                    .map(|(k, v)| (Key::Name(NVec::from(*k)), Value::Str(v, Quote::None)))
+                    .collect(),
+            );
+            rv.push((Key::Literal("ENV"), env));
         }
     }
 

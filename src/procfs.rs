@@ -58,24 +58,25 @@ pub fn get_pid_exe_link(pid: u32) -> std::io::Result<PathBuf> {
     std::fs::read_link(format!("/proc/{pid}/exe"))
 }
 
-type Environment = Vec<(Vec<u8>, Vec<u8>)>;
-
-/// Returns set of environment variables that match pred for a given process
-pub fn get_environ<F>(pid: u32, pred: F) -> Result<Environment, ProcFSError>
-where
-    F: Fn(&[u8]) -> bool,
-{
-    let buf = slurp_pid_obj(pid, "environ")?;
-    let mut res = Vec::new();
-
-    for e in buf.split(|c| *c == 0) {
-        let mut kv = e.splitn(2, |c| *c == b'=');
-        let k = kv.next().unwrap_or_default();
-        if pred(k) {
-            let v = kv.next().unwrap_or_default();
-            res.push((k.to_owned(), v.to_owned()));
-        }
-    }
+/// Returns contents of /proc/pid/environ.
+///
+/// Contents are prefixed with a null byte as required by
+/// `env_matcher::EnvMatcher`.
+pub fn read_environ_block(pid: u32) -> Result<Vec<u8>, ProcFSError> {
+    let obj = "environ";
+    let f = BufReader::with_capacity(
+        1 << 16,
+        File::open(format!("/proc/{pid}/environ")).map_err(|err| ProcFSError::PidFile {
+            pid,
+            obj,
+            err,
+        })?,
+    );
+    let mut combined = [0u8].chain(f);
+    let mut res = vec![];
+    combined
+        .read_to_end(&mut res)
+        .map_err(|err| ProcFSError::PidFile { pid, obj, err })?;
     Ok(res)
 }
 
