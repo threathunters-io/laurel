@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::constants::{ARCH_NAMES, SYSCALL_NAMES, URING_OPS};
+use crate::env_matcher::EnvMatcher;
 #[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::hash::Sha256Writer;
 use crate::label_matcher::LabelMatcher;
@@ -67,8 +68,7 @@ pub struct Settings {
     pub execve_argv_list: bool,
     pub execve_argv_string: bool,
 
-    pub execve_env_exact: HashSet<Vec<u8>>,
-    pub execve_env_prefix: Vec<Vec<u8>>,
+    pub env_matcher: EnvMatcher,
 
     pub execve_argv_limit_bytes: Option<usize>,
     pub enrich_container: bool,
@@ -111,8 +111,7 @@ impl Default for Settings {
         Settings {
             execve_argv_list: true,
             execve_argv_string: false,
-            execve_env_exact: HashSet::new(),
-            execve_env_prefix: vec![],
+            env_matcher: EnvMatcher::default(),
             execve_argv_limit_bytes: None,
             enrich_container: false,
             enrich_container_info: false,
@@ -946,17 +945,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         // ENV
         #[cfg(all(feature = "procfs", target_os = "linux"))]
-        if let (Some(proc), false) = (
-            process_key.and_then(|k| self.state.processes.get_key(&k)),
-            self.settings.execve_env_exact.is_empty() && self.settings.execve_env_prefix.is_empty(),
-        ) {
+        if let Some(proc) = process_key.and_then(|k| self.state.processes.get_key(&k)) {
             if let Ok(vars) = procfs::get_environ(proc.pid, |k| {
-                self.settings.execve_env_exact.contains(k)
-                    || self
-                        .settings
-                        .execve_env_prefix
-                        .iter()
-                        .any(|p| k.starts_with(p))
+                self.settings.env_matcher.matches(k)
             }) {
                 let map = vars
                     .iter()
