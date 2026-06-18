@@ -229,12 +229,17 @@ impl Logger {
                 filename.push(p);
                 let mut rot = FileRotate::new(filename);
                 for user in &def.clone().users.unwrap_or_default() {
-                    _ = User::from_name(user)?.ok_or_else(|| anyhow!("user {user} not found"))?;
+                    let Ok(Some(_)) = User::from_name(user) else {
+                        log::warn!("user {user} for logger not found");
+                        continue;
+                    };
                     rot = rot.with_user(user);
                 }
                 for group in &def.clone().groups.unwrap_or_default() {
-                    _ = Group::from_name(group)?
-                        .ok_or_else(|| anyhow!("group {group} not found"))?;
+                    let Ok(Some(_)) = Group::from_name(group) else {
+                        log::warn!("group {group} for logger not found");
+                        continue;
+                    };
                     rot = rot.with_group(group);
                 }
                 if def.other {
