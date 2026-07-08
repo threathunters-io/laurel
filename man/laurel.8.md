@@ -76,7 +76,7 @@ This section contains basic operation parameters.
   seconds. Default: unset
 - `input`: `laurel` can consume audit events from standard input or
   connect to a listening socket specified as `unix:/path/to/socket` at
-  start. Defaulkt: `stdin`
+  start. Default: `stdin`
 - `marker`: A string that is written to the log on startup and
   whenever `laurel` writes a status report. Default: none
 
@@ -176,7 +176,7 @@ Options that can be configured here actually add information to events
 - `user-groups`: Add groups that the user ("uid") is a member of.
   Default: true
 - `prefix`: Add a prefix to enriched fields; this may be useful if
-  logs are onsumed by analysis software that doesn't properly
+  logs are consumed by analysis software that doesn't properly
   understand uppercase and lowercase JSON object fields as identical.
   This setting does not affect enriched fields passed in from
   `auditd(8)`. Default: unset
