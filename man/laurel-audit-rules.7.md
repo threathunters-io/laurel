@@ -13,7 +13,7 @@ useful to aid in detecting common attacker's tactics.
 
 # Note about auditctl(8) error messages
 
-It is not possible for /auditctl(8)/ ro load file watches for files or
+It is not possible for /auditctl(8)/ to load file watches for files or
 directories that are not present. Depending on the rule set, it will
 spam possibly lots of error messages to standard error. The specific
 file watches are not installed, but those error messages can be
@@ -95,7 +95,7 @@ not sufficient.
 -w /etc/audit/        -p wa -k wr_audit_config
 -w /etc/libaudit.conf -p wa -k wr_audit_config
 -w /etc/audisp/       -p wa -k wr_audit_config
--w /etc/laurel/       -p wa -k wr_laurel_confg
+-w /etc/laurel/       -p wa -k wr_laurel_config
 ```
 
 # Log specific program executions
@@ -175,7 +175,7 @@ keep-first-per-process = true
 
 ## Log usage of ptrace
 
-We are interested in ptrce usage, but not in every transaction (`PEEK`, `POKE`, `CONT`)
+We are interested in ptrace usage, but not in every transaction (`PEEK`, `POKE`, `CONT`)
 ```
 -a never,exit -F arch=b32 -S ptrace -F a0>=1 -F a0<=7
 -a never,exit -F arch=b64 -S ptrace -F a0>=1 -F a0<=7
