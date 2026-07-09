@@ -13,7 +13,7 @@ where
     W: ?Sized + Write,
 {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        let mut quoted = [b'\\', b'u', b'0', b'0', b'0', b'0'];
+        let mut quoted = *b"\\u0000";
         let mut start_unquoted = 0;
         for (n, c) in buf.iter().enumerate() {
             let quoted = match c {
@@ -73,10 +73,7 @@ where
             loop {
                 match utf8state {
                     None => {
-                        if *c >= 32
-                            && *c < 127
-                            && ![b'%', b'+', b'\x08', b'\x0c', b'\n', b'\r', b'\t'].contains(c)
-                        {
+                        if *c >= 32 && *c < 127 && !b"%+\x08\x0c\n\r\t".contains(c) {
                             // simple byte, collect to be output as-is.
                             break;
                         }
