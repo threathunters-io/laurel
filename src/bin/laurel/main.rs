@@ -489,14 +489,14 @@ fn run_app() -> Result<(), anyhow::Error> {
 
     log::info!(
         "Started {} running version {} ({})",
-        &args[0],
+        args[0],
         laurel::VERSION,
         build_id()
     );
     log::info!(
         "Running with EUID {} using config {}",
         Uid::effective().as_raw(),
-        &config
+        config
     );
 
     let mut coalesce;
@@ -652,11 +652,11 @@ fn run_app() -> Result<(), anyhow::Error> {
                 log::info!("Laurel version {} ({})", laurel::VERSION, build_id());
                 log::info!(
                     "Parsing stats (until now): processed {} lines {} events with {} errors in total",
-                    &stats.lines, &stats.events, &stats.errors );
+                    stats.lines, stats.events, stats.errors );
                 log::info!(
                     "Running with EUID {} using config {}",
                     Uid::effective().as_raw(),
-                    &config
+                    config
                 );
                 #[cfg(feature = "procfs")]
                 if let Some(new_cpu_stats) = get_cpu_stats() {
@@ -706,10 +706,10 @@ fn run_app() -> Result<(), anyhow::Error> {
 
     log::info!(
         "Stopped {} processed {} lines {} events with {} errors in total",
-        &args[0],
-        &stats.lines,
-        &stats.events,
-        &stats.errors,
+        args[0],
+        stats.lines,
+        stats.events,
+        stats.errors,
     );
 
     Ok(())
