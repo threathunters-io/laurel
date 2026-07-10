@@ -574,30 +574,30 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 m.push(("ppid".into(), Value::from(proc.ppid as i64)));
             }
         } else {
+            if let Some(ProcessKey::Event(id)) = proc.previous_self {
+                m.push(("PREVIOUS_EVENT_ID".into(), format!("{id}").into()));
+            }
+            if let (true, Some(container_info)) =
+                (self.settings.enrich_container, &proc.container_info)
             {
-                if let (true, Some(container_info)) =
-                    (self.settings.enrich_container, &proc.container_info)
-                {
-                    let id = hex_string(&container_info.id);
-                    m.push((
-                        "container".into(),
-                        Value::Map(vec![("id".into(), id.into())]),
-                    ));
-                }
-
-                if let (true, Some(systemd_service)) =
-                    (self.settings.enrich_systemd, &proc.systemd_service)
-                {
-                    m.push((
-                        "systemd_service".into(),
-                        Value::List(
-                            systemd_service
-                                .iter()
-                                .map(|v| Value::from(v.as_slice()))
-                                .collect(),
-                        ),
-                    ));
-                }
+                let id = hex_string(&container_info.id);
+                m.push((
+                    "container".into(),
+                    Value::Map(vec![("id".into(), id.into())]),
+                ));
+            }
+            if let (true, Some(systemd_service)) =
+                (self.settings.enrich_systemd, &proc.systemd_service)
+            {
+                m.push((
+                    "systemd_service".into(),
+                    Value::List(
+                        systemd_service
+                            .iter()
+                            .map(|v| Value::from(v.as_slice()))
+                            .collect(),
+                    ),
+                ));
             }
         }
 
@@ -1152,89 +1152,87 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             *filter_event = true;
         }
 
-        let (first_per_process, proc) = match (
-            *is_exec,
-            self.state
-                .processes
-                .get_pid(pid)
-                .filter(|p| p.pid == pid && p.ppid == ppid && p.exe.as_deref() == exe),
-        ) {
-            (false, Some(proc)) => (false, proc.clone()),
-            (_, proc) => {
-                let is_first = *is_exec || proc.is_none();
+        // processes from proc table that matches this event
+        let ppid_proc = self.state.processes.get_or_retrieve(ppid).cloned();
+        let ppid_is_init = ppid_proc.as_ref().is_some_and(|p| p.pid == 1 || p.is_init);
+        let pid_proc = self
+            .state
+            .processes
+            .get_pid(pid)
+            .filter(|p| p.ppid == ppid || ppid_is_init);
 
-                if let Some(pre_exec_proc) = self
-                    .state
-                    .processes
-                    .get_pid(pid)
-                    .and_then(|p| (ppid == p.ppid).then_some(p))
-                {
-                    self.propagate_labels(pre_exec_proc, &mut labels);
-                }
+        let proc;
+        let first_per_process;
 
-                let parent_proc = self.state.processes.get_or_retrieve(ppid).cloned();
-                let parent = parent_proc.as_ref().map(|p| p.key);
+        // handle new process
+        if *is_exec || pid_proc.filter(|p| p.exe.as_deref() == exe).is_none() {
+            let previous_self_proc = pid_proc;
 
-                if let Some(ref p) = parent_proc {
+            if let Some(ref p) = ppid_proc {
+                if !p.is_init {
                     self.propagate_labels(p, &mut labels)
+                }
+            }
+            if *is_exec {
+                if let Some(p) = previous_self_proc {
+                    self.propagate_labels(p, &mut labels);
                 }
                 if let Some(exe) = exe {
                     self.label_exe(exe, &mut labels)
                 }
-
-                let mut new_proc = Process {
-                    key: ProcessKey::Event(id),
-                    parent,
-                    pid,
-                    ppid,
-                    labels,
-                    exe: exe.map(Vec::from),
-                    comm: comm.map(Vec::from),
-                    ..Process::default()
-                };
-
-                if self.settings.enrich_container || self.settings.enrich_systemd {
-                    let mut container_info: Option<ContainerInfo> = None;
-                    let mut systemd_service: Option<Vec<Vec<u8>>> = None;
-                    let cgroup = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
-                    if self.settings.enrich_container {
-                        container_info = match cgroup {
-                            Some(ref path) => {
-                                proc::try_extract_container_id(path).map(|id| ContainerInfo { id })
-                            }
-                            _ => parent_proc.as_ref().and_then(|p| p.container_info.clone()),
-                        };
-                    }
-                    if self.settings.enrich_systemd {
-                        systemd_service = match cgroup {
-                            Some(ref path) => proc::try_extract_systemd_service(path),
-                            _ => parent_proc.as_ref().and_then(|p| p.systemd_service.clone()),
-                        };
-                    }
-                    new_proc.container_info = container_info;
-                    new_proc.systemd_service = systemd_service;
-                }
-
-                self.state.processes.insert(new_proc.clone());
-                (is_first, new_proc)
             }
-        };
 
-        if proc
-            .labels
-            .intersection(&self.settings.filter_labels)
-            .next()
-            .is_some()
-        {
-            *filter_event = true;
-        }
+            let mut container_info = None;
+            let mut systemd_service = None;
 
-        // TODO: This logic needs to be split.
-        if first_per_process && !self.settings.filter_first_per_process {
-            *filter_event = false;
+            if self.settings.enrich_container || self.settings.enrich_systemd {
+                let cgroup = procfs::parse_proc_pid_cgroup(pid).ok().flatten();
+                if self.settings.enrich_container {
+                    container_info = match cgroup {
+                        Some(ref path) => {
+                            proc::try_extract_container_id(path).map(|id| ContainerInfo { id })
+                        }
+                        _ => ppid_proc.as_ref().and_then(|p| p.container_info.clone()),
+                    };
+                }
+                if self.settings.enrich_systemd {
+                    systemd_service = match cgroup {
+                        Some(ref path) => proc::try_extract_systemd_service(path),
+                        _ => ppid_proc.as_ref().and_then(|p| p.systemd_service.clone()),
+                    };
+                }
+            }
+
+            let is_init = procfs::is_pid1(pid);
+
+            first_per_process = true;
+            proc = Process {
+                key: ProcessKey::Event(id),
+                parent: ppid_proc.as_ref().map(|p| p.key),
+                previous_self: previous_self_proc.map(|p| p.key),
+                pid,
+                is_init,
+                ppid,
+                labels,
+                exe: exe.map(Vec::from),
+                comm: comm.map(Vec::from),
+                container_info,
+                systemd_service,
+            };
+            self.state.processes.insert(proc.clone());
+        } else {
+            first_per_process = false;
+            proc = pid_proc.cloned().unwrap();
         }
 
         *process_key = Some(proc.key);
+
+        *filter_event |= proc
+            .labels
+            .intersection(&self.settings.filter_labels)
+            .next()
+            .is_some();
+        *filter_event &= !(first_per_process && !self.settings.filter_first_per_process);
 
         // No point in adding translations / enrichments to record if
         // we are going to filter anyway.
@@ -2219,10 +2217,10 @@ mod test {
         let events = events.borrow();
 
         for id in [
-            "1778355636.725:2322552",
-            "1778355636.728:2322553",
-            "1778355636.752:2322555",
-            "1778355636.754:2322557",
+            "1778355636.725:2322552", // dpkg -l
+            "1778355636.728:2322553", // dpkg-query --list --
+            "1778355636.752:2322555", // sh -c -- pager
+            "1778355636.754:2322557", // pager
         ] {
             let event = find_event(&events, id).unwrap_or_else(|| panic!("did not find {id}"));
             let j = event_to_json(&event);
@@ -2232,6 +2230,37 @@ mod test {
                 "{id} should inherit label"
             )
         }
+    }
+
+    #[test]
+    fn fork_sleep_exec() {
+        let s = Settings {
+            label_exe: LabelMatcher::new(&[("/uncaring-parent$", "uncaring-parent")]).ok(),
+            proc_propagate_labels: [b"uncaring-parent".to_vec()].into(),
+            ..Settings::default()
+        };
+        let events: Rc<RefCell<Vec<Event>>> = Rc::new(RefCell::new(vec![]));
+        let mut c = Coalesce::new(mk_emit_vec(&events));
+        c.settings = s;
+
+        process_record(&mut c, include_bytes!("testdata/fork-sleep-exec.txt")).unwrap();
+
+        drop(c);
+
+        let events = events.borrow();
+
+        let id = "1783860945.368:6104008";
+        let event = find_event(&events, id).unwrap_or_else(|| panic!("did not find {id}"));
+        let j = event_to_json(&event);
+        println!("{j}");
+        assert!(
+            j.contains(r#""PREVIOUS_EVENT_ID":"#),
+            "{id} should have a previous event id"
+        );
+        assert!(
+            j.contains(r#""LABELS":["uncaring-parent"]}"#),
+            "{id} should have 'uncaring-parente' label applied"
+        );
     }
 
     #[test]

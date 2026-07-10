@@ -1,0 +1,30 @@
+# orphan = simple demo program
+#
+# usleep is being used to stay below EXPIRE_PERIOD.
+#
+# #include <unistd.h>
+# int main() {
+#   if (fork()) { usleep(100); return 0; }
+#   if (!fork()) return 0;
+#   usleep(200);
+#   execve("/bin/true", NULL, NULL);
+# }
+
+# run demo program
+type=PATH msg=audit(1783860945.368:6104005): item=2 name="/lib/ld-linux-aarch64.so.1" inode=79199 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1783860945.368:6104005): item=1 name="/home/user/bin/uncaring-parent" inode=2228401 dev=fd:01 mode=0100775 ouid=1000 ogid=1000 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1783860945.368:6104005): item=0 name="/home/user/bin/uncaring-parent" inode=2228401 dev=fd:01 mode=0100775 ouid=1000 ogid=1000 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=CWD msg=audit(1783860945.368:6104005): cwd="/home/user"
+type=EXECVE msg=audit(1783860945.368:6104005): argc=1 a0="/home/user/bin/uncaring-parent"
+type=SYSCALL msg=audit(1783860945.368:6104005): arch=c00000b7 syscall=221 success=yes exit=0 a0=555589d0c560 a1=555589fb9ad0 a2=555589a94500 a3=7fffbb317b60 items=3 ppid=3822680 pid=1578539 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts9 ses=2 comm="uncaring-parent" exe="/home/user/bin/uncaring-parent" subj=unconfined key=(null)
+
+# child forks so we have an observable event.
+type=SYSCALL msg=audit(1783860945.368:6104007): arch=c00000b7 syscall=220 success=yes exit=1578541 a0=1200011 a1=0 a2=0 a3=0 items=0 ppid=1578539 pid=1578540 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts9 ses=2 comm="uncaring-parent" exe="/home/user/bin/uncaring-parent" subj=unconfined key="fork"
+
+# child execs; parent has exited already, hence ppid=1
+type=PATH msg=audit(1783860945.368:6104008): item=2 name="/lib/ld-linux-aarch64.so.1" inode=79199 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1783860945.368:6104008): item=1 name="/bin/true" inode=24801 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=PATH msg=audit(1783860945.368:6104008): item=0 name="/bin/true" inode=24801 dev=fd:01 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0
+type=CWD msg=audit(1783860945.368:6104008): cwd="/home/user"
+type=EXECVE msg=audit(1783860945.368:6104008): argc=1 a0=""
+type=SYSCALL msg=audit(1783860945.368:6104008): arch=c00000b7 syscall=221 success=yes exit=0 a0=55555b7208a8 a1=0 a2=0 a3=0 items=3 ppid=1 pid=1578540 auid=1000 uid=1000 gid=1000 euid=1000 suid=1000 fsuid=1000 egid=1000 sgid=1000 fsgid=1000 tty=pts9 ses=2 comm="true" exe="/usr/bin/true" subj=unconfined key=(null)
