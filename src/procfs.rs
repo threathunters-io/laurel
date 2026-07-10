@@ -204,9 +204,6 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         tv_sec: (starttime / *CLK_TCK) as _,
         tv_nsec: ((starttime % *CLK_TCK) * (1_000_000_000 / *CLK_TCK)) as _,
     });
-    #[cfg(not(target_os = "linux"))]
-    let proc_age = TimeSpec::from(std::time::Duration::ZERO);
-    #[cfg(target_os = "linux")]
     let proc_age = clock_gettime(ClockId::CLOCK_BOOTTIME)
         .map_err(|e| ProcFSError::Errno("clock_gettime(CLOCK_BOOTTIME)", e))?
         - proc_boottime;

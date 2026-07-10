@@ -103,7 +103,6 @@ impl FileRotate {
         let mut acl = vec![
             AclEntry::allow_user("", Perm::from_bits_truncate(6), None),
             AclEntry::allow_group("", Perm::from_bits_truncate(4), None),
-            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             AclEntry::allow_other(
                 if self.other {
                     Perm::READ

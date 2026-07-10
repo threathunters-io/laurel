@@ -23,10 +23,8 @@ use nix::sys::{
     sysinfo::sysinfo,
 };
 use nix::unistd::{chown, execve, Group, Uid, User};
-#[cfg(target_os = "linux")]
 use nix::unistd::{setresgid, setresuid};
 
-#[cfg(target_os = "linux")]
 use caps::{securebits::set_keepcaps, CapSet, Capability};
 
 use serde::{Deserialize, Serialize};
@@ -88,7 +86,6 @@ impl AddAssign for Stats {
 /// - CAP_DAC_READ_SEARCH+CAP_SYS_PTRACE are required for accessing
 ///   environment variables from arbitrary processes
 ///   (/proc/$PID/environ).
-#[cfg(target_os = "linux")]
 fn drop_privileges(runas_user: &User) -> anyhow::Result<()> {
     set_keepcaps(true)?;
     let uid = runas_user.uid;
@@ -477,10 +474,8 @@ fn run_app() -> Result<(), anyhow::Error> {
     } else if runas_user.uid.is_root() {
         log::warn!("Not dropping privileges -- no user configured");
     } else {
-        #[cfg(target_os = "linux")]
         drop_privileges(&runas_user)?;
     }
-    #[cfg(target_os = "linux")]
     if let Err(e) = caps::clear(None, CapSet::Ambient) {
         log::warn!("could not set ambient capabilities: {e}");
     }
@@ -603,7 +598,6 @@ fn run_app() -> Result<(), anyhow::Error> {
                 .map(|(k, v)| CString::new(format!("{k}={v}")).unwrap())
                 .collect();
 
-            #[cfg(target_os = "linux")]
             {
                 let capabilities =
                     [Capability::CAP_SYS_PTRACE, Capability::CAP_DAC_READ_SEARCH].into();
