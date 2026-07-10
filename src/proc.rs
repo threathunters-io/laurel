@@ -118,6 +118,8 @@ pub struct Process {
     pub parent: Option<ProcessKey>,
     /// process ID
     pub pid: u32,
+    /// true if the process has the "init" (pid=1) role in its namespace
+    pub is_init: bool,
     /// parent's porocess ID
     pub ppid: u32,
     /// path to binary
@@ -139,8 +141,8 @@ impl From<procfs::ProcPidInfo> for Process {
                 time: p.starttime,
                 pid: p.pid,
             },
-            parent: None,
             pid: p.pid,
+            is_init: p.is_pid1,
             ppid: p.ppid,
             labels: HashSet::new(),
             exe: p.exe,
@@ -151,6 +153,7 @@ impl From<procfs::ProcPidInfo> for Process {
                 .and_then(try_extract_container_id)
                 .map(|id| ContainerInfo { id }),
             systemd_service: p.cgroup.as_deref().and_then(try_extract_systemd_service),
+            ..Default::default()
         }
     }
 }
