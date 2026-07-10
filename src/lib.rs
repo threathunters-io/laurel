@@ -9,13 +9,12 @@ pub mod json;
 pub mod label_matcher;
 pub mod logger;
 pub mod proc;
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 pub mod procfs;
 pub(crate) mod quote;
 pub mod rotate;
-#[cfg(target_os = "linux")]
 pub mod sockaddr;
-#[cfg(test)]
-mod test;
 pub mod types;
 pub mod userdb;
+
+#[cfg(test)]
+mod test;

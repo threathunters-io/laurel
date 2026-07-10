@@ -88,7 +88,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     fs::write(dest_path, buf)?;
 
-    #[cfg(target_os = "linux")]
     bindgen::Builder::default()
         .header("src/sockaddr.h")
         .allowlist_type("^sockaddr_.*")
@@ -101,7 +100,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=const.rs.in");
-    #[cfg(target_os = "linux")]
     println!("cargo:rerun-if-changed=src/sockaddr.h");
 
     Ok(())

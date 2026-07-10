@@ -2,11 +2,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 use std::os::unix::fs::MetadataExt;
 use std::str::FromStr;
 
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_string;
 
 use linux_audit_parser::*;
@@ -16,13 +14,10 @@ use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 use crate::constants::{ARCH_NAMES, SYSCALL_NAMES, URING_OPS};
 use crate::env_matcher::EnvMatcher;
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::hash::Sha256Writer;
 use crate::label_matcher::LabelMatcher;
 use crate::proc::{self, ContainerInfo, ProcTable, Process, ProcessKey};
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
-#[cfg(target_os = "linux")]
 use crate::sockaddr::{SocketAddr, SocketAddrMatcher};
 use crate::types::*;
 use crate::userdb::UserDB;
@@ -168,14 +163,12 @@ pub struct State<'ev> {
     userdb: UserDB,
 }
 
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 /// LRU cache for exe hashes, keyed by (dev, inode, mtime_nsec)
 struct ExeHashCache {
     max_entries: usize,
     entries: indexmap::IndexMap<(u64, u64, i64), [u8; 32]>,
 }
 
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 impl ExeHashCache {
     fn new(max_entries: usize) -> Self {
         ExeHashCache {
@@ -212,7 +205,6 @@ pub struct Coalesce<'a, 'ev> {
     /// Output function
     emit_fn: Box<dyn 'a + FnMut(&Event<'ev>)>,
     /// Cache for exe hashes
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     exe_hash_cache: Option<ExeHashCache>,
 
     pub settings: Settings,
@@ -224,7 +216,6 @@ const EXPIRE_DONE_TIMEOUT: u64 = 120_000;
 
 /// generate translation of SocketAddr enum to a format similar to
 /// what auditd log_format=ENRICHED produces
-#[cfg(target_os = "linux")]
 fn add_translated_socketaddr(rv: &mut Body, sa: SocketAddr) {
     let mut m: Vec<(Key, Value)> = Vec::with_capacity(5);
     match sa {
@@ -348,7 +339,6 @@ impl UserGroupIDs {
 ///
 /// As an extra sanity check, exe is compared with normalized
 /// PATH.name. If they are equal, no script is returned.
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 fn path_script_name(path: &Body, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
     use nix::sys::stat::{major, makedev};
     use std::{
@@ -433,7 +423,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             state: State::default(),
             next_expire: None,
             emit_fn: Box::new(emit_fn),
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
             exe_hash_cache: None,
             // let max = self.settings.enrich_exe_hash_cache_entries;
             settings: Settings::default(),
@@ -442,7 +431,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
     pub fn with_settings(mut self, settings: Settings) -> Self {
         self.settings = settings;
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         if self.settings.enrich_exe_hash_cache_entries > 0 {
             self.exe_hash_cache = Some(ExeHashCache::new(
                 self.settings.enrich_exe_hash_cache_entries,
@@ -586,7 +574,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 m.push(("ppid".into(), Value::from(proc.ppid as i64)));
             }
         } else {
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
             {
                 if let (true, Some(container_info)) =
                     (self.settings.enrich_container, &proc.container_info)
@@ -719,7 +706,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         rv.retain(|(k, v)| match (k, v) {
             (k, Value::Str(vr, _q)) => {
                 if k == "saddr" {
-                    #[cfg(target_os = "linux")]
                     if let Ok(sa) = SocketAddr::parse(vr) {
                         // There's no need to enrich saddr entries
                         // that will be dropped, but the raw data
@@ -794,7 +780,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         script: &Option<NVec>,
         container_info: &mut Option<Body>,
     ) {
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let (true, Some(script)) = (self.settings.enrich_script, &script) {
             rv.push((
                 Key::Literal("SCRIPT"),
@@ -803,7 +788,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if let Some(proc) = process_key.and_then(|k| self.state.processes.get_key(&k)) {
-            #[cfg(all(feature = "procfs", target_os = "linux"))]
             if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                 let mut ci = Body::default();
                 ci.push((
@@ -943,7 +927,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             ));
         }
 
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         'ENV: {
             let Some(env_matcher) = &self.settings.env_matcher else {
                 break 'ENV;
@@ -975,7 +958,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
     /// - collects environment variables for EXECVE events
     /// - registers process in shadow process table for EXECVE events
     fn transform_event(&mut self, ev: &mut Event) {
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         let mut proc = ev
             .process_key
             .as_ref()
@@ -987,7 +969,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
         // Handle script enrichment
         // TODO: Look up process per key.
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         let script: Option<NVec> = match (self.settings.enrich_script, &self.settings.label_script)
         {
             (false, None) => None,
@@ -1010,10 +991,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 _ => None,
             },
         };
-        #[cfg(not(all(feature = "procfs", target_os = "linux")))]
-        let script = None;
 
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let (Some(ref mut proc), Some(script)) = (&mut proc, &script) {
             if let Some(label_script) = &self.settings.label_script {
                 for label in label_script.matches(script.as_ref()) {
@@ -1215,7 +1193,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     ..Process::default()
                 };
 
-                #[cfg(all(feature = "procfs", target_os = "linux"))]
                 if self.settings.enrich_container || self.settings.enrich_systemd {
                     let mut container_info: Option<ContainerInfo> = None;
                     let mut systemd_service: Option<Vec<Vec<u8>>> = None;
@@ -1306,13 +1283,11 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         if let Some(exe) = exe {
             self.enrich_exe_hash(body, pid, exe);
         }
     }
 
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn enrich_exe_hash(&mut self, rv: &mut Body, pid: u32, exe: &[u8]) {
         let Some(ref mut cache) = self.exe_hash_cache else {
             return;
@@ -2434,7 +2409,6 @@ type=EOE msg=audit(1740992884.191:7058722):
     }
 
     #[test]
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn exe_hash() -> Result<(), Box<dyn Error>> {
         use std::path::PathBuf;
 
@@ -2492,7 +2466,6 @@ type=EOE msg=audit(1615114232.375:99999):
     }
 
     #[test]
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn exe_hash_cache() {
         let mut cache = ExeHashCache::new(3);
         assert_eq!(cache.entries.len(), 0);

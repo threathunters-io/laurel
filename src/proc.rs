@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-#[cfg(all(feature = "procfs", target_os = "linux", not(test)))]
 use std::collections::BTreeSet;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
@@ -7,7 +6,6 @@ use std::iter::Iterator;
 use std::str::FromStr;
 use std::vec::Vec;
 
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 use faster_hex::hex_decode;
 
 use serde::{Deserialize, Serialize};
@@ -20,7 +18,6 @@ use crate::label_matcher::LabelMatcher;
 
 use linux_audit_parser::*;
 
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 use crate::procfs;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -131,13 +128,10 @@ pub struct Process {
     pub comm: Option<Vec<u8>>,
     /// Labels assigned to process
     pub labels: HashSet<Vec<u8>>,
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub container_info: Option<ContainerInfo>,
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub systemd_service: Option<Vec<Vec<u8>>>,
 }
 
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 impl From<procfs::ProcPidInfo> for Process {
     fn from(p: procfs::ProcPidInfo) -> Self {
         Self {
@@ -161,7 +155,6 @@ impl From<procfs::ProcPidInfo> for Process {
     }
 }
 
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 fn extract_sha256(buf: &[u8]) -> Option<Vec<u8>> {
     let mut dec = [0u8; 32];
     match buf.len() {
@@ -173,7 +166,6 @@ fn extract_sha256(buf: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// Try to determine container ID from cgroup path
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 pub(crate) fn try_extract_container_id(path: &[u8]) -> Option<Vec<u8>> {
     for fragment in path.split(|&c| c == b'/') {
         let fragment = if fragment.ends_with(&b".scope"[..]) {
@@ -190,7 +182,6 @@ pub(crate) fn try_extract_container_id(path: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// Try to extract "something.service" fragments from cgroup path
-#[cfg(all(feature = "procfs", target_os = "linux"))]
 pub(crate) fn try_extract_systemd_service(path: &[u8]) -> Option<Vec<Vec<u8>>> {
     let svc: Vec<_> = path
         .split(|&c| c == b'/')
@@ -206,7 +197,6 @@ pub(crate) fn try_extract_systemd_service(path: &[u8]) -> Option<Vec<Vec<u8>>> {
 
 impl Process {
     /// Generate a shadow process table entry from /proc/$PID for a given PID
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub fn parse_proc(pid: u32) -> Result<Process, ProcError> {
         procfs::parse_proc_pid(pid)
             .map(|p| p.into())
@@ -216,7 +206,6 @@ impl Process {
 
 #[derive(Debug, Error)]
 pub enum ProcError {
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     #[error("{0}")]
     ProcFSError(procfs::ProcFSError),
 }
@@ -245,7 +234,6 @@ impl ProcTable {
             current: BTreeMap::new(),
         };
 
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         {
             for pid in procfs::get_pids().map_err(ProcError::ProcFSError)? {
                 // /proc/<pid> access is racy. Ignore errors here.
@@ -301,7 +289,6 @@ impl ProcTable {
     /// shadow process table, an attempt is made to fetch the
     /// information from another source, i.e. /proc.
     pub fn get_or_retrieve(&mut self, pid: u32) -> Option<&Process> {
-        #[cfg(all(feature = "procfs", target_os = "linux"))]
         if self.get_pid(pid).is_none() {
             self.insert_from_procfs(pid);
         }
@@ -314,7 +301,6 @@ impl ProcTable {
 
     /// Fetch process information from procfs, insert into shadow
     /// process table.
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     pub fn insert_from_procfs(&mut self, pid: u32) -> Option<&Process> {
         if let Ok(p) = Process::parse_proc(pid) {
             let key = p.key;
@@ -330,7 +316,6 @@ impl ProcTable {
     ///
     /// It should be possible to run this every few seconds without
     /// incurring load.
-    #[cfg(all(feature = "procfs", target_os = "linux", not(test)))]
     pub fn expire(&mut self) {
         let mut proc_prune: BTreeSet<ProcessKey> = self.processes.keys().cloned().collect();
         let mut pid_prune: Vec<u32> = vec![];
@@ -377,11 +362,6 @@ impl ProcTable {
             self.current.remove(&pid);
         }
     }
-
-    /// No expire mechanism has been implemented for the case where
-    /// there's no procfs support.
-    #[cfg(not(all(feature = "procfs", target_os = "linux", not(test))))]
-    pub fn expire(&self) {}
 }
 
 #[cfg(test)]
@@ -453,7 +433,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn extract_container_id() {
         for (raw, expected) in &[
             (&b""[..], None),
@@ -469,7 +448,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "procfs", target_os = "linux"))]
     fn extract_systemd_service() {
         for (raw, expected) in &[
             (&b""[..], None),
