@@ -114,8 +114,10 @@ impl PartialOrd for ProcessKey {
 pub struct Process {
     /// "primary key", unique per host
     pub key: ProcessKey,
-    /// parent's key, if a parent has been recorded.
+    /// parent's key, if known, at of time of process creation.
     pub parent: Option<ProcessKey>,
+    /// Previous process instance if execve FIXME
+    pub previous_self: Option<ProcessKey>,
     /// process ID
     pub pid: u32,
     /// true if the process has the "init" (pid=1) role in its namespace
