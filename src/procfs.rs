@@ -21,7 +21,7 @@ lazy_static! {
 
 #[derive(Debug, Error)]
 pub enum ProcFSError {
-    #[error("can't read /proc/{pid}/(obj): {err}")]
+    #[error("can't read /proc/{pid}/{obj}: {err}")]
     PidFile {
         pid: u32,
         obj: &'static str,
@@ -180,12 +180,13 @@ pub(crate) struct ProcPidInfo {
     pub exe: Option<Vec<u8>>,
     /// from /proc/$PID/cgroup
     pub cgroup: Option<Vec<u8>>,
+    /// derived from NSpid in /proc/$PID/status
+    pub is_pid1: bool,
 }
 
 /// Parses information from /proc entry corresponding to process pid
 pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
     let buf = slurp_pid_obj(pid, "stat")?;
-
     let ProcStat {
         pid,
         ppid,
@@ -194,6 +195,7 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         ..
     } = parse_proc_pid_stat(&buf)?;
 
+    let is_pid1 = is_pid1(pid);
     let exe = read_link(format!("/proc/{pid}/exe"))
         .map(|p| Vec::from(p.as_os_str().as_bytes()))
         .ok();
@@ -223,7 +225,18 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
         comm: comm.to_vec(),
         exe,
         cgroup,
+        is_pid1,
     })
+}
+
+pub fn is_pid1(pid: u32) -> bool {
+    use bstr::ByteSlice;
+    let Ok(buf) = slurp_pid_obj(pid, "status") else {
+        return false;
+    };
+    ByteSlice::lines(buf.as_slice())
+        .filter_map(|line| line.strip_prefix(b"NSpid:"))
+        .any(|value| value.trim_end().ends_with(b"\t1"))
 }
 
 /// Parses path (third field) /proc/pid/cgroup
@@ -246,7 +259,7 @@ mod tests {
     #[test]
     fn parse_self() {
         let pid = std::process::id();
-        let proc = parse_proc_pid(pid).unwrap_or_else(|_| panic!("parse entry for {pid}"));
+        let proc = parse_proc_pid(pid).unwrap_or_else(|e| panic!("parse entry for {pid}: {e}"));
         println!("{proc:?}");
     }
 

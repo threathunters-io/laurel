@@ -44,6 +44,7 @@ aho-corasick = "1.1"
 memchr = "2.8.1"
 itertools = "0.14.0"
 caps = "0.5"
+bstr = "1.12.3"
 
 [build-dependencies]
 bindgen = ">= 0.60"
