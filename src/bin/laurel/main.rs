@@ -43,14 +43,12 @@ const fn build_id() -> &'static str {
     }
 }
 
-#[cfg(feature = "procfs")]
 #[derive(Default)]
 struct CPUStats {
     utime: Duration,
     stime: Duration,
 }
 
-#[cfg(feature = "procfs")]
 fn get_cpu_stats() -> Option<CPUStats> {
     use laurel::procfs::{parse_proc_pid_stat, slurp_file, ProcStat, CLK_TCK};
     let buf = slurp_file("/proc/self/stat").ok()?;
@@ -93,7 +91,6 @@ fn drop_privileges(runas_user: &User) -> anyhow::Result<()> {
     setresgid(gid, gid, gid).with_context(|| format!("setresgid({gid})"))?;
     setresuid(uid, uid, uid).with_context(|| format!("setresuid({uid})"))?;
 
-    #[cfg(feature = "procfs")]
     {
         let capabilities = [Capability::CAP_SYS_PTRACE, Capability::CAP_DAC_READ_SEARCH].into();
         caps::set(None, CapSet::Permitted, &capabilities).context("set permitted capabilities")?;
@@ -554,7 +551,6 @@ fn run_app() -> Result<(), anyhow::Error> {
     }
 
     let mut line: Vec<u8> = Vec::new();
-    #[cfg(feature = "procfs")]
     let mut cpu_stats = CPUStats::default();
     let mut stats = Stats::default();
     let mut overall_stats = Stats::default();
@@ -652,7 +648,6 @@ fn run_app() -> Result<(), anyhow::Error> {
                     Uid::effective().as_raw(),
                     config
                 );
-                #[cfg(feature = "procfs")]
                 if let Some(new_cpu_stats) = get_cpu_stats() {
                     let elapsed = statusreport_last_t.elapsed()?.as_secs_f64();
                     let usr_percent = 100.
