@@ -314,14 +314,20 @@ impl ProcTable {
     /// It should be possible to run this every few seconds without
     /// incurring load.
     pub fn expire(&mut self) {
-        let mut proc_prune: BTreeSet<ProcessKey> = self.processes.keys().cloned().collect();
-        let mut pid_prune: Vec<u32> = vec![];
-
-        let Ok(live_processes) = procfs::get_pids() else {
+        let Ok(live_pids) = procfs::get_pids().map(BTreeSet::from_iter) else {
             return;
         };
+
+        let mut pid_prune: Vec<u32> = self
+            .current
+            .keys()
+            .filter(|pid| !live_pids.contains(pid))
+            .copied()
+            .collect();
+        let mut proc_prune: BTreeSet<ProcessKey> = self.processes.keys().copied().collect();
+
         // unmark latest instance in by_pids and all its parents
-        for seed_pid in live_processes {
+        for seed_pid in live_pids {
             let Some(mut key) = self.current.get(&seed_pid) else {
                 continue;
             };
@@ -353,8 +359,8 @@ impl ProcTable {
                 pid_prune.push(*pid);
             }
         }
-        for pid in pid_prune {
-            self.current.remove(&pid);
+        for pid in &pid_prune {
+            self.current.remove(pid);
         }
     }
 }

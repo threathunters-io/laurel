@@ -85,12 +85,11 @@ pub fn read_environ_block(pid: u32) -> Result<Vec<u8>, ProcFSError> {
 }
 
 /// Returns all currently valid process IDs
-pub fn get_pids() -> Result<Vec<u32>, ProcFSError> {
+pub fn get_pids() -> Result<impl Iterator<Item = u32>, ProcFSError> {
     Ok(read_dir("/proc")
         .map_err(ProcFSError::Enum)?
         .flatten()
-        .filter_map(|e| u32::from_str(e.file_name().to_string_lossy().as_ref()).ok())
-        .collect::<Vec<u32>>())
+        .filter_map(|e| u32::from_str(e.file_name().to_string_lossy().as_ref()).ok()))
 }
 
 /// Returns file metadata for a path from a process' perspective
