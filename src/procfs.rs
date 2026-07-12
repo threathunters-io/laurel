@@ -233,10 +233,9 @@ pub(crate) fn parse_proc_pid_cgroup(pid: u32) -> Result<Option<Vec<u8>>, ProcFSE
 
 fn parse_cgroup_buf(buf: &[u8]) -> Result<Option<Vec<u8>>, ProcFSError> {
     for line in buf.split(|c| *c == b'\n') {
-        match line.split(|&c| c == b':').nth(2) {
-            None => continue,
-            Some(dir) => return Ok(Some(dir.to_vec())),
-        }
+        if let Some(dir) = line.split(|&c| c == b':').nth(2) {
+            return Ok(Some(dir.to_vec()));
+        };
     }
     Ok(None)
 }

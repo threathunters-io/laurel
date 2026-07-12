@@ -135,13 +135,11 @@ impl ReconnectableStream {
 impl Write for ReconnectableStream {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         for i in 0..=self.retries {
-            match self.stream.as_mut().and_then(|s| s.write(buf).ok()) {
-                Some(n) => return Ok(n),
-                None => self.stream = None,
+            if let Some(n) = self.stream.as_mut().and_then(|s| s.write(buf).ok()) {
+                return Ok(n);
             }
-            if self.stream.is_none() {
-                self.reconnect(100 * (1 << i));
-            }
+            self.stream = None;
+            self.reconnect(100 * (1 << i));
         }
         Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -150,13 +148,11 @@ impl Write for ReconnectableStream {
     }
     fn flush(&mut self) -> std::io::Result<()> {
         for i in 0..=self.retries {
-            match self.stream.as_mut().and_then(|s| s.flush().ok()) {
-                Some(n) => return Ok(n),
-                None => self.stream = None,
+            if let Some(n) = self.stream.as_mut().and_then(|s| s.flush().ok()) {
+                return Ok(n);
             }
-            if self.stream.is_none() {
-                self.reconnect(100 * (1 << i));
-            }
+            self.stream = None;
+            self.reconnect(100 * (1 << i));
         }
         Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -619,20 +615,17 @@ fn run_app() -> Result<(), anyhow::Error> {
         }
 
         stats.lines += 1;
-        match coalesce.process_line(&line) {
-            Ok(()) => (),
-            Err(e) => {
-                stats.errors += 1;
-                if let Some(ref mut l) = error_logger {
-                    l.write_all(&line)
-                        .and_then(|_| l.flush())
-                        .context("write log")?;
-                }
-                let line = String::from_utf8_lossy(&line).replace('\n', "");
-                log::error!("Error {e} processing msg: {line}");
-                continue;
+        if let Err(e) = coalesce.process_line(&line) {
+            stats.errors += 1;
+            if let Some(ref mut l) = error_logger {
+                l.write_all(&line)
+                    .and_then(|_| l.flush())
+                    .context("write log")?;
             }
-        };
+            let line = String::from_utf8_lossy(&line).replace('\n', "");
+            log::error!("Error {e} processing msg: {line}");
+            continue;
+        }
 
         // Output status information about Laurel every "statusreport_period_t" time (configurable)
         if let Some(statusreport_period_t) = statusreport_period {
@@ -730,11 +723,8 @@ pub fn main() {
         }));
     }
 
-    match run_app() {
-        Ok(_) => (),
-        Err(e) => {
-            log::error!("{e:#}");
-            std::process::exit(1);
-        }
-    };
+    if let Err(e) = run_app() {
+        log::error!("{e:#}");
+        std::process::exit(1);
+    }
 }

@@ -173,9 +173,8 @@ pub(crate) fn try_extract_container_id(path: &[u8]) -> Option<Vec<u8>> {
         } else {
             fragment
         };
-        match extract_sha256(fragment) {
-            None => continue,
-            Some(id) => return Some(id),
+        if let Some(id) = extract_sha256(fragment) {
+            return Some(id);
         }
     }
     None
@@ -320,30 +319,28 @@ impl ProcTable {
         let mut proc_prune: BTreeSet<ProcessKey> = self.processes.keys().cloned().collect();
         let mut pid_prune: Vec<u32> = vec![];
 
-        let live_processes = match procfs::get_pids() {
-            Ok(p) => p,
-            Err(_) => return,
+        let Ok(live_processes) = procfs::get_pids() else {
+            return;
         };
         // unmark latest instance in by_pids and all its parents
         for seed_pid in live_processes {
-            let mut key = match self.current.get(&seed_pid) {
-                None => continue,
-                Some(&key) => key,
+            let Some(mut key) = self.current.get(&seed_pid) else {
+                continue;
             };
 
             // keep all parents of live processes => remove them from
             // the prune list.
             loop {
-                if !proc_prune.remove(&key) {
+                if !proc_prune.remove(key) {
                     break;
                 }
 
-                key = match self.processes.get(&key) {
+                key = match self.processes.get(key) {
                     Some(Process {
                         pid,
                         parent: Some(parent_key),
                         ..
-                    }) if *pid >= 1 => *parent_key,
+                    }) if *pid >= 1 => parent_key,
                     _ => break,
                 };
             }

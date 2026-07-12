@@ -80,10 +80,9 @@ impl FileRotate {
         }
         for suffix in (0..self.generations).rev() {
             let mut old = self.basename.clone();
-            match suffix {
-                0 => (),
-                _ => old.push(format!(".{suffix}")),
-            };
+            if suffix > 0 {
+                old.push(format!(".{suffix}"));
+            }
             let mut new = self.basename.clone();
             new.push(format!(".{}", suffix + 1));
             if fs::metadata(&old).is_ok() {
