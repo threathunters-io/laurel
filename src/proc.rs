@@ -1,23 +1,16 @@
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::{self, Display};
-use std::iter::Iterator;
 use std::str::FromStr;
-use std::vec::Vec;
 
+use bstr::ByteSlice;
 use faster_hex::hex_decode;
-
+use linux_audit_parser::*;
 use serde::{Deserialize, Serialize};
-
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-
 use thiserror::Error;
 
 use crate::label_matcher::LabelMatcher;
-
-use linux_audit_parser::*;
-
 use crate::procfs;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -172,7 +165,7 @@ fn extract_sha256(buf: &[u8]) -> Option<Vec<u8>> {
 
 /// Try to determine container ID from cgroup path
 pub(crate) fn try_extract_container_id(path: &[u8]) -> Option<Vec<u8>> {
-    for fragment in path.split(|&c| c == b'/') {
+    for fragment in path.split_str(b"/") {
         let fragment = if fragment.ends_with(&b".scope"[..]) {
             &fragment[..fragment.len() - 6]
         } else {

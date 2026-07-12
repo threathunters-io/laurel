@@ -1,10 +1,12 @@
 use std::ffi::OsStr;
 use std::fs::Metadata;
 use std::fs::{read_dir, read_link, File};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+
+use bstr::ByteSlice;
 
 use lazy_static::lazy_static;
 use nix::sys::time::TimeSpec;
@@ -31,6 +33,8 @@ pub enum ProcFSError {
     Enum(std::io::Error),
     #[error("can't get field {0}")]
     Field(&'static str),
+    #[error("truncated line")]
+    Truncated,
     #[error("{0}: {1}")]
     Errno(&'static str, nix::errno::Errno),
 }
@@ -38,7 +42,7 @@ pub enum ProcFSError {
 pub fn slurp_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, std::io::Error> {
     let f = File::open(path)?;
     let mut r = BufReader::with_capacity(1 << 16, f);
-    r.fill_buf()?;
+    std::io::BufRead::fill_buf(&mut r)?;
     let mut buf = Vec::with_capacity(8192);
     r.read_to_end(&mut buf)?;
     Ok(buf)
@@ -125,36 +129,26 @@ pub struct ProcStat<'a> {
 }
 
 pub fn parse_proc_pid_stat(buf: &[u8]) -> Result<ProcStat<'_>, ProcFSError> {
-    let pid_end = buf
-        .iter()
-        .enumerate()
-        .find(|(_, c)| **c == b' ')
-        .ok_or(ProcFSError::Field("pid"))?
-        .0;
-    let stat_pid = &buf[..pid_end];
+    let (stat_pid, buf) = buf.split_once_str(" ").ok_or(ProcFSError::Field("pid"))?;
+    // comm is enclosed with parentheses, but it may contain
+    // whitespace and ")", so we go and find the right-most ")".
+    let buf = buf.strip_prefix(b"(").ok_or(ProcFSError::Field("comm"))?;
+    let comm_end = buf.rfind_byte(b')').ok_or(ProcFSError::Field("comm"))?;
 
-    // comm may contain whitespace and ")", find closing paren from right.
-    let comm_end = buf[..32]
-        .iter()
-        .enumerate()
-        .rfind(|(_, c)| **c == b')')
-        .ok_or(ProcFSError::Field("comm"))?
-        .0;
-    let stat = &buf[comm_end + 2..]
-        .split(|c| *c == b' ')
-        .collect::<Vec<_>>();
+    let mut stat: Vec<&[u8]> = Vec::with_capacity(22);
+    stat.extend([stat_pid, &buf[..comm_end]]);
+    stat.extend(buf[comm_end + 2..].split_str(" ").take(20));
+    if stat.len() < 22 {
+        return Err(ProcFSError::Truncated);
+    }
 
-    let pid = u32::from_str(String::from_utf8_lossy(stat_pid).as_ref())
-        .map_err(|_| ProcFSError::Field("pid"))?;
-    let comm = &buf[pid_end + 2..comm_end];
-    let ppid = u32::from_str(String::from_utf8_lossy(stat[1]).as_ref())
-        .map_err(|_| ProcFSError::Field("ppid"))?;
-    let starttime = u64::from_str(String::from_utf8_lossy(stat[19]).as_ref())
-        .map_err(|_| ProcFSError::Field("starttime"))?;
-    let utime = u64::from_str(String::from_utf8_lossy(stat[11]).as_ref())
-        .map_err(|_| ProcFSError::Field("utime"))?;
-    let stime = u64::from_str(String::from_utf8_lossy(stat[12]).as_ref())
-        .map_err(|_| ProcFSError::Field("stime"))?;
+    let pid = u32::from_str(&stat[0].to_str_lossy()).map_err(|_| ProcFSError::Field("pid"))?;
+    let comm = stat[1];
+    let ppid = u32::from_str(&stat[3].to_str_lossy()).map_err(|_| ProcFSError::Field("ppid"))?;
+    let starttime =
+        u64::from_str(&stat[21].to_str_lossy()).map_err(|_| ProcFSError::Field("starttime"))?;
+    let utime = u64::from_str(&stat[13].to_str_lossy()).map_err(|_| ProcFSError::Field("utime"))?;
+    let stime = u64::from_str(&stat[14].to_str_lossy()).map_err(|_| ProcFSError::Field("stime"))?;
 
     Ok(ProcStat {
         pid,
@@ -230,11 +224,10 @@ pub(crate) fn parse_proc_pid(pid: u32) -> Result<ProcPidInfo, ProcFSError> {
 }
 
 pub fn is_pid1(pid: u32) -> bool {
-    use bstr::ByteSlice;
     let Ok(buf) = slurp_pid_obj(pid, "status") else {
         return false;
     };
-    ByteSlice::lines(buf.as_slice())
+    buf.lines()
         .filter_map(|line| line.strip_prefix(b"NSpid:"))
         .any(|value| value.trim_end().ends_with(b"\t1"))
 }
@@ -245,12 +238,9 @@ pub(crate) fn parse_proc_pid_cgroup(pid: u32) -> Result<Option<Vec<u8>>, ProcFSE
 }
 
 fn parse_cgroup_buf(buf: &[u8]) -> Result<Option<Vec<u8>>, ProcFSError> {
-    for line in buf.split(|c| *c == b'\n') {
-        if let Some(dir) = line.split(|&c| c == b':').nth(2) {
-            return Ok(Some(dir.to_vec()));
-        };
-    }
-    Ok(None)
+    Ok(buf
+        .lines()
+        .find_map(|l| l.split_str(":").nth(2).map(Vec::from)))
 }
 
 #[cfg(test)]

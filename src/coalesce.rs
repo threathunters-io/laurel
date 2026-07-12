@@ -5,12 +5,13 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::str::FromStr;
 
+use bstr::ByteSlice;
 use faster_hex::hex_string;
-
 use linux_audit_parser::*;
-
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
+use thiserror::Error;
+use tinyvec::TinyVec;
 
 use crate::constants::{ARCH_NAMES, SYSCALL_NAMES, URING_OPS};
 use crate::env_matcher::EnvMatcher;
@@ -21,10 +22,6 @@ use crate::procfs;
 use crate::sockaddr::{SocketAddr, SocketAddrMatcher};
 use crate::types::*;
 use crate::userdb::UserDB;
-
-use tinyvec::TinyVec;
-
-use thiserror::Error;
 
 #[derive(
     PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, SerializeDisplay, DeserializeFromStr,
@@ -677,7 +674,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             match (k, v) {
                 (k, Value::Str(r, _)) if k == "proctitle" => {
                     argv = r
-                        .split(|c| *c == 0)
+                        .split_str(b"\0")
                         .map(|arg| {
                             // (assumed) safety:
                             // We are adding references to the
@@ -1453,11 +1450,10 @@ mod test {
         let mut out = vec![];
         for line in BufReader::new(text.as_ref()).lines() {
             let line = line.unwrap().clone();
-            for c in line.as_bytes() {
-                match *c as char {
-                    '\x1d' => break,
-                    _ => out.push(*c),
-                };
+            if let Some((raw, _enriched)) = line.split_once("\x1d") {
+                out.extend(raw.as_bytes());
+            } else {
+                out.extend(line.as_bytes());
             }
             out.push(b'\n');
         }
