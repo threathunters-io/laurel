@@ -143,6 +143,8 @@ pub struct Enrich {
     pub pid: bool,
     #[serde(default = "true_value", rename = "spawned-by")]
     pub spawned_by: bool,
+    #[serde(default, rename = "ppid-verbose")]
+    pub ppid_verbose: bool,
     #[serde(default = "true_value")]
     pub script: bool,
     #[serde(default = "true_value", rename = "uid-groups")]
@@ -179,6 +181,7 @@ impl Default for Enrich {
             container_info: false,
             systemd: true,
             pid: true,
+            ppid_verbose: false,
             spawned_by: true,
             script: true,
             uid_groups: true,
@@ -460,6 +463,7 @@ impl Config {
             enrich_container_info: self.enrich.container_info,
             enrich_systemd: self.enrich.systemd,
             enrich_pid: self.enrich.pid,
+            enrich_ppid_verbose: self.enrich.ppid_verbose,
             enrich_spawned_by: self.enrich.spawned_by,
             enrich_script: self.enrich.script,
             enrich_uid_groups: self.enrich.uid_groups,
