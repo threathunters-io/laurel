@@ -109,7 +109,8 @@ pub struct Process {
     pub key: ProcessKey,
     /// parent's key, if known, at of time of process creation.
     pub parent: Option<ProcessKey>,
-    /// Previous process instance if execve FIXME
+    /// previous process instance; set if process has been created
+    /// through execve.
     pub previous_self: Option<ProcessKey>,
     /// process ID
     pub pid: u32,
