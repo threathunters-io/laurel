@@ -67,6 +67,7 @@ pub struct Settings {
     pub enrich_container_info: bool,
     pub enrich_systemd: bool,
     pub enrich_pid: bool,
+    pub enrich_ppid_verbose: bool,
     pub enrich_spawned_by: bool,
     pub enrich_script: bool,
     pub enrich_uid_groups: bool,
@@ -110,6 +111,7 @@ impl Default for Settings {
             enrich_container_info: false,
             enrich_systemd: false,
             enrich_pid: true,
+            enrich_ppid_verbose: false,
             enrich_spawned_by: true,
             enrich_script: true,
             enrich_uid_groups: true,
@@ -562,17 +564,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 m.push(("START_TIME".into(), format!("{sec}.{msec:03}").into()));
             }
         }
-        if name != b"pid" {
-            if let Some(comm) = &proc.comm {
-                m.push(("comm".into(), Value::from(comm.as_slice())));
-            }
-            if let Some(exe) = &proc.exe {
-                m.push(("exe".into(), Value::from(exe.as_slice())));
-            }
-            if proc.ppid != 0 {
-                m.push(("ppid".into(), Value::from(proc.ppid as i64)));
-            }
-        } else {
+        if name == b"pid" {
             if let (true, Some(container_info)) =
                 (self.settings.enrich_container, &proc.container_info)
             {
@@ -594,6 +586,16 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                             .collect(),
                     ),
                 ));
+            }
+        } else if name != b"ppid" || self.settings.enrich_ppid_verbose {
+            if let Some(comm) = &proc.comm {
+                m.push(("comm".into(), Value::from(comm.as_slice())));
+            }
+            if let Some(exe) = &proc.exe {
+                m.push(("exe".into(), Value::from(exe.as_slice())));
+            }
+            if proc.ppid != 0 {
+                m.push(("ppid".into(), Value::from(proc.ppid as i64)));
             }
         }
 
@@ -2290,10 +2292,12 @@ mod test {
         let s1 = Settings {
             proc_label_keys: [b"test-script".to_vec()].into(),
             proc_propagate_labels: [b"test-script".to_vec()].into(),
+            enrich_ppid_verbose: true,
             ..Settings::default()
         };
         let s2 = Settings {
             filter_keys: [b"fork".to_vec()].into(),
+            enrich_ppid_verbose: true,
             ..s1.clone()
         };
 
