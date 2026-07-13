@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -80,21 +80,21 @@ pub struct Debug {
     pub parse_error_log: Option<Logfile>,
 }
 
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ArrayOrString {
     Array,
     String,
 }
 
-fn execve_argv_default() -> HashSet<ArrayOrString> {
+fn execve_argv_default() -> BTreeSet<ArrayOrString> {
     [ArrayOrString::Array].into()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Transform {
     #[serde(default = "execve_argv_default", rename = "execve-argv")]
-    pub execve_argv: HashSet<ArrayOrString>,
+    pub execve_argv: BTreeSet<ArrayOrString>,
     #[serde(default, rename = "execve-argv-limit-bytes")]
     pub execve_argv_limit_bytes: Option<usize>,
 }
@@ -194,7 +194,7 @@ fn default_4096() -> usize {
     4096
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LabelProcess {
     #[serde(default, rename = "label-keys")]
     pub label_keys: HashSet<String>,
@@ -216,6 +216,23 @@ pub struct LabelProcess {
     pub unlabel_script: Option<LabelMatcher>,
     #[serde(default, rename = "propagate-labels")]
     pub propagate_labels: HashSet<String>,
+}
+
+impl Default for LabelProcess {
+    fn default() -> Self {
+        Self {
+            label_keys: HashSet::default(),
+            label_exe: None,
+            unlabel_exe: None,
+            label_argv: None,
+            unlabel_argv: None,
+            label_argv_bytes: 4096,
+            label_argv_count: 32,
+            label_script: None,
+            unlabel_script: None,
+            propagate_labels: HashSet::default(),
+        }
+    }
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -247,7 +264,7 @@ pub(crate) mod regex_set {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Filter {
     #[serde(default, rename = "filter-keys")]
     pub filter_keys: HashSet<String>,
@@ -263,6 +280,20 @@ pub struct Filter {
     pub filter_action: FilterAction,
     #[serde(default = "true_value", rename = "keep-first-per-process")]
     pub keep_first_per_process: bool,
+}
+
+impl Default for Filter {
+    fn default() -> Self {
+        Self {
+            filter_keys: HashSet::default(),
+            filter_labels: HashSet::default(),
+            filter_raw_lines: regex::bytes::RegexSet::default(),
+            filter_null_keys: false,
+            filter_sockaddr: Vec::default(),
+            filter_action: FilterAction::default(),
+            keep_first_per_process: true,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -541,8 +572,7 @@ read-users = ["splunk"]
         .unwrap();
         println!("{}", toml::to_string(&cfg_empty_sections).unwrap());
 
-        // FIXME This does not work because HashSet ordering is not stable.
-        // assert!(toml::to_string(&cfg_default) == toml::to_string(&cfg_empty_sections));
+        assert!(toml::to_string(&cfg_default) == toml::to_string(&cfg_empty_sections));
     }
 
     #[test]
