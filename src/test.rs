@@ -63,6 +63,7 @@ fn golden() -> Result<(), Box<dyn Error>> {
         let mut c = Coalesce::new(emit_fn);
         c.settings.enrich_uid_groups = false;
         c.settings.enrich_pid = false;
+        c.settings.enrich_spawned_by = false;
         c.settings.enrich_script = false;
 
         let txtfile = prefix.join(file);

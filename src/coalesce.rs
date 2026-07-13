@@ -67,6 +67,7 @@ pub struct Settings {
     pub enrich_container_info: bool,
     pub enrich_systemd: bool,
     pub enrich_pid: bool,
+    pub enrich_spawned_by: bool,
     pub enrich_script: bool,
     pub enrich_uid_groups: bool,
     pub enrich_exe_hash: bool,
@@ -109,6 +110,7 @@ impl Default for Settings {
             enrich_container_info: false,
             enrich_systemd: false,
             enrich_pid: true,
+            enrich_spawned_by: true,
             enrich_script: true,
             enrich_uid_groups: true,
             enrich_exe_hash: false,
@@ -571,9 +573,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 m.push(("ppid".into(), Value::from(proc.ppid as i64)));
             }
         } else {
-            if let Some(ProcessKey::Event(id)) = proc.previous_self {
-                m.push(("PREVIOUS_EVENT_ID".into(), format!("{id}").into()));
-            }
             if let (true, Some(container_info)) =
                 (self.settings.enrich_container, &proc.container_info)
             {
@@ -785,6 +784,33 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
         }
 
         if let Some(proc) = process_key.and_then(|k| self.state.processes.get_key(&k)) {
+            if let (true, Some(spawner_key)) = (
+                self.settings.enrich_spawned_by,
+                proc.previous_self.or(proc.parent),
+            ) {
+                let mut m = Vec::new();
+                match spawner_key {
+                    ProcessKey::Event(id) => {
+                        m.push(("EVENT_ID".into(), format!("{id}").into()));
+                    }
+                    ProcessKey::Observed { time, pid: _ } => {
+                        let (sec, msec) = (time / 1000, time % 1000);
+                        m.push(("START_TIME".into(), format!("{sec}.{msec:03}").into()));
+                    }
+                }
+                if let Some(spawner_proc) = self.state.processes.get_key(&spawner_key) {
+                    m.push(("pid".into(), Value::from(spawner_proc.pid as i64)));
+                    if let Some(comm) = &spawner_proc.comm {
+                        m.push(("comm".into(), Value::from(comm.as_slice())));
+                    }
+                    if let Some(exe) = &spawner_proc.exe {
+                        m.push(("exe".into(), Value::from(exe.as_slice())));
+                    }
+                    m.push(("pid".into(), Value::from(spawner_proc.pid as i64)));
+                }
+                rv.push((Key::Literal("SPAWNED_BY"), Value::Map(m)));
+            }
+
             if let (true, Some(c)) = (self.settings.enrich_container, &proc.container_info) {
                 let mut ci = Body::default();
                 ci.push((
@@ -2250,7 +2276,7 @@ mod test {
         let j = event_to_json(&event);
         println!("{j}");
         assert!(
-            j.contains(r#""PREVIOUS_EVENT_ID":"#),
+            j.contains(r#""SPAWNED_BY":{"EVENT_ID":"#),
             "{id} should have a previous event id"
         );
         assert!(
