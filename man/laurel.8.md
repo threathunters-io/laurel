@@ -169,6 +169,15 @@ Options that can be configured here actually add information to events
 - `container_info`: Add container information as top-level
   `CONTAINER_INFO` key. Deprecated; default: false
 - `pid`: Add context information for process IDs. Default: true
+- `ppid-verbose`: As part of the `SYSCALL.PPID.*` enrichment, the first
+  event ID referring to the parent process or its start time is
+  logged. If this option is set, the `comm`, `exe`, and `ppid` fields
+  are added. Deprecated, see `spawned-by`. Default: false
+- `spawned-by`: Add `SYSCALL.SPAWNED_BY.*` enrichments that contains
+  information about the process responsible for spawning the current
+  process. This is a replacement for the `SYSCALL.PPID` enrichment.
+  For a more detailed discussion, see section "Adding Context: Process
+  Relationships, Labels" in `laurel-about(7)`. Default: true
 - `script`: If an `exec` syscall spawns a script (as opposed to a
   binary), add a `SCRIPT` entry to the `SYSCALL` record. A script is
   assumed if the first `PATH` entry does not correspond to file
