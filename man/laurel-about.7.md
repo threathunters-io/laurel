@@ -93,7 +93,11 @@ Mechanisms by which labels can be assigned include:
 - regular expression applied to part of the command line (`EXECVE.ARGV` field)
 - regular expression applied to the script path (`SYSCALL.SCRIPT` field, enriched)
 
-The process tracking information can be used to enrich fields containing process ids, including `SYSCALL.{pid, ppid}` and `OBJ_PID.opid` associated with `ptrace` attach or `kill` syscalls.
+The process tracking information can be used to enrich fields containing process ids, including `SYSCALL.{pid, ppid}` and `OBJ_PID.opid` associated with `ptrace` attach or `kill` syscalls. Enrichment is done using capitalized `*PID` fields that contain at least an `EVENT_ID` referring to the first audit event observed for that process or `START_TIME` if no such audit event was observed. Extra `comm` and `exe` are added where useful.
+
+To reconstruct a process-tree-like structure from `Laurel`'s audit logs, the `SYSCALL.SPAWNED_BY.*` enrichment is most useful.
+
+If a process has been started using a combination of `fork` and `exec` syscalls, `SYSCALL.SPAWNED_BY` contains information from the parent process referred to by `SYSCALL.ppid` when the `exec` call was observed. If the process was created from a previously observed process using a plain `exec` syscall, this record contains information from that previous process with the same `pid`. Fields include `EVENT_ID`/`START_TIME`, `comm`, `exe`, and `pid`.
 
 ### Volume reduction: Filtering out events
 

@@ -103,6 +103,11 @@ drop-raw = false
 
 # Add context (event-id, comm, exe, ppid) for *pid entries
 pid = true
+# Log comm, exe, ppid as part of SYSCALL.PPID. Deprecated.
+ppid-verbose = false
+# Add SYSCALL.SPAWNED_BY.* enrichment about the process responsible
+# for spawning the current process.
+spawned-by = true
 
 # List of environment variables to log for every EXECVE event.
 # Prefix matches are used for strings ending with an asterisk ("*")
@@ -195,7 +200,7 @@ propagate-labels = [ "software_mgmt", "amazon-ssm-agent" ]
 # filter-keys = ["filter-this"]
 
 # In addition to key based filtering it is also possible to configure label based 
-# filtering. This alows the possibility to filter based on parent processes.
+# filtering. This allows the possibility to filter based on parent processes.
 
 # filter-labels = ["software_mgmt"]
 
