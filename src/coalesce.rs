@@ -1305,7 +1305,7 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             }
         }
 
-        if let Some(exe) = exe {
+        if let (true, Some(exe)) = (self.settings.enrich_exe_hash, exe) {
             self.enrich_exe_hash(body, pid, exe);
         }
     }
