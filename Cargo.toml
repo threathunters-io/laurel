@@ -21,11 +21,11 @@ getopts = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = { version = "2", features = ["serde"] }
-toml = ">= 0.5"
+toml =  { version = "0.9", default-features = false, features = ["parse", "display", "serde"] }
 nix = { version = ">= 0.26", features = ["user", "fs", "time", "process", "signal"]}
 libc = "0.2"
 exacl = ">= 0.6"
-regex = "1"
+regex = { version = "1", default-features = false, features = [ "std", "perf", "unicode" ] }
 signal-hook = "0.3"
 tinyvec = { version = "1", features = ["alloc", "serde"] }
 
