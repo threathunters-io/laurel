@@ -344,7 +344,6 @@ fn path_script_name(path: &Body, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) ->
     use nix::sys::stat::{major, makedev};
     use std::{
         ffi::OsStr,
-        os::unix::{ffi::OsStrExt, fs::MetadataExt},
         path::{Component, Path, PathBuf},
     };
 
