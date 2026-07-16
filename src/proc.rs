@@ -329,25 +329,24 @@ impl ProcTable {
 
         // unmark latest instance in by_pids and all its parents
         for seed_pid in live_pids {
-            let Some(mut key) = self.current.get(&seed_pid) else {
+            let Some(mut key) = self.current.get(&seed_pid).copied() else {
                 continue;
             };
 
-            // keep all parents of live processes => remove them from
-            // the prune list.
+            // keep all ancestors of live processes => remove them
+            // from the prune list.
             loop {
-                if !proc_prune.remove(key) {
+                if !proc_prune.remove(&key) {
                     break;
                 }
-
-                key = match self.processes.get(key) {
-                    Some(Process {
-                        pid,
-                        parent: Some(parent_key),
-                        ..
-                    }) if *pid >= 1 => parent_key,
-                    _ => break,
+                let Some(ancestor_key) = self
+                    .processes
+                    .get(&key)
+                    .and_then(|p| p.previous_self.or(p.parent))
+                else {
+                    break;
                 };
+                key = ancestor_key;
             }
         }
         // remove entries from primary process list
