@@ -2,7 +2,7 @@
 title: laurel2audit
 section: 8
 header: System Administration Utilities
-footer: laurel 0.8.1
+footer: laurel 0.8.2
 ---
 
 # NAME
