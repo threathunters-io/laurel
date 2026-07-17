@@ -2266,6 +2266,13 @@ mod test {
         let mut c = Coalesce::new(mk_emit_vec(&events));
         c.settings = s;
 
+        use crate::procfs;
+
+        procfs::PROCTABLE.insert(1, 0);
+        procfs::PROCTABLE.insert(3822680, 2342);
+        procfs::PROCTABLE.insert(1578539, 3822680);
+        procfs::PROCTABLE.insert(1578539, 3822680);
+        procfs::PROCTABLE.insert(1578540, 1578539);
         process_record(&mut c, include_bytes!("testdata/fork-sleep-exec.txt")).unwrap();
 
         drop(c);
@@ -2464,36 +2471,18 @@ type=EOE msg=audit(1740992884.191:7058722):
 
     #[test]
     fn exe_hash() -> Result<(), Box<dyn Error>> {
-        use std::path::PathBuf;
-
-        use sha2::{Digest, Sha256};
-
-        let binary = PathBuf::from("/bin/sleep")
-            .canonicalize()
-            .expect("can'canonicalize");
-        let binary_str = binary.to_string_lossy();
-        println!("Using program {binary_str}");
-
-        // This must be running until after it Coalesce has processed
-        // the fake audit record below.
-        let Ok(pid) = std::process::Command::new(&binary)
-            .args(["5"])
-            .spawn()
-            .map(|c| c.id())
-        else {
-            panic!("spawn sleep command");
-        };
-        println!("spawned sleep command with {pid}");
-
-        let expected_hash = hex_string(Sha256::digest(std::fs::read(&binary)?).as_ref());
+        let binary_str = "/dev/null";
+        let expected_hash =
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string();
         println!("expected hash of {binary_str}: {expected_hash}");
-        println!(
-            "expected hash of /proc/{pid}/exe: {}",
-            hex_string(Sha256::digest(std::fs::read(format!("/proc/{pid}/exe"))?).as_ref())
-        );
+
+        use crate::procfs;
+        procfs::PROCTABLE.insert(1, 0);
+        procfs::PROCTABLE.insert(12345678, 38191);
+        procfs::PROCTABLE.set_exe(12345678, binary_str.as_bytes());
 
         let record = format!(
-            r#"type=SYSCALL msg=audit(1615114232.375:99999): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid={pid} auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="test" exe="{binary_str}" key=(null)
+            r#"type=SYSCALL msg=audit(1615114232.375:99999): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=12345678 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="test" exe="{binary_str}" key=(null)
 type=EXECVE msg=audit(1615114232.375:99999): argc=2 a0="sleep" a1="5"
 type=EOE msg=audit(1615114232.375:99999):
 "#
@@ -2507,7 +2496,7 @@ type=EOE msg=audit(1615114232.375:99999):
             enrich_pid: false,
             ..Settings::default()
         });
-        // Great. Ubuntu's uutils comes out as a fat binary of > 10 MB.
+
         process_record(&mut c, record.as_bytes())?;
 
         let output = event_to_json(ec.borrow().as_ref().expect("no event emitted"));
