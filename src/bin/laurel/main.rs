@@ -574,7 +574,7 @@ fn run_app() -> Result<(), anyhow::Error> {
                             .context("write log")?;
                     }
                     let line = String::from_utf8_lossy(line).replace('\n', "");
-                    log::error!("Error {e} processing msg: {line}");
+                    log::warn!("Error {e} processing msg: {line}");
                 }
             }
 
