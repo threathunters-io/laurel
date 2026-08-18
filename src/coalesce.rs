@@ -807,7 +807,6 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                     if let Some(exe) = &spawner_proc.exe {
                         m.push(("exe".into(), Value::from(exe.as_slice())));
                     }
-                    m.push(("pid".into(), Value::from(spawner_proc.pid as i64)));
                 }
                 rv.push((Key::Literal("SPAWNED_BY"), Value::Map(m)));
             }
