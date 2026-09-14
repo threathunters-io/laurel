@@ -127,7 +127,7 @@ systemd = true
 script = true
 
 # Add groups that the user (uid) is a member of. Default: true
-user-groups = true
+uid-groups = true
 
 # Compute SHA256 hash of the executable (SYSCALL.exe) and add it as
 # EXE_HASH to the SYSCALL record. Default: false

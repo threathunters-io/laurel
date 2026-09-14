@@ -182,7 +182,7 @@ Options that can be configured here actually add information to events
   binary), add a `SCRIPT` entry to the `SYSCALL` record. A script is
   assumed if the first `PATH` entry does not correspond to file
   mentioned  in `SYSCALL.exe`. Default: true
-- `user-groups`: Add groups that the user ("uid") is a member of.
+- `uid-groups`: Add groups that the user ("uid") is a member of.
   Default: true
 - `prefix`: Add a prefix to enriched fields; this may be useful if
   logs are consumed by analysis software that doesn't properly
