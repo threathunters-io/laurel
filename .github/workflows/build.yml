@@ -83,7 +83,7 @@ jobs:
   build-x86_64-gnu:
     needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: debian:bullseye
+    container: debian:bookworm
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
@@ -159,7 +159,7 @@ jobs:
   build-aarch64-gnu:
     needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: debian:bullseye
+    container: debian:bookworm
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
@@ -195,7 +195,7 @@ jobs:
   build-armv7-gnueabihf:
     needs: [ check-fmt, build-test ]
     runs-on: ubuntu-latest
-    container: debian:bullseye
+    container: debian:bookworm
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
@@ -230,7 +230,7 @@ jobs:
 
   build-man:
     runs-on: ubuntu-latest
-    container: debian:bullseye
+    container: debian:bookworm
     steps:
       - uses: actions/checkout@v6
       - name: Install dependency
