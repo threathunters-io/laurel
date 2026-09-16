@@ -667,9 +667,9 @@ fn run_app() -> Result<(), anyhow::Error> {
             }
         }
 
-        if let (Some(statefile), Some(p)) = (&config.state.file, &write_state_period) {
-            if write_state_last_t.elapsed()? >= *p {
-                write_state(statefile, coalesce.state());
+        if let (Some(p), Some(period)) = (statefile_path.as_ref(), &write_state_period) {
+            if write_state_last_t.elapsed()? >= *period {
+                write_state(p, coalesce.state());
                 write_state_last_t = SystemTime::now();
             }
         }
