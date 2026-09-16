@@ -12,6 +12,7 @@ permissive laurel_t;
 init_daemon_domain(laurel_t, laurel_exec_t)
 
 # Transition auditd (auditd 3+) -> laurel
+# Allow laurel access to its STDIN.
 ifdef(`audit3',`
 	gen_require(`type auditd_t;')
 
@@ -19,9 +20,12 @@ ifdef(`audit3',`
 	type_transition auditd_t laurel_exec_t:process laurel_t;
 	allow auditd_t auditd_t:capability kill;
 	allow auditd_t laurel_t:process { transition signal };
+
+	allow laurel_t auditd_t:unix_stream_socket { read write };
 ')
 
 # Transition audispd (auditd 2.x) -> laurel
+# Allow laurel access to its STDIN.
 ifdef(`audit2',`
 	gen_require(`type audisp_t;')
 
@@ -29,6 +33,8 @@ ifdef(`audit2',`
 	type_transition audisp_t laurel_exec_t:process laurel_t;
 	allow audisp_t audisp_t:capability kill;
 	allow audisp_t laurel_t:process { transition signal };
+
+	allow laurel_t audisp_t:unix_stream_socket { read write };
 ')
 
 # Set / retain capabilities
