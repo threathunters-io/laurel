@@ -5,9 +5,9 @@ type laurel_exec_t;
 type laurel_etc_t;
 type laurel_log_t;
 
-# The line below should be removed if no "avc: denied { … }" are
-# logged by auditd after laurel has been activated.
-permissive laurel_t;
+# If "avc: denied { … }" are logged by auditd after laurel has been
+# activated, the line below should be uncommented.
+# permissive laurel_t;
 
 init_daemon_domain(laurel_t, laurel_exec_t)
 
