@@ -11,7 +11,7 @@ on:
 jobs:
   build-el8:
     runs-on: ubuntu-latest
-    container: rockylinux:8
+    container: quay.io/rockylinux/rockylinux:8
     permissions:
       contents: read
     steps:
@@ -30,7 +30,7 @@ jobs:
 
   build-el9:
     runs-on: ubuntu-latest
-    container: rockylinux:9
+    container: quay.io/rockylinux/rockylinux:9
     permissions:
       contents: read
     steps:
@@ -47,15 +47,34 @@ jobs:
           name: selinux-el9
           path: contrib/selinux/laurel.pp
 
-  build-al2023:
+  build-el10:
     runs-on: ubuntu-latest
-    container: amazonlinux:2023
+    container: quay.io/rockylinux/rockylinux:10
     permissions:
       contents: read
     steps:
       - name: Prepare
         run: |
-          yum install -y selinux-policy-devel findutils tar
+          dnf install -y selinux-policy-devel findutils
+      - uses: actions/checkout@v6
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v7
+        with:
+          name: selinux-el10
+          path: contrib/selinux/laurel.pp
+
+  build-al2023:
+    runs-on: ubuntu-latest
+    container: public.ecr.aws/amazonlinux/amazonlinux:2023
+    permissions:
+      contents: read
+    steps:
+      - name: Prepare
+        run: |
+          dnf install -y selinux-policy-devel findutils tar
       - uses: actions/checkout@v6
       - name: Build
         run: |
@@ -64,6 +83,44 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: selinux-al2023
+          path: contrib/selinux/laurel.pp
+
+  build-al2027:
+    runs-on: ubuntu-latest
+    container: public.ecr.aws/amazonlinux/amazonlinux:2027
+    permissions:
+      contents: read
+    steps:
+      - name: Prepare
+        run: |
+          dnf install -y selinux-policy-devel findutils tar gzip
+      - uses: actions/checkout@v6
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v7
+        with:
+          name: selinux-al2027
+          path: contrib/selinux/laurel.pp
+
+  build-suse16:
+    runs-on: ubuntu-latest
+    container: opensuse/leap:16
+    permissions:
+      contents: read
+    steps:
+      - name: Prepare
+        run: |
+          zypper install -y selinux-policy-devel findutils tar
+      - uses: actions/checkout@v6
+      - name: Build
+        run: |
+          make -C contrib/selinux AUDITD_VERSIONS=3
+      - name: Archive policy
+        uses: actions/upload-artifact@v7
+        with:
+          name: selinux-suse16
           path: contrib/selinux/laurel.pp
 
   build-bookworm:
