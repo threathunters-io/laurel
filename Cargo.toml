@@ -30,7 +30,7 @@ signal-hook = { version = ">= 0.3", default-features = false }
 tinyvec = { version = "1", features = ["alloc", "serde"] }
 
 log = "0.4"
-simple_logger = ">= 1"
+simple_logger = { version = ">= 1", features = ["stderr"] }
 syslog = "7"
 thiserror = "2"
 anyhow = "1"
