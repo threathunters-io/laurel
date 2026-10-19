@@ -17,7 +17,7 @@ input = "stdin"
 [auditlog]
 # Filename for the audit log file.
 #
-# "-2 causes laurel to write its log to standard output.
+# "-" causes laurel to write its log to standard output.
 # 
 # A string beginning with a pipe (e.g. "| /path/to/program") causes
 # laurel to spawn an external program and write its log to that
