@@ -580,8 +580,9 @@ fn run_app() -> Result<(), anyhow::Error> {
 
             if let Some(p) = statefile_path.as_ref() {
                 write_state(p, coalesce.state());
+            } else {
+                coalesce.flush();
             }
-            coalesce.flush();
 
             log::info!("Restarting...");
             use std::ffi::CString;
