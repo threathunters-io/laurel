@@ -56,7 +56,8 @@ impl Proctable {
 
 pub static PROCTABLE: Proctable = Proctable::new();
 
-pub fn open_pid_exe_meta(_pid: u32) -> std::io::Result<File> {
+pub fn open_pid_exe_meta(pid: u32) -> std::io::Result<File> {
+    PROCTABLE.get(&pid).ok_or(std::io::ErrorKind::NotFound)?;
     File::open("/dev/null")
 }
 
