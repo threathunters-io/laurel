@@ -431,11 +431,9 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
 
     pub fn with_settings(mut self, settings: Settings) -> Self {
         self.settings = settings;
-        if self.settings.enrich_exe_hash_cache_entries > 0 {
-            self.exe_hash_cache = Some(ExeHashCache::new(
-                self.settings.enrich_exe_hash_cache_entries,
-            ));
-        }
+        self.exe_hash_cache = Some(ExeHashCache::new(
+            self.settings.enrich_exe_hash_cache_entries,
+        ));
         self
     }
 
@@ -2540,5 +2538,34 @@ type=EOE msg=audit(1615114232.375:99999):
         assert_ne!(cache.get(&(4, 4, 4)), None);
         assert_ne!(cache.get(&(3, 3, 3)), None);
         assert_eq!(cache.get(&(2, 2, 2)), None);
+    }
+
+    #[test]
+    fn exe_hash_no_cache() -> Result<(), Box<dyn Error>> {
+        use crate::procfs;
+        procfs::PROCTABLE.insert(1, 0);
+        procfs::PROCTABLE.insert(12345679, 38191);
+        procfs::PROCTABLE.set_exe(12345679, b"/dev/null");
+
+        let record = r#"type=SYSCALL msg=audit(1615114232.375:99998): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=12345679 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="test" exe="/dev/null" key=(null)
+type=EXECVE msg=audit(1615114232.375:99998): argc=2 a0="sleep" a1="5"
+type=EOE msg=audit(1615114232.375:99998):
+"#;
+
+        let ec = Rc::new(RefCell::new(None));
+        let mut c = Coalesce::new(mk_emit(&ec)).with_settings(Settings {
+            enrich_exe_hash: true,
+            enrich_exe_hash_cache_entries: 0,
+            enrich_uid_groups: false,
+            enrich_pid: false,
+            ..Settings::default()
+        });
+        process_record(&mut c, record.as_bytes())?;
+
+        let output = event_to_json(ec.borrow().as_ref().expect("no event emitted"));
+        assert!(output.contains(
+            r#""EXE_HASH":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855""#
+        ));
+        Ok(())
     }
 }
