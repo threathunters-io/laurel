@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
+use std::ffi::OsStr;
 use std::fmt::{self, Display};
+use std::fs::{File, Metadata};
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
@@ -323,6 +325,58 @@ impl UserGroupIDs {
     }
 }
 
+/// Parses the `dev` field of an audit PATH record ("maj:min", hex)
+fn parse_audit_dev(s: &[u8]) -> Option<u64> {
+    use nix::sys::stat::makedev;
+    String::from_utf8_lossy(s)
+        .split_once(':')
+        .and_then(|(maj, min)| {
+            Some(makedev(
+                u64::from_str_radix(maj, 16).ok()?,
+                u64::from_str_radix(min, 16).ok()?,
+            ))
+        })
+}
+
+/// Returns the (dev, inode) of the file recorded by a PATH record
+fn path_record_file_id(path: &Body) -> Option<(u64, u64)> {
+    let mut dev = None;
+    let mut inode = None;
+    for (k, v) in path {
+        match (k, v) {
+            (k, Value::Str(r, _)) if k == "dev" => dev = parse_audit_dev(r),
+            (k, Value::Number(Number::Dec(i))) if k == "inode" => inode = Some(*i as u64),
+            _ => {}
+        }
+    }
+    Some((dev?, inode?))
+}
+
+/// Opens the executable of `pid` for hashing.
+///
+/// The live `/proc/<pid>/exe` link is preferred. If the process has
+/// already exited, the audit event's exe path is opened instead, but
+/// only if its dev / inode match the executable recorded in the
+/// event's PATH record, so a replaced or missing file is never hashed.
+fn open_exe_for_hash(
+    pid: u32,
+    exe: &[u8],
+    exe_file_id: Option<(u64, u64)>,
+) -> Option<(File, Metadata)> {
+    if let Ok(fd) = procfs::open_pid_exe_meta(pid) {
+        let path = procfs::get_pid_exe_link(pid).ok()?;
+        if path.as_os_str().as_bytes() != exe {
+            return None;
+        }
+        let meta = fd.metadata().ok()?;
+        return Some((fd, meta));
+    }
+    let (dev, inode) = exe_file_id?;
+    let fd = File::open(OsStr::from_bytes(exe)).ok()?;
+    let meta = fd.metadata().ok()?;
+    ((meta.dev(), meta.ino()) == (dev, inode)).then_some((fd, meta))
+}
+
 /// Returns a script name from path if exe's dev / inode don't match
 ///
 /// The executable's device and inode are inspected throguh the
@@ -341,11 +395,8 @@ impl UserGroupIDs {
 /// As an extra sanity check, exe is compared with normalized
 /// PATH.name. If they are equal, no script is returned.
 fn path_script_name(path: &Body, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) -> Option<NVec> {
-    use nix::sys::stat::{major, makedev};
-    use std::{
-        ffi::OsStr,
-        path::{Component, Path, PathBuf},
-    };
+    use nix::sys::stat::major;
+    use std::path::{Component, Path, PathBuf};
 
     let meta = procfs::pid_path_metadata(pid, exe)
         .or_else(|_| procfs::pid_path_metadata(ppid, exe))
@@ -395,14 +446,7 @@ fn path_script_name(path: &Body, pid: u32, ppid: u32, cwd: &[u8], exe: &[u8]) ->
             }
         } else if k == "dev" {
             if let Value::Str(r, _) = v {
-                p_dev = String::from_utf8_lossy(r)
-                    .split_once(':')
-                    .and_then(|(maj, min)| {
-                        Some(makedev(
-                            u64::from_str_radix(maj, 16).ok()?,
-                            u64::from_str_radix(min, 16).ok()?,
-                        ))
-                    });
+                p_dev = parse_audit_dev(r);
             }
             break;
         }
@@ -1036,6 +1080,18 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
             return;
         }
 
+        if let (true, Some(proc)) = (self.settings.enrich_exe_hash, &proc) {
+            let exe_file_id = match ev.body.get(&MessageType::PATH) {
+                Some(EventValues::Multi(paths)) => paths.first().and_then(path_record_file_id),
+                _ => None,
+            };
+            if let (Some(exe), Some(EventValues::Single(rv))) =
+                (&proc.exe, ev.body.get_mut(&MessageType::SYSCALL))
+            {
+                self.enrich_exe_hash(rv, proc.pid, exe, exe_file_id);
+            }
+        }
+
         let mut container_info: Option<Body> = None;
 
         for tv in ev.body.iter_mut() {
@@ -1301,26 +1357,19 @@ impl<'a, 'ev> Coalesce<'a, 'ev> {
                 ));
             }
         }
-
-        if let (true, Some(exe)) = (self.settings.enrich_exe_hash, exe) {
-            self.enrich_exe_hash(body, pid, exe);
-        }
     }
 
-    fn enrich_exe_hash(&mut self, rv: &mut Body, pid: u32, exe: &[u8]) {
+    fn enrich_exe_hash(
+        &mut self,
+        rv: &mut Body,
+        pid: u32,
+        exe: &[u8],
+        exe_file_id: Option<(u64, u64)>,
+    ) {
         let Some(ref mut cache) = self.exe_hash_cache else {
             return;
         };
-        let Ok(fd) = procfs::open_pid_exe_meta(pid) else {
-            return;
-        };
-        let Ok(path) = procfs::get_pid_exe_link(pid) else {
-            return;
-        };
-        let Ok(meta) = fd.metadata() else {
-            return;
-        };
-        if path.as_os_str().as_bytes() != exe {
+        let Some((fd, meta)) = open_exe_for_hash(pid, exe, exe_file_id) else {
             return;
         };
         if meta.len() > self.settings.enrich_exe_hash_size_limit {
@@ -2566,6 +2615,49 @@ type=EOE msg=audit(1615114232.375:99998):
         assert!(output.contains(
             r#""EXE_HASH":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855""#
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn exe_hash_exited_process() -> Result<(), Box<dyn Error>> {
+        // The process is not in the proc table, so /proc/<pid>/exe is
+        // unavailable and the exe path from the event is used instead.
+        // /dev/null has a known hash and a stable dev/inode.
+        let dev_null = std::fs::metadata("/dev/null")?;
+        let make_record = |inode: u64| {
+            format!(
+                r#"type=SYSCALL msg=audit(1615114232.375:99997): arch=c000003e syscall=59 success=yes exit=0 a0=0 a1=0 a2=0 a3=0 items=1 ppid=1 pid=12345680 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="test" exe="/dev/null" key=(null)
+type=PATH msg=audit(1615114232.375:99997): item=0 name="/dev/null" inode={inode} dev="{:02x}:{:02x}" mode=020666 ouid=0 ogid=0 rdev="00:00" nametype="NORMAL" cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid="0"
+type=EXECVE msg=audit(1615114232.375:99997): argc=2 a0="sleep" a1="5"
+type=EOE msg=audit(1615114232.375:99997):
+"#,
+                nix::sys::stat::major(dev_null.dev()),
+                nix::sys::stat::minor(dev_null.dev()),
+            )
+        };
+        let settings = Settings {
+            enrich_exe_hash: true,
+            enrich_uid_groups: false,
+            enrich_pid: false,
+            ..Settings::default()
+        };
+
+        let ec = Rc::new(RefCell::new(None));
+        let mut c = Coalesce::new(mk_emit(&ec)).with_settings(settings.clone());
+        process_record(&mut c, make_record(dev_null.ino()).as_bytes())?;
+        let output = event_to_json(ec.borrow().as_ref().expect("no event emitted"));
+        assert!(output.contains(
+            r#""EXE_HASH":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855""#
+        ));
+
+        let ec = Rc::new(RefCell::new(None));
+        let mut c = Coalesce::new(mk_emit(&ec)).with_settings(settings);
+        process_record(&mut c, make_record(dev_null.ino() + 1).as_bytes())?;
+        let output = event_to_json(ec.borrow().as_ref().expect("no event emitted"));
+        assert!(
+            !output.contains("EXE_HASH"),
+            "a dev/inode mismatch must not be hashed"
+        );
         Ok(())
     }
 }
